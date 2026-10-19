@@ -1,0 +1,73 @@
+# docker-compose.dev.yml — entorno de desarrollo con recarga en caliente.
+#
+# Uso:
+#   docker compose -f docker-compose.dev.yml up --build
+#
+# La API y el web montan el código fuente como volumen y ejecutan sus
+# watchers (nest start --watch / vite), por lo que los cambios se reflejan
+# sin reconstruir la imagen. La base de datos persiste en un volumen nombrado.
+
+name: ats-dev
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ats_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ats_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-ats_dev}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ats_dev} -d ${POSTGRES_DB:-ats_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: builder
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      DATABASE_URL: postgres://${POSTGRES_USER:-ats_dev}:${POSTGRES_PASSWORD:-ats_dev}@db:5432/${POSTGRES_DB:-ats_dev}
+      CORS_ORIGIN: http://localhost:5173,http://localhost:8080
+    command: pnpm --filter @ats/api dev
+    ports:
+      - "${API_PORT:-3000}:3000"
+    volumes:
+      - ./apps/api:/app/apps/api
+      - ./packages/shared:/app/packages/shared
+      - /app/node_modules
+      - /app/apps/api/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: builder
+    restart: unless-stopped
+    environment:
+      API_PROXY_TARGET: http://api:3000
+    command: pnpm --filter @ats/web dev --host
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    volumes:
+      - ./apps/web:/app/apps/web
+      - ./packages/shared:/app/packages/shared
+      - /app/node_modules
+      - /app/apps/web/node_modules
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

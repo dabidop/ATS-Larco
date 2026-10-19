@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Dependencias con scripts de build/postinstall propios que pnpm debe ejecutar.
+# pnpm ≥10 bloquea por defecto los scripts de empaquetados por seguridad;
+# @swc/core compila el binario nativo usado por el compilador de TypeScript
+# de NestJS en modo watch y por Vitest.
+allowBuilds:
+  '@swc/core': true

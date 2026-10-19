@@ -1,0 +1,10 @@
+# Fuerza LF en archivos sensibles al saltos de línea para evitar
+# diferencias entre Windows (CRLF) y Linux/CI (LF).
+* text=auto
+
+*.sh text eol=lf
+pnpm-lock.yaml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf
+*.conf text eol=lf

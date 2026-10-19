@@ -1,0 +1,18 @@
+# Excluimos del contexto de build todo lo que ya se materializa dentro de la imagen.
+# En particular **/node_modules: en Windows son junctions que rompen los symlinks
+# de pnpm dentro del contenedor Linux.
+**/node_modules
+**/dist
+**/coverage
+**/.vite
+**/*.tsbuildinfo
+.git
+.github
+.env
+.env.*
+!.env.example
+*.log
+Dockerfile*
+docker-compose*.yml
+docs
+README.md

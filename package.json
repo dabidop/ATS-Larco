@@ -1,0 +1,34 @@
+{
+  "name": "ats-larco",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ATS LARCO — Applicant Tracking System para el área de Gestión Humana",
+  "packageManager": "pnpm@12.14.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @ats/shared build && pnpm -r --parallel run dev",
+    "build": "pnpm -r run build",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "pnpm --filter @ats/shared build && pnpm -r --parallel run typecheck",
+    "test": "pnpm -r run test",
+    "test:coverage": "pnpm -r run test:coverage",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:up": "docker compose -f docker-compose.dev.yml up -d db",
+    "db:down": "docker compose -f docker-compose.dev.yml down",
+    "compose:up": "docker compose -f docker-compose.dev.yml up --build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.71.2"
+  }
+}

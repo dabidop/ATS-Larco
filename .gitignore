@@ -1,0 +1,32 @@
+# Dependencias
+node_modules/
+
+# Builds
+dist/
+build/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Entorno
+.env
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE / SO
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Tests E2E (fase 9)
+test-results/
+playwright-report/
+blob-report/
+
+# Docker
+.docker/
