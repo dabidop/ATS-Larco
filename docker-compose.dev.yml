@@ -18,11 +18,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ats_dev}
       POSTGRES_DB: ${POSTGRES_DB:-ats_dev}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ats_dev} -d ${POSTGRES_DB:-ats_dev}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-ats_dev} -d ${POSTGRES_DB:-ats_dev}']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -35,12 +35,12 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: development
-      PORT: "3000"
+      PORT: '3000'
       DATABASE_URL: postgres://${POSTGRES_USER:-ats_dev}:${POSTGRES_PASSWORD:-ats_dev}@db:5432/${POSTGRES_DB:-ats_dev}
       CORS_ORIGIN: http://localhost:5173,http://localhost:8080
     command: pnpm --filter @ats/api dev
     ports:
-      - "${API_PORT:-3000}:3000"
+      - '${API_PORT:-3000}:3000'
     volumes:
       - ./apps/api:/app/apps/api
       - ./packages/shared:/app/packages/shared
@@ -60,7 +60,7 @@ services:
       API_PROXY_TARGET: http://api:3000
     command: pnpm --filter @ats/web dev --host
     ports:
-      - "${WEB_PORT:-5173}:5173"
+      - '${WEB_PORT:-5173}:5173'
     volumes:
       - ./apps/web:/app/apps/web
       - ./packages/shared:/app/packages/shared

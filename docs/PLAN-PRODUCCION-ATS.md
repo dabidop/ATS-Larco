@@ -11,13 +11,13 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 
 **Stack objetivo (confirmado por el requerimiento):**
 
-| Capa | Tecnología |
-|------|-----------|
-| Frontend | React 19 + Vite + Tailwind CSS + TypeScript estricto · Zustand · DnD Kit |
-| Backend | NestJS 11 + Node.js 20+ · módulos: auth, candidatos, embudo, antecedentes, entrevistas, proveedor, historial, uploads, requerimientos, importacion |
-| Persistencia | PostgreSQL 16 · pool `pg` para alta concurrencia + TypeORM en *requerimientos* (esquema híbrido) |
-| Seguridad | JWT 24 h · RBAC (admin_rrhh, analista_seleccion, lider_area) · AES-256-CBC con IV aleatorio por registro para PII · auditoría por triggers |
-| Async | Scrapers Playwright (antecedentes) · trabajos en cola |
+| Capa         | Tecnología                                                                                                                                         |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend     | React 19 + Vite + Tailwind CSS + TypeScript estricto · Zustand · DnD Kit                                                                           |
+| Backend      | NestJS 11 + Node.js 20+ · módulos: auth, candidatos, embudo, antecedentes, entrevistas, proveedor, historial, uploads, requerimientos, importacion |
+| Persistencia | PostgreSQL 16 · pool `pg` para alta concurrencia + TypeORM en _requerimientos_ (esquema híbrido)                                                   |
+| Seguridad    | JWT 24 h · RBAC (admin_rrhh, analista_seleccion, lider_area) · AES-256-CBC con IV aleatorio por registro para PII · auditoría por triggers         |
+| Async        | Scrapers Playwright (antecedentes) · trabajos en cola                                                                                              |
 
 **Stack de herramientas de ingeniería:**
 
@@ -44,7 +44,7 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 ### 🟡 Should — V1 completa (fases 6–8)
 
 8. **Importación masiva** de CVs con cola de trabajos y reporte por archivo.
-9. **Parsing de CVs**: extracción de nombres, correo, teléfono, ciudad y habilidades; presentación como *sugerencia confirmada por humano* (nunca confiar ciegamente al parser).
+9. **Parsing de CVs**: extracción de nombres, correo, teléfono, ciudad y habilidades; presentación como _sugerencia confirmada por humano_ (nunca confiar ciegamente al parser).
 10. **Verificaciones de antecedentes asíncronas** con Playwright, resultados en JSONB, estados `pendiente | exitoso | fallido | no aplica`, evidencia adjunta.
 11. **Reportes e indicadores**: tiempo promedio por fase, tasa de conversión por vacante, antigüedad de requerimientos, exportación CSV.
 
@@ -64,13 +64,13 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 
 ## 3. Riesgos y cómo los mitigamos
 
-| Riesgo | Impacto | Mitigación |
-|--------|---------|------------|
-| Parsing de CV impreciso | Alto | Extracción como sugerencia + confirmación humana; métrica de aciertos antes de confiar en automatización |
-| Scrapers frágiles (antecedentes) | Medio | Arquitectura de "plugins" por fuente con interfaz estable, timeouts, reintentos y degradación elegante |
-| Esquema híbrido TypeORM + pg | Medio | Límites estrictos: TypeORM solo en requerimientos; el resto acceso directo con query builder propio; migraciones SIEMPRE versionadas (nunca `synchronize` en prod) |
-| PII sensible (Ley 1581 de 2012, Colombia) | Alto | Cifrado AES-256-CBC, minimización de datos, retención y supresión (habeas data), auditoría, y política de acceso por rol |
-| Desarrollador único (factor bus) | Alto | Documentación viva (ADR + runbook), seeds reproducibles, backups probados con restore real |
+| Riesgo                                    | Impacto | Mitigación                                                                                                                                                         |
+| ----------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Parsing de CV impreciso                   | Alto    | Extracción como sugerencia + confirmación humana; métrica de aciertos antes de confiar en automatización                                                           |
+| Scrapers frágiles (antecedentes)          | Medio   | Arquitectura de "plugins" por fuente con interfaz estable, timeouts, reintentos y degradación elegante                                                             |
+| Esquema híbrido TypeORM + pg              | Medio   | Límites estrictos: TypeORM solo en requerimientos; el resto acceso directo con query builder propio; migraciones SIEMPRE versionadas (nunca `synchronize` en prod) |
+| PII sensible (Ley 1581 de 2012, Colombia) | Alto    | Cifrado AES-256-CBC, minimización de datos, retención y supresión (habeas data), auditoría, y política de acceso por rol                                           |
+| Desarrollador único (factor bus)          | Alto    | Documentación viva (ADR + runbook), seeds reproducibles, backups probados con restore real                                                                         |
 
 ---
 
@@ -173,12 +173,12 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 
 ## 5. Estimación total (developer único, ritmo sostenible)
 
-| Hito | Fases | Estimación |
-|------|-------|-----------|
-| ⭐ MVP utilizable (piloto interno) | 0–5 | **5–7 semanas** |
-| V1 completa (masivo + antecedentes + reportes) | 6–8 | +3–4 semanas |
-| Endurecimiento + despliegue local productivo | 9–10 | +2 semanas |
-| **Total a producción local** | | **≈ 10–13 semanas** |
+| Hito                                           | Fases | Estimación          |
+| ---------------------------------------------- | ----- | ------------------- |
+| ⭐ MVP utilizable (piloto interno)             | 0–5   | **5–7 semanas**     |
+| V1 completa (masivo + antecedentes + reportes) | 6–8   | +3–4 semanas        |
+| Endurecimiento + despliegue local productivo   | 9–10  | +2 semanas          |
+| **Total a producción local**                   |       | **≈ 10–13 semanas** |
 
 ---
 

@@ -1,19 +1,34 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+import { ConfigService } from '@nestjs/config';
+import { Logger } from 'nestjs-pino';
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: false });
+import { AppModule } from './app.module';
+import { parseCorsOrigins, type Env } from './config/env.validation';
+
+async function bootstrap(): Promise<void> {
+  // bufferLogs: los logs del arranque quedan en cola hasta `useLogger`.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const config = app.get(ConfigService<Env, true>);
 
   app.setGlobalPrefix('api');
-  const allowedOrigins = process.env.CORS_ORIGIN?.split(',').filter(Boolean);
+
+  const allowedOrigins = parseCorsOrigins(config.get('CORS_ORIGIN', ''));
   app.enableCors({
-    origin: allowedOrigins && allowedOrigins.length > 0 ? allowedOrigins : false,
+    origin: allowedOrigins.length > 0 ? allowedOrigins : false,
     credentials: true,
   });
 
-  const port = Number(process.env.PORT ?? 3000);
+  // nestjs-pino pasa a ser el logger real de la aplicación (también para los
+  // logs internos de Nest) y descarga los logs bufferizados del arranque.
+  app.useLogger(app.get(Logger));
+
+  const port = config.getOrThrow('PORT');
   await app.listen(port);
-  console.log(`[api] escuchando en http://localhost:${port}/api/health`);
+  app.get(Logger).log(`API escuchando en http://localhost:${port}/api/health`, 'Bootstrap');
 }
 
-void bootstrap();
+bootstrap().catch((error: unknown) => {
+  // Fallo de arranque (p. ej. configuración inválida): se reporta y se sale.
+  console.error('[api] No se pudo iniciar la API:', error);
+  process.exitCode = 1;
+});
