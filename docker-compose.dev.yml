@@ -38,6 +38,11 @@ services:
       PORT: '3000'
       DATABASE_URL: postgres://${POSTGRES_USER:-ats_dev}:${POSTGRES_PASSWORD:-ats_dev}@db:5432/${POSTGRES_DB:-ats_dev}
       CORS_ORIGIN: http://localhost:5173,http://localhost:8080
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_TTL_HOURS: ${JWT_TTL_HOURS:-24}
+      CRYPTO_KEY_BASE64: ${CRYPTO_KEY_BASE64:-}
+      CRYPTO_KEY_PREVIOUS_BASE64: ${CRYPTO_KEY_PREVIOUS_BASE64:-}
     command: pnpm --filter @ats/api dev
     ports:
       - '${API_PORT:-3000}:3000'

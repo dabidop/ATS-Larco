@@ -21,6 +21,29 @@ export const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => (value && value.trim() !== '' ? value : undefined)),
+  /**
+   * Secreto para firmar los JWT. Obligatorio y mínimo 32 caracteres.
+   * Un valor vacío se trata como AUSENTE y produce un error claro en el arranque.
+   */
+  JWT_SECRET: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z
+      .string({ error: 'JWT_SECRET es requerido (no puede quedar vacío)' })
+      .min(32, 'JWT_SECRET debe tener al menos 32 caracteres'),
+  ),
+  /**
+   * Vigencia del access token en horas (entero entre 1 y 72).
+   * Vacío o ausente → 24 h por defecto.
+   */
+  JWT_TTL_HOURS: z.preprocess(
+    (value) => (value === undefined || value === null || value === '' ? undefined : value),
+    z.coerce
+      .number({ error: 'JWT_TTL_HOURS debe ser un número entre 1 y 72' })
+      .int('JWT_TTL_HOURS debe ser un entero entre 1 y 72')
+      .min(1, 'JWT_TTL_HOURS debe estar entre 1 y 72')
+      .max(72, 'JWT_TTL_HOURS debe estar entre 1 y 72')
+      .default(24),
+  ),
 });
 
 /** Tipo de la configuración ya validada. Usar con `ConfigService<Env, true>`. */

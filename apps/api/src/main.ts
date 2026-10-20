@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import { ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
@@ -11,6 +12,13 @@ async function bootstrap(): Promise<void> {
   const config = app.get(ConfigService<Env, true>);
 
   app.setGlobalPrefix('api');
+
+  // Validación global de DTOs (class-validator): solo se aceptan los campos
+  // declarados (whitelist + forbidNonWhitelisted → 400 si hay campos extra) y
+  // el cuerpo se transforma a los tipos del DTO (transform).
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+  );
 
   const allowedOrigins = parseCorsOrigins(config.get('CORS_ORIGIN', ''));
   app.enableCors({

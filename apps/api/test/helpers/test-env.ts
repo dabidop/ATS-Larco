@@ -14,5 +14,9 @@ process.env.NODE_ENV ??= 'test';
 process.env.PORT ??= '3000';
 process.env.DATABASE_URL ??= 'postgres://test:test@127.0.0.1:5555/ats_test';
 process.env.CORS_ORIGIN ??= 'http://localhost:5173';
+// Clave de firma JWT solo para tests (la validación zod la exige, ≥ 32 chars)
+// y TTL de 24 h para poder asertar expiresIn = 86400 de forma estable.
+process.env.JWT_SECRET ??= 'test-jwt-secret-0123456789abcdef0123456789abcdef';
+process.env.JWT_TTL_HOURS ??= '24';
 
 export {};
