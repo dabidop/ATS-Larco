@@ -5,15 +5,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { FindOptionsWhere } from 'typeorm';
+import type { EntityManager, FindOptionsWhere } from 'typeorm';
 
 import type { AuthenticatedUser } from '../../common/guards/auth.guard';
 import { CodigoGeneratorService } from './codigo-generator.service';
 import type { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
 import type { ListRequerimientosQueryDto } from './dto/list-requerimientos-query.dto';
 import type { RequerimientoResponseDto, RequerimientosPageDto } from './dto/requerimiento.response';
+import type { TransicionarRequerimientoDto } from './dto/transicionar-requerimiento.dto';
 import type { UpdateRequerimientoDto } from './dto/update-requerimiento.dto';
-import { EstadoRequerimiento, type Requerimiento } from './requerimiento.entity';
+import { EstadoRequerimiento, Requerimiento } from './requerimiento.entity';
+import { TRANSICIONES_VALIDAS, denegacionPermiso } from './requerimientos-flujo';
 import { buildCreateData, buildUpdateData, toResponse } from './requerimientos.mapper';
 import { RequerimientosStoreService } from './requerimientos-store.service';
 
@@ -124,6 +126,10 @@ export class RequerimientosService {
    *     salarial inconsistente (el CHECK de BD devolvería un 500).
    *
    * Solo se escriben los campos presentes en el cuerpo (`buildUpdateData`).
+   *
+   * La escritura va DENTRO de una transacción que fija el GUC
+   * `app.current_user_id` con el `sub` del usuario: así `audit_log.changed_by`
+   * registra a QUIÉN edita (migración 004), no al `created_by` de la fila.
    */
   async update(
     id: string,
@@ -154,8 +160,124 @@ export class RequerimientosService {
     this.assertCamposObligatorios(resultado);
     this.assertRangoSalarial(resultado);
 
-    const guardada = await repo.save(resultado);
-    return toResponse(guardada);
+    // Escritura en transacción: fija el GUC del actor ANTES del UPDATE para
+    // que `audit_log.changed_by` sea QUIÉN edita y no el `created_by` de la
+    // fila (migración 004). El resultado observable para el creador es el
+    // mismo de siempre; ahora el admin que edita también queda registrado.
+    return this.store.withTransaction(async (em) => {
+      await this.fijarActorDeAuditoria(em, user.sub);
+      const guardada = await em.save(Requerimiento, resultado);
+      return toResponse(guardada);
+    });
+  }
+
+  /**
+   * Transición de estado (Fase 3, parte 4): `POST /:id/transiciones`.
+   *
+   * Reglas, en este orden:
+   *  1. 404 si el requerimiento no existe.
+   *  2. 409 si `actual → destino` no está en `TRANSICIONES_VALIDAS` —mensaje
+   *     con los destinos válidos— o el estado es `cerrado`/`rechazado`
+   *     (terminal: sin salida).
+   *  3. 403 si el rol del usuario no está en `PERMISOS_TRANSICION` para esa
+   *     transición —incluida la regla extra de que un `lider_area` solo RETIRA
+   *     SU propia solicitud en `pendiente → rechazado` (no la de otro líder)—.
+   *  4. 400 si `destino = 'rechazado'` y falta `motivo` (el CHECK
+   *     `requerimientos_rechazo_check` también lo garantiza en BD, pero el
+   *     error debe salir como 400 del API, no como 500 del trigger).
+   *  5. Dentro de `withTransaction`: fija el GUC `app.current_user_id` con el
+   *     `sub` del usuario (auditoría del QUE EJECUTA, migración 004) y hace el
+   *     UPDATE con criterio `estado = origen` como blindaje ante carreras: si
+   *     otra petición cambió el estado en medio, `affected = 0` → 409.
+   *
+   * `motivo_rechazo` solo se escribe al rechazar; el resto de destinos NO lo
+   * tocan. Devuelve la fila ACTUALIZADA con la MISMA forma que el CRUD
+   * (`toResponse`), no un sub-recurso.
+   */
+  async transicionar(
+    id: string,
+    dto: TransicionarRequerimientoDto,
+    user: AuthenticatedUser,
+  ): Promise<RequerimientoResponseDto> {
+    const repo = await this.store.repo();
+    const entidad = await repo.findOneBy({ id });
+    if (entidad === null) {
+      throw new NotFoundException(`No existe un requerimiento con id ${id}`);
+    }
+
+    const origen = entidad.estado;
+    const destino = dto.destino;
+    const esCreador = entidad.createdBy === user.sub;
+
+    // 409 — la transición debe existir en la máquina de estados ANTES de
+    // mirar permisos: "eso no se puede hacer" ≠ "a ti no te dejamos hacerlo".
+    const destinosValidos = TRANSICIONES_VALIDAS[origen];
+    if (!destinosValidos.includes(destino)) {
+      if (destinosValidos.length === 0) {
+        throw new ConflictException(
+          `Estado terminal: el requerimiento está en '${origen}' y no admite nuevas transiciones`,
+        );
+      }
+      throw new ConflictException(
+        `Transición no permitida: ${origen} → ${destino}. ` +
+          `Destinos válidos desde ${origen}: [${destinosValidos.join(', ')}]`,
+      );
+    }
+
+    // 403 — matriz de permisos por rol (incluye la regla del creador).
+    const denegacion = denegacionPermiso(origen, destino, user.role, esCreador);
+    if (denegacion !== null) {
+      throw new ForbiddenException(denegacion);
+    }
+
+    // 400 — rechazar exige decir por qué (el motivo viaja recortado).
+    const esRechazo = destino === EstadoRequerimiento.Rechazado;
+    const motivo = dto.motivo?.trim() ?? null;
+    if (esRechazo && motivo === null) {
+      throw new BadRequestException(
+        'Para rechazar un requerimiento el campo "motivo" es obligatorio',
+      );
+    }
+
+    return this.store.withTransaction(async (em) => {
+      // SET LOCAL parametrizado (el uuid NUNCA se interpola a mano): el
+      // trigger `audit_fila()` (migración 004) prioriza este GUC sobre
+      // `NEW.created_by`, de modo que `audit_log.changed_by` registra al QUE
+      // EJECUTA la transición, no al autor de la solicitud. Al ser `is_local`,
+      // el valor muere con la transacción y no se filtra al resto del pool.
+      await this.fijarActorDeAuditoria(em, user.sub);
+
+      const resultado = await em.update(
+        Requerimiento,
+        { id, estado: origen },
+        esRechazo ? { estado: destino, motivoRechazo: motivo } : { estado: destino },
+      );
+      if (resultado.affected === 0) {
+        throw new ConflictException(
+          `Conflicto: el requerimiento cambió de estado mientras se procesaba ` +
+            `${origen} → ${destino}; vuelve a intentarlo`,
+        );
+      }
+
+      // Relectura dentro de la transacción: devuelve el `updated_at` que dejó
+      // el trigger `set_updated_at` y los valores ya materializados en BD.
+      const actualizada = await em.findOneBy(Requerimiento, { id });
+      if (actualizada === null) {
+        throw new ConflictException(`El requerimiento ${id} dejó de existir tras la transición`);
+      }
+      return toResponse(actualizada);
+    });
+  }
+
+  /**
+   * Fija `app.current_user_id` (SET LOCAL, valor parametrizado con `$1`) en la
+   * conexión de la transacción EN CURSO: `audit_fila()` lo usa como QUIÉN
+   * ejecuta la escritura. `is_local = true` → el GUC se revierte al terminar
+   * la transacción, así que no contamina a otras peticiones que reutilicen el
+   * mismo socket del pool.
+   */
+  private async fijarActorDeAuditoria(em: EntityManager, sub: string): Promise<void> {
+    await em.query(`SELECT set_config('app.current_user_id', $1, true)`, [sub]);
   }
 
   /**

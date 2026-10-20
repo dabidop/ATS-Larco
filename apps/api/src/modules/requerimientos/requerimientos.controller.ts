@@ -19,6 +19,7 @@ import type { AuthenticatedRequest, AuthenticatedUser } from '../../common/guard
 import { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
 import { ListRequerimientosQueryDto } from './dto/list-requerimientos-query.dto';
 import type { RequerimientoResponseDto, RequerimientosPageDto } from './dto/requerimiento.response';
+import { TransicionarRequerimientoDto } from './dto/transicionar-requerimiento.dto';
 import { UpdateRequerimientoDto } from './dto/update-requerimiento.dto';
 import { RequerimientosService } from './requerimientos.service';
 
@@ -51,23 +52,28 @@ function requireUser(request: AuthenticatedRequest): AuthenticatedUser {
 
 /**
  * Controlador de requerimientos de personal — API CRUD de las 5 secciones del
- * formulario (Fase 3, parte 3). El prefijo `api/` lo añade el
+ * formulario (Fase 3, parte 3) y transiciones de estado (Fase 3, parte 4). El
+ * prefijo `api/` lo añade el
  * `setGlobalPrefix('api')` del bootstrap; la autenticación y la autorización
  * son guards GLOBALES (`AuthGuard` + `RolesGuard`), así que aquí solo se
  * declaran los roles permitidos con `@Roles(...)`.
  *
  * Matriz RBAC de este controlador:
- * | Ruta                              | Acceso                             |
- * |-----------------------------------|------------------------------------|
- * | GET  /api/requerimientos/ping     | @Roles('admin_rrhh','lider_area')  |
- * | POST /api/requerimientos          | @Roles('admin_rrhh','lider_area')  |
- * | GET  /api/requerimientos          | autenticado (cualquier rol)        |
- * | GET  /api/requerimientos/:id      | autenticado (cualquier rol)        |
- * | PATCH /api/requerimientos/:id     | creador o @Roles('admin_rrhh')     |
+ * | Ruta                                      | Acceso                                                 |
+ * |-------------------------------------------|--------------------------------------------------------|
+ * | GET  /api/requerimientos/ping             | @Roles('admin_rrhh','lider_area')                      |
+ * | POST /api/requerimientos                  | @Roles('admin_rrhh','lider_area')                      |
+ * | GET  /api/requerimientos                  | autenticado (cualquier rol)                            |
+ * | GET  /api/requerimientos/:id              | autenticado (cualquier rol)                            |
+ * | PATCH /api/requerimientos/:id             | creador o @Roles('admin_rrhh')                         |
+ * | POST /api/requerimientos/:id/transiciones | @Roles('admin_rrhh','analista_seleccion','lider_area') |
  *
- * SOLO LECTURA de estado: `estado` y `motivoRechazo` no se aceptan en ningún
- * cuerpo (el DTO no los declara → 400 con `forbidNonWhitelisted`); las
- * transiciones de estado llegan en la parte 4 como endpoints propios.
+ * SOLO LECTURA de estado en el CRUD: `estado` y `motivoRechazo` no se aceptan
+ * en los cuerpos de POST/PATCH (los DTO no los declaran → 400 con
+ * `forbidNonWhitelisted`). El estado SOLO cambia por la máquina de estados de
+ * `POST /:id/transiciones` (parte 4), cuya matriz real de permisos
+ * `origen → destino` por rol se aplica en el servicio —aquí `@Roles(...)`
+ * solo es la puerta de entrada—.
  *
  * NO EXISTE `DELETE /api/requerimientos/:id` — decisión de diseño, no un
  * olvido: los requerimientos son documentos con trazabilidad para Gestión
@@ -118,5 +124,25 @@ export class RequerimientosController {
     @Req() request: AuthenticatedRequest,
   ): Promise<RequerimientoResponseDto> {
     return this.requerimientos.update(id, body, requireUser(request));
+  }
+
+  /**
+   * Transición de la máquina de estados (parte 4) → 200 con el requerimiento
+   * ACTUALIZADO (misma forma que el CRUD, no un sub-recurso).
+   *
+   * `@Roles(...)` es solo la puerta: los 3 roles del flujo llegan al servicio,
+   * que aplica la matriz real `origen → destino` (409 estructural → 403 por
+   * rol → 400 si falta motivo al rechazar). El guard global de throttling ya
+   * cubre esta ruta; aquí no se duplica nada.
+   */
+  @Post(':id/transiciones')
+  @HttpCode(HttpStatus.OK)
+  @Roles('admin_rrhh', 'analista_seleccion', 'lider_area')
+  async transicionar(
+    @Param('id', UUID_PARAM) id: string,
+    @Body() body: TransicionarRequerimientoDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<RequerimientoResponseDto> {
+    return this.requerimientos.transicionar(id, body, requireUser(request));
   }
 }
