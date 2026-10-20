@@ -71,8 +71,13 @@ export class CryptoService {
       'CRYPTO_KEY_BASE64',
     );
     const previousKeyBase64 = config.get<string | undefined>('CRYPTO_KEY_PREVIOUS_BASE64');
+    // Defensa en profundidad: `ConfigService` hace fallback a `process.env`
+    // para las claves ausentes de la config validada, de modo que en
+    // Docker/compose una variable opcional sin definir llega como cadena
+    // vacía. Zod la trata como ausente y aquí también (bug detectado por el
+    // smoke test del contenedor: el arranque fallaba al decodificar '').
     this.previousKey =
-      previousKeyBase64 === undefined
+      previousKeyBase64 === undefined || previousKeyBase64.trim() === ''
         ? undefined
         : CryptoService.decodeKey(previousKeyBase64, 'CRYPTO_KEY_PREVIOUS_BASE64');
   }

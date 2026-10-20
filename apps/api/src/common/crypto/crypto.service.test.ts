@@ -105,6 +105,21 @@ describe('CryptoService', () => {
     expect(rotado.decrypt(nuevo)).toBe('dato nuevo');
   });
 
+  it('previous vacía (fallback de process.env en Docker/compose) se trata como ausente', () => {
+    // Regresión: una variable opcional sin definir llega como '' desde el
+    // compose y ConfigService cae a process.env; el servicio NO debe tratarla
+    // como llave (bug de arranque del contenedor detectado por smoke test).
+    const soloVigente = createService(KEY_A, '');
+    expect(soloVigente.decrypt(soloVigente.encrypt(PII))).toBe(PII);
+
+    const conEspacios = createService(KEY_A, '   ');
+    expect(conEspacios.decrypt(conEspacios.encrypt(PII))).toBe(PII);
+
+    // Y una llave previous real sigue funcionando (rotación intacta).
+    const cifradoConA = createService(KEY_A).encrypt(PII);
+    expect(createService(KEY_B, KEY_A).decrypt(cifradoConA)).toBe(PII);
+  });
+
   it.each(['basura', 'v1:xx:yy', 'v2:a:b'])(
     'corrupto: decrypt(%s) lanza Error con mensaje claro',
     (value) => {
