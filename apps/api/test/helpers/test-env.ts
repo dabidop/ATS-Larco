@@ -22,5 +22,11 @@ process.env.JWT_TTL_HOURS ??= '24';
 // en base64). Determinista para que los tests sean reproducibles; NUNCA
 // usar fuera de tests. CRYPTO_KEY_PREVIOUS_BASE64 queda ausente a propósito.
 process.env.CRYPTO_KEY_BASE64 ??= Buffer.alloc(32, 7).toString('base64');
+// Clave HMAC del hash de búsqueda de cédulas (Fase 4, parte 1): 32 bytes en
+// base64, determinista y solo para tests (igual que CRYPTO_KEY_BASE64).
+process.env.CEDULA_SEARCH_KEY ??= Buffer.alloc(32, 11).toString('base64');
+// Directorio de subidas (Fase 4, parte 2): los tests no escriben archivos, pero
+// la validación zod lo espera con un valor por defecto; se fija aquí explícito.
+process.env.UPLOAD_DIR ??= 'data/uploads';
 
 export {};

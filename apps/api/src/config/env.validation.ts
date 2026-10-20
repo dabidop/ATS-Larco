@@ -73,6 +73,37 @@ export const envSchema = z.object({
       )
       .optional(),
   ),
+  /**
+   * Clave HMAC-SHA-256 para el HASH DE BÚSQUEDA de cédulas (Fase 4, parte 1):
+   * 32 bytes en base64. Es DEDICADA y NO debe rotarse junto a `CRYPTO_KEY_*`:
+   * si se rota, hay que recalcular todos los `cedula_hash` guardados.
+   *
+   * Declarada OPCIONAL en zod para no romper la validación aislada de las
+   * llaves CRYPTO_* que hacen los tests (`crypto.e2e.test.ts` llama a
+   * `validateEnv` con un objeto mínimo que no la incluye). En tiempo de
+   * ejecución es OBLIGATORIA: `SearchHashService` la valida y detiene el
+   * arranque con un mensaje claro si falta. Vacío → ausente.
+   */
+  CEDULA_SEARCH_KEY: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z
+      .string()
+      .refine(
+        (value) => Buffer.from(value, 'base64').length === 32,
+        'CEDULA_SEARCH_KEY debe decodificar a exactamente 32 bytes en base64 (o quedar ausente)',
+      )
+      .optional(),
+  ),
+  /**
+   * Directorio donde la API escribe los archivos subidos (Fase 4, parte 2:
+   * uploads). Relativo al CWD en local (`data/uploads`) y absoluto dentro del
+   * contenedor (`/app/data/uploads`, fijado por docker-compose). Vacío o
+   * ausente → `data/uploads` por defecto.
+   */
+  UPLOAD_DIR: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().min(1, 'UPLOAD_DIR no puede estar vacío').default('data/uploads'),
+  ),
 });
 
 /** Tipo de la configuración ya validada. Usar con `ConfigService<Env, true>`. */
