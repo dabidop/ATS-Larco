@@ -6,6 +6,7 @@ import type { Env } from '../../config/env.validation';
 import { CodigoGeneratorService } from './codigo-generator.service';
 import { Requerimiento } from './requerimiento.entity';
 import { RequerimientosController } from './requerimientos.controller';
+import { RequerimientosService } from './requerimientos.service';
 import { RequerimientosStoreService } from './requerimientos-store.service';
 
 /**
@@ -31,6 +32,8 @@ import { RequerimientosStoreService } from './requerimientos-store.service';
     // Generador atómico de códigos REQ-YYYY-NNN (parte 2): consumido por la
     // capa CRUD de la parte 3, que llegará como provider de ESTE módulo.
     CodigoGeneratorService,
+    // Capa CRUD (parte 3): orquesta store + generador y expone el caso de uso.
+    RequerimientosService,
     {
       provide: DataSource,
       inject: [ConfigService],
