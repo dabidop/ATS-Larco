@@ -1,6 +1,7 @@
 import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
 import type { Response } from 'express';
 
+import { Public } from '../common/decorators/public.decorator';
 import { DatabaseService } from '../database/database.service';
 
 /** Respuesta del endpoint de salud. */
@@ -20,6 +21,11 @@ export interface HealthResponse {
 export class HealthController {
   constructor(private readonly database: DatabaseService) {}
 
+  /**
+   * `GET /api/health` — ruta PÚBLICA (monitorización/sondeos sin credenciales).
+   * Devuelve 200 si PostgreSQL responde y 503 si no.
+   */
+  @Public()
   @Get('health')
   async health(@Res({ passthrough: true }) response: Response): Promise<HealthResponse> {
     const db = await this.checkDatabase();

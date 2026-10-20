@@ -264,8 +264,16 @@ describe('Auth (e2e)', () => {
       .expect(401);
   });
 
-  it('POST /api/auth/logout → 204', async () => {
-    await request(app.getHttpServer()).post('/api/auth/logout').expect(204);
+  it('POST /api/auth/logout → 204 con token; 401 sin token (ruta protegida)', async () => {
+    const login = await postLogin({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }).expect(200);
+
+    await request(app.getHttpServer())
+      .post('/api/auth/logout')
+      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .expect(204);
+
+    // Sin JWT el guard global rechaza la petición ANTES de llegar al controlador.
+    await request(app.getHttpServer()).post('/api/auth/logout').expect(401);
   });
 
   it('con un token válido de un usuario inactivo → 401 en me y refresh', async () => {

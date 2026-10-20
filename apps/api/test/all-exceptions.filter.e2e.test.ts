@@ -6,9 +6,15 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../src/app.module';
+import { Public } from '../src/common/decorators/public.decorator';
 import { DatabaseService } from '../src/database/database.service';
 
-/** Ruta de prueba que lanza un error interno (no HTTP). */
+/**
+ * Ruta de prueba que lanza un error interno (no HTTP). Es `@Public()` para
+ * que el AuthGuard global no la tape: aquí se prueba el FORMATO de las
+ * respuestas de error, no la autenticación (eso lo cubre guards.e2e.test.ts).
+ */
+@Public()
 @Controller('test-errors')
 class ErrorTestController {
   @Get('boom')
