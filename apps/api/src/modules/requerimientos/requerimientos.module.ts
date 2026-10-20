@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 
 import type { Env } from '../../config/env.validation';
+import { CodigoGeneratorService } from './codigo-generator.service';
 import { Requerimiento } from './requerimiento.entity';
 import { RequerimientosController } from './requerimientos.controller';
 import { RequerimientosStoreService } from './requerimientos-store.service';
@@ -27,6 +28,9 @@ import { RequerimientosStoreService } from './requerimientos-store.service';
   controllers: [RequerimientosController],
   providers: [
     RequerimientosStoreService,
+    // Generador atómico de códigos REQ-YYYY-NNN (parte 2): consumido por la
+    // capa CRUD de la parte 3, que llegará como provider de ESTE módulo.
+    CodigoGeneratorService,
     {
       provide: DataSource,
       inject: [ConfigService],
@@ -39,6 +43,6 @@ import { RequerimientosStoreService } from './requerimientos-store.service';
         }),
     },
   ],
-  exports: [RequerimientosStoreService],
+  exports: [RequerimientosStoreService, CodigoGeneratorService],
 })
 export class RequerimientosModule {}
