@@ -25,7 +25,7 @@ import type { ArchivoSubido } from '../uploads/archivos-cv.service';
 import { ArchivosCvService } from '../uploads/archivos-cv.service';
 import { attachmentContentDisposition } from '../uploads/content-disposition';
 import { LimiteTamanoInterceptor } from '../uploads/limite-tamano.interceptor';
-import { CandidatosService } from './candidatos.service';
+import { CandidatosService, type EntradaHistorialDto } from './candidatos.service';
 import type { CandidatoResponseDto, CandidatosPageDto } from './dto/candidato.response';
 import { CreateCandidatoDto } from './dto/create-candidato.dto';
 import { ListCandidatosQueryDto } from './dto/list-candidatos-query.dto';
@@ -74,6 +74,7 @@ function requireUser(request: AuthenticatedRequest): AuthenticatedUser {
  * | POST /api/candidatos                       | @Roles('analista_seleccion','admin_rrhh')  |
  * | GET  /api/candidatos                       | autenticado (cualquier rol)                |
  * | GET  /api/candidatos/:id                   | autenticado (cualquier rol)                |
+ * | GET  /api/candidatos/:id/historial         | autenticado (cualquier rol)                |
  * | PATCH /api/candidatos/:id                  | creador o @Roles('admin_rrhh') (en servicio) |
  * | POST /api/candidatos/:id/archivos          | @Roles('analista_seleccion','admin_rrhh')  |
  * | GET  /api/candidatos/:id/archivos          | autenticado (cualquier rol)                |
@@ -133,6 +134,27 @@ export class CandidatosController {
   @Get(':id')
   async findOne(@Param('id', UUID_PARAM) id: string): Promise<CandidatoResponseDto> {
     return this.candidatos.findById(id);
+  }
+
+  /**
+   * Historial de cambios del candidato desde `audit_log` (Fase 4, parte 3).
+   *
+   * Acceso: cualquier rol autenticado (como `GET /:id`). Respuestas:
+   *  - **400** si el id no es un uuid (mismo `UUID_PARAM` que el detalle).
+   *  - **404** si el candidato no existe (validado en BD ANTES de leer el log).
+   *  - **200** con las últimas 200 entradas ordenadas `created_at DESC`.
+   *
+   * El trigger `audit_fila()` (migraciones 003/004) es quien ESCRIBE
+   * `audit_log`; aquí SOLO se lee. Cada entrada trae `id`, `accion`
+   * (INSERT/UPDATE), `fecha` (ISO 8601), `usuario` (uuid crudo de
+   * `changed_by`) + `usuarioEmail` (LEFT JOIN a `users`, para legibilidad) y
+   * `campos` (los que cambiaron; vacíos `antes: null` en el alta). La PII
+   * cifrada (`cedula`, `telefono`) aparece SIEMPRE enmascarada como `'***'` y
+   * `cedula_hash` ni se lista: el historial JAMÁS descifra.
+   */
+  @Get(':id/historial')
+  async historial(@Param('id', UUID_PARAM) id: string): Promise<EntradaHistorialDto[]> {
+    return this.candidatos.historial(id);
   }
 
   /** Actualización parcial: solo creador o `admin_rrhh` (decisión en el servicio). */

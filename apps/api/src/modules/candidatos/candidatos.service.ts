@@ -74,6 +74,203 @@ function escaparLike(texto: string): string {
   return texto.replace(/[\\%_]/g, '\\$&');
 }
 
+// ───────────────────────── historial de auditoría (Fase 4, parte 3) ─────────────────────────
+
+/**
+ * Límite de entradas de `GET /api/candidatos/:id/historial`: las 200 más
+ * recientes (`created_at DESC`). Sin paginación a propósito —es una vista de
+ * CONSULTA, no de gestión—; el historial completo e íntegro sigue vivo en
+ * `audit_log` (tabla inmutable) por si un cliente necesita más atrás.
+ */
+const LIMITE_HISTORIAL = 200;
+
+/** Máscara que sustituye a la PII cifrada en el historial (jamás se descifra). */
+const PII_ENMASCARADA = '***';
+
+/**
+ * Acciones que el CHECK `audit_log_action_check` admite. Sobre `candidatos` el
+ * trigger `audit_fila()` (migraciones 003/004) SOLO emite INSERT y UPDATE —no
+ * hay trigger de borrado—; DELETE queda tipado por completitud y hoy es
+ * inalcanzable para esta tabla.
+ */
+export type AccionHistorial = 'INSERT' | 'UPDATE' | 'DELETE';
+
+/** Snapshot de `old_data`/`new_data` (jsonb) tal y como la entrega `pg`. */
+export type DatosAuditoria = Record<string, unknown> | null;
+
+/** Un campo concreto del historial (cambio del diff o alta/borrado completo). */
+export interface CambioHistorialDto {
+  /** Nombre PÚBLICO del campo (camelCase, como habla la API). */
+  campo: string;
+  /** Valor anterior; `null` en el alta. La PII sale enmascarada. */
+  antes: unknown;
+  /** Valor posterior; `null` en un borrado. La PII sale enmascarada. */
+  despues: unknown;
+}
+
+/** Entrada del historial tal y como sale por `GET /api/candidatos/:id/historial`. */
+export interface EntradaHistorialDto {
+  /**
+   * `audit_log.id` (bigserial) devuelto como TEXTO: `pg` entrega `int8` así
+   * para no perder precisión en enteros mayores que 2^53.
+   */
+  id: string;
+  accion: AccionHistorial;
+  /** `created_at` en ISO 8601. */
+  fecha: string;
+  /** `changed_by`: uuid crudo del actor (fuente de verdad) o `null`. */
+  usuario: string | null;
+  /** Email del actor (LEFT JOIN a `users`, por PK); `null` si ya no existe. */
+  usuarioEmail: string | null;
+  campos: CambioHistorialDto[];
+}
+
+/**
+ * Fila cruda de `audit_log` que devuelve el SQL del servicio (el email ya
+ * viene resuelto de `users`).
+ */
+export interface FilaAuditoriaCruda {
+  id: string;
+  action: string;
+  old_data: DatosAuditoria;
+  new_data: DatosAuditoria;
+  changed_by: string | null;
+  usuario_email: string | null;
+  created_at: Date | string;
+}
+
+/**
+ * Whitelist de columnas PÚBLICAS del historial: el jsonb de `audit_log` guarda
+ * los datos COMO SE LLAMAN EN BD (snake_case) y aquí se traducen al camelCase
+ * de la API (mismo criterio de puente explícito que `candidatos.mapper.ts`).
+ *
+ *  - `cedula_hash` se OMITE: no es dato de usuario, es el HMAC interno de
+ *    búsqueda, y filtrar por diff no debe exponerlo jamás.
+ *  - Cualquier columna DESCONOCIDA también se DESCARTA (fail-safe): si mañana
+ *    aparece una columna nueva en `candidatos` —posiblemente PII— no se
+ *    expone hasta que se decida aquí cómo presentarla.
+ */
+const COLUMNAS_HISTORIAL: Readonly<Record<string, string>> = {
+  nombres: 'nombres',
+  apellidos: 'apellidos',
+  email: 'email',
+  cedula_cifrada: 'cedula',
+  telefono_cifrada: 'telefono',
+  ciudad: 'ciudad',
+  cargo_actual: 'cargoActual',
+  expectativa_salarial: 'expectativaSalarial',
+  disponibilidad: 'disponibilidad',
+  notas: 'notas',
+};
+
+/** Columnas PII cuyo valor se MASCARA (audit_log solo guarda su cifrado `v1:...`). */
+const COLUMNAS_PII = new Set(['cedula_cifrada', 'telefono_cifrada']);
+
+/**
+ * Sustituye un valor PII por `'***'`: el historial NUNCA descifra ni expone el
+ * cifrado `v1:...` (ni el claro, que no está). El `null` se conserva: no es
+ * PII y sí informa ("no tenía teléfono").
+ */
+function enmascararPII(valor: unknown): unknown {
+  return valor === null || valor === undefined ? null : PII_ENMASCARADA;
+}
+
+/** Valor de `columna` en una snapshot jsonb, normalizado a `null`. */
+function valorDe(datos: DatosAuditoria, columna: string): unknown {
+  return datos?.[columna] ?? null;
+}
+
+/** Valor listo para la respuesta: PII enmascarada, el resto tal cual. */
+function valorPublico(columna: string, valor: unknown): unknown {
+  return COLUMNAS_PII.has(columna) ? enmascararPII(valor) : valor;
+}
+
+/**
+ * Campos de un ALTA: las columnas públicas con valor de `new_data`, con
+ * `antes: null`. Los campos vacíos (`null`) se omiten: en un alta solo
+ * informan los datos dados de alta.
+ */
+function camposDeAlta(nuevos: DatosAuditoria): CambioHistorialDto[] {
+  const campos: CambioHistorialDto[] = [];
+  for (const [columna, campo] of Object.entries(COLUMNAS_HISTORIAL)) {
+    const valor = valorDe(nuevos, columna);
+    if (valor !== null) {
+      campos.push({ campo, antes: null, despues: valorPublico(columna, valor) });
+    }
+  }
+  return campos;
+}
+
+/** Campos de un BORRADO (inalcanzable hoy en `candidatos`): `despues: null`. */
+function camposDeBorrado(antiguos: DatosAuditoria): CambioHistorialDto[] {
+  const campos: CambioHistorialDto[] = [];
+  for (const [columna, campo] of Object.entries(COLUMNAS_HISTORIAL)) {
+    const valor = valorDe(antiguos, columna);
+    if (valor !== null) {
+      campos.push({ campo, antes: valorPublico(columna, valor), despues: null });
+    }
+  }
+  return campos;
+}
+
+/**
+ * Campos que CAMBIARON entre dos snapshots jsonb de `audit_log` (`old_data` y
+ * `new_data`), en el orden del whitelist. Los valores SIN cambios no aparecen;
+ * la PII se COMPARA por su cifrado pero se PUBLICA enmascarada (función PURA:
+ * se testea sin BD).
+ */
+export function calcularCambiosHistorial(
+  antes: DatosAuditoria,
+  despues: DatosAuditoria,
+): CambioHistorialDto[] {
+  const cambios: CambioHistorialDto[] = [];
+  for (const [columna, campo] of Object.entries(COLUMNAS_HISTORIAL)) {
+    const valorAntes = valorDe(antes, columna);
+    const valorDespues = valorDe(despues, columna);
+    if (Object.is(valorAntes, valorDespues)) {
+      continue;
+    }
+    cambios.push({
+      campo,
+      antes: valorPublico(columna, valorAntes),
+      despues: valorPublico(columna, valorDespues),
+    });
+  }
+  return cambios;
+}
+
+/** `timestamptz` de `pg` (Date) o texto → ISO 8601 estricto. */
+function aIso8601(fecha: Date | string): string {
+  return fecha instanceof Date ? fecha.toISOString() : new Date(fecha).toISOString();
+}
+
+/**
+ * Fila cruda de `audit_log` → entrada pública del historial (función PURA).
+ *
+ * Cualquier `action` inesperada (imposible: el CHECK la acota a las tres
+ * arriba) se trata como UPDATE para degradar sin PERDER la entrada.
+ */
+export function mapearEntradaHistorial(fila: FilaAuditoriaCruda): EntradaHistorialDto {
+  const accion: AccionHistorial =
+    fila.action === 'INSERT' ? 'INSERT' : fila.action === 'DELETE' ? 'DELETE' : 'UPDATE';
+
+  const campos =
+    accion === 'INSERT'
+      ? camposDeAlta(fila.new_data)
+      : accion === 'DELETE'
+        ? camposDeBorrado(fila.old_data)
+        : calcularCambiosHistorial(fila.old_data, fila.new_data);
+
+  return {
+    id: fila.id,
+    accion,
+    fecha: aIso8601(fila.created_at),
+    usuario: fila.changed_by,
+    usuarioEmail: fila.usuario_email,
+    campos,
+  };
+}
+
 /**
  * Lógica de CRUD de los candidatos con PII cifrada (Fase 4, parte 1).
  *
@@ -87,6 +284,11 @@ function escaparLike(texto: string): string {
  *  - Dos candidatos no pueden compartir cédula (único por `cedula_hash`) → 409.
  *  - Dos candidatos no pueden compartir email (único parcial) → 409.
  *  - La respuesta SIEMPRE entrega la PII descifrada y NUNCA el hash interno.
+ *
+ * El HISTORIAL de cambios (Fase 4, parte 3) se lee de `audit_log` vía
+ * `historial(id)`: solo lectura, PII SIEMPRE enmascarada (nunca se descifra),
+ * con la lógica de diff/mask en funciones puras exportadas
+ * (`calcularCambiosHistorial`, `mapearEntradaHistorial`) que se testean sin BD.
  */
 @Injectable()
 export class CandidatosService {
@@ -252,6 +454,55 @@ export class CandidatosService {
       }
       return toResponse(actualizada, this.crypto);
     });
+  }
+
+  // ───────────────────────── historial (Fase 4, parte 3) ─────────────────────────
+
+  /**
+   * Historial de cambios del candidato, leído de `audit_log` (Fase 4, parte 3).
+   *
+   * `audit_log` lo escribe SOLO el trigger `audit_fila()` (migraciones
+   * 003/004): este método no INSERTA nada, solo LEE. La consulta va por SQL
+   * crudo (sin entidad TypeORM: no aporta una entity a una tabla de solo
+   * lectura) usando el store LAZY del módulo y el índice
+   * `audit_log (table_name, record_id)`. El email del actor se resuelve con un
+   * LEFT JOIN a `users` (búsqueda por PK: barata) y se devuelve JUNTO AL uuid
+   * crudo de `changed_by`: el uuid es la fuente de verdad (sobrevive a cambios
+   * de email y a usuarios borrados) y el email aporta legibilidad al cliente.
+   *
+   * PII: el historial NUNCA descifra. `cedula`/`telefono` aparecen como
+   * `'***'` (`mapearEntradaHistorial` los enmascara) y `cedula_hash` ni se
+   * lista. Se devuelven las `LIMITE_HISTORIAL` entradas más recientes
+   * (`created_at DESC, id DESC`), sin paginación.
+   *
+   * 404 si el candidato no existe: se comprueba ANTES de leer el log para no
+   * devolver un historial vacío ante un id que jamás existió.
+   */
+  async historial(id: string): Promise<EntradaHistorialDto[]> {
+    const repo = await this.store.repo();
+
+    const candidato = await repo.findOneBy({ id });
+    if (candidato === null) {
+      throw new NotFoundException(`No existe un candidato con id ${id}`);
+    }
+
+    const filas = (await repo.query(
+      `SELECT a.id::text AS id,
+              a.action,
+              a.old_data,
+              a.new_data,
+              a.changed_by,
+              u.email AS usuario_email,
+              a.created_at
+         FROM audit_log a
+         LEFT JOIN users u ON u.id = a.changed_by
+        WHERE a.table_name = 'candidatos' AND a.record_id = $1
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT $2`,
+      [id, LIMITE_HISTORIAL],
+    )) as FilaAuditoriaCruda[];
+
+    return filas.map((fila) => mapearEntradaHistorial(fila));
   }
 
   /**
