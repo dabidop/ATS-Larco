@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 
 import type { Env } from '../../config/env.validation';
+import { UploadsModule } from '../uploads/uploads.module';
 import { Candidato } from './candidato.entity';
 import { CandidatosController } from './candidatos.controller';
 import { CandidatosService } from './candidatos.service';
@@ -29,8 +30,16 @@ import { SearchHashService } from './search-hash.service';
  * `CryptoService` (cifrado AES-256-CBC) y `DatabaseService`/`ConfigService` son
  * globales, así que se inyectan aquí sin importar sus módulos.
  * `SearchHashService` es específico de este módulo y se declara como provider.
+ *
+ * `UploadsModule` (Fase 4, parte 2) se IMPORTA para que el controlador pueda
+ * inyectar `ArchivosCvService` y servir los endpoints de archivos del candidato
+ * (`POST/GET /:id/archivos/...`). La dependencia es UNIDIRECCIONAL
+ * (candidatos → uploads): `UploadsModule` NO importa este módulo porque
+ * `archivos_cv` se gestiona con el pool `pg` global (`DatabaseService`) y no
+ * con este `DataSource`, de forma que no hay ciclo de módulos.
  */
 @Module({
+  imports: [UploadsModule],
   controllers: [CandidatosController],
   providers: [
     CandidatosStoreService,

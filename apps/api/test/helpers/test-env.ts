@@ -25,8 +25,14 @@ process.env.CRYPTO_KEY_BASE64 ??= Buffer.alloc(32, 7).toString('base64');
 // Clave HMAC del hash de búsqueda de cédulas (Fase 4, parte 1): 32 bytes en
 // base64, determinista y solo para tests (igual que CRYPTO_KEY_BASE64).
 process.env.CEDULA_SEARCH_KEY ??= Buffer.alloc(32, 11).toString('base64');
-// Directorio de subidas (Fase 4, parte 2): los tests no escriben archivos, pero
-// la validación zod lo espera con un valor por defecto; se fija aquí explícito.
-process.env.UPLOAD_DIR ??= 'data/uploads';
+// Directorio de subidas (Fase 4, parte 2): los tests SÍ escriben archivos, pero
+// NUNCA en el directorio de DESARROLLO. Motivo: `dev-db-env` carga el `.env`
+// raíz, que fija `UPLOAD_DIR=data/uploads` (el directorio real de la API); sin
+// esta redirección los e2e de uploads dejarían restos en el de desarrollo.
+// Un valor fijado EXTERNAMENTE por quien lance los tests y distinto del de
+// desarrollo se respeta (filosofía `??=` del resto de este fichero).
+const subidas = process.env.UPLOAD_DIR;
+process.env.UPLOAD_DIR =
+  subidas === undefined || subidas === 'data/uploads' ? 'data/uploads-test' : subidas;
 
 export {};

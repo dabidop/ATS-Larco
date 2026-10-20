@@ -32,5 +32,10 @@ blob-report/
 .docker/
 
 # Almacenamiento de archivos subidos (CVs de la Fase 4)
-uploads/
+# OJO: la regla va ANCLADA a la raíz (`/uploads/`). Sin la barra inicial git la
+# aplicaría a cualquier carpeta llamada `uploads` en cualquier ruta, lo que
+# ignoraría también el CÓDIGO fuente apps/api/src/modules/uploads/**.
+/uploads/
 data/uploads/
+# Directorio de subidas de los tests e2e (UPLOAD_DIR=data/uploads-test).
+data/uploads-test/
