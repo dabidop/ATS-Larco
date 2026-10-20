@@ -44,6 +44,35 @@ export const envSchema = z.object({
       .max(72, 'JWT_TTL_HOURS debe estar entre 1 y 72')
       .default(24),
   ),
+  /**
+   * Clave de cifrado AES-256-CBC para PII: 32 bytes exactos en base64.
+   * Obligatoria; un valor vacío se trata como AUSENTE y detiene el arranque
+   * con un mensaje claro (Fase 2, parte 3).
+   */
+  CRYPTO_KEY_BASE64: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z
+      .string({ error: 'CRYPTO_KEY_BASE64 es requerida (32 bytes en base64)' })
+      .refine(
+        (value) => Buffer.from(value, 'base64').length === 32,
+        'CRYPTO_KEY_BASE64 debe decodificar a exactamente 32 bytes en base64',
+      ),
+  ),
+  /**
+   * Clave anterior para la rotación planificada (opcional): al rotar, la
+   * vigente pasa aquí y se emite una nueva arriba. Si existe, también debe
+   * ser de exactamente 32 bytes en base64. Vacío → ausente.
+   */
+  CRYPTO_KEY_PREVIOUS_BASE64: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z
+      .string()
+      .refine(
+        (value) => Buffer.from(value, 'base64').length === 32,
+        'CRYPTO_KEY_PREVIOUS_BASE64 debe decodificar a exactamente 32 bytes en base64 (o quedar ausente)',
+      )
+      .optional(),
+  ),
 });
 
 /** Tipo de la configuración ya validada. Usar con `ConfigService<Env, true>`. */

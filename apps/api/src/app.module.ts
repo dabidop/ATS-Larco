@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 
+import { CryptoModule } from './common/crypto/crypto.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { AuthGuard } from './common/guards/auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -52,6 +53,8 @@ import { UploadsModule } from './modules/uploads/uploads.module';
     AppConfigModule,
     AppLoggerModule,
     DatabaseModule,
+    // Cifrado de PII (Fase 2, parte 3): @Global, se registra una sola vez aquí.
+    CryptoModule,
     // Salud
     HealthModule,
     // Módulos de negocio (andamiaje Fase 1)
