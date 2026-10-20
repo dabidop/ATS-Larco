@@ -30,3 +30,7 @@ blob-report/
 
 # Docker
 .docker/
+
+# Almacenamiento de archivos subidos (CVs de la Fase 4)
+uploads/
+data/uploads/
