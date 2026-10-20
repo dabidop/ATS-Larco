@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Logger } from 'nestjs-pino';
 
 import { Public } from '../../common/decorators/public.decorator';
@@ -24,8 +25,16 @@ export class AuthController {
   /**
    * `POST /api/auth/login` — credenciales → JWT de `JWT_TTL_HOURS` horas.
    * Ruta PÚBLICA: el guard no exige token (lo que se pide son credenciales).
+   *
+   * Rate limiting anti fuerza bruta (Fase 2, parte 4): máx. 5 intentos por
+   * minuto por IP, más estricto que el límite global (100/min). El decorator
+   * `@Throttle` prevalece sobre la config del módulo para ESTE handler.
+   * `ttl` en milisegundos: throttler v6 solo acepta números (no '1m').
+   * Sin `skipSuccessfulRequests`: se cuenta también el éxito, para no abrir
+   * una ventana de fuerza bruta tras cada login correcto (simplicidad).
    */
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK) // Un POST respondería 201 por defecto; login debe devolver 200.
   login(@Body() dto: LoginRequestDto): Promise<LoginResponse> {

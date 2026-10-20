@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 import { CryptoModule } from './common/crypto/crypto.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { AuthGuard } from './common/guards/auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { AppConfigModule } from './config/config.module';
+import type { Env } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { AppLoggerModule } from './logging/logger.module';
@@ -27,8 +30,10 @@ import { UploadsModule } from './modules/uploads/uploads.module';
  * logging, base de datos), después los módulos de negocio.
  *
  * Guards globales (Fase 2, parte 2) — orden del array `providers` IMPORTA:
- * `AuthGuard` (autenticación) PRIMERO y `RolesGuard` (autorización/RBAC)
- * DESPUÉS, porque sin identidad no se puede autorizar.
+ * `AuthGuard` (autenticación) PRIMERO, `RolesGuard` (autorización/RBAC)
+ * DESPUÉS, porque sin identidad no se puede autorizar, y `ThrottlerGuard`
+ * (rate limiting, Fase 2, parte 4) al FINAL, para limitar peticiones por IP
+ * una vez resueltas autenticación y autorización.
  *
  * Matriz RBAC inicial:
  * | Ruta                                  | Acceso                                |
@@ -47,6 +52,13 @@ import { UploadsModule } from './modules/uploads/uploads.module';
  * Toda ruta NO marcada con `@Public()` exige JWT válido; sin `@Roles(...)`
  * basta con estar autenticado.
  */
+
+/** Ventana del rate limit global: 1 minuto (milisegundos, formato que exige throttler v6). */
+const THROTTLE_TTL_MS = 60_000;
+
+/** Peticiones máximas por IP y ventana en desarrollo/producción. */
+const THROTTLE_LIMIT = 100;
+
 @Module({
   imports: [
     // Infraestructura
@@ -55,6 +67,25 @@ import { UploadsModule } from './modules/uploads/uploads.module';
     DatabaseModule,
     // Cifrado de PII (Fase 2, parte 3): @Global, se registra una sola vez aquí.
     CryptoModule,
+    // Rate limiting global (Fase 2, parte 4): 100 peticiones por minuto por IP.
+    // `ttl` en MILISEGUNDOS: throttler v6 solo acepta números, no strings '1m'.
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<Env, true>) => {
+        const isTest = config.get('NODE_ENV') === 'test';
+        return {
+          // En test el rate limiting global se DESACTIVA por completo (`skipIf`),
+          // no solo se sube el límite. Motivo: los decorados `@Throttle` (p. ej.
+          // el del login, 5/min) prevalecen sobre la config del módulo, así que
+          // un límite alto no bastaría —la propia suite de auth supera los 5
+          // logins por ventana—. `skipIf` se evalúa ANTES de leer esos decorados
+          // y omite el guard entero. Los tests de rate limit reales usan su
+          // PROPIO ThrottlerModule con límite bajo (test/hardening.e2e.test.ts).
+          skipIf: () => isTest,
+          throttlers: [{ ttl: THROTTLE_TTL_MS, limit: THROTTLE_LIMIT }],
+        };
+      },
+    }),
     // Salud
     HealthModule,
     // Módulos de negocio (andamiaje Fase 1)
@@ -73,9 +104,12 @@ import { UploadsModule } from './modules/uploads/uploads.module';
     // Todas las respuestas de error usan el mismo formato JSON.
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     // Guards globales: PRIMERO autenticación, DESPUÉS autorización (el orden
-    // del array determina el orden de ejecución de los APP_GUARD).
+    // del array determina el orden de ejecución de los APP_GUARD) y AL FINAL
+    // el rate limiting (Fase 2, parte 4): limita por IP las peticiones que
+    // superen el límite global (100/min) con un 429.
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}
