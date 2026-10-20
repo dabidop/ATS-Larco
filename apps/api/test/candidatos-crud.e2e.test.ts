@@ -1,7 +1,7 @@
 import './helpers/dev-db-env'; // ANTES que test-env: carga el .env raíz (BD dev docker)
 import './helpers/test-env';
 
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHmac, randomInt, randomUUID } from 'node:crypto';
 
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -82,11 +82,13 @@ const MARCA = `Ciudad-Cand-${SUFIJO_UNICO}`;
 const TOKEN_Q = `Quimbaya${SUFIJO_UNICO}`;
 
 /**
- * Cédulas únicas por ejecución (6-10 dígitos, como exige el DTO): se derivan
- * del timestamp + aleatorios para no chocar con datos reales de la BD dev ni
- * entre sí (cada una cumple un papel distinto en el guion del test).
+ * Cédulas únicas por ejecución (6-10 dígitos, como exige el DTO): prefijo de
+ * 7 dígitos ALEATORIO por ejecución. No se usa `Date.now()`: varios workers de
+ * Vitest cargan estos módulos en el mismo milisegundo y el timestamp es idéntico
+ * entre ficheros, lo que hacía chocar `cedula_hash` (409 en el beforeAll y todo
+ * el archivo salteado). Cada una cumple un papel distinto en el guion del test.
  */
-const BASE_CEDULA = Date.now().toString().slice(-7);
+const BASE_CEDULA = randomInt(1000000, 10000000).toString();
 /** Cédula del candidato principal (fixtures de GET/filtros/403). */
 const CEDULA_PRINCIPAL = `${BASE_CEDULA}11`;
 /** Cédula original del candidato "Baltasar" (servirá de colisión). */

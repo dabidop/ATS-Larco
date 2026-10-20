@@ -1,7 +1,7 @@
 import './helpers/dev-db-env'; // ANTES que test-env: carga el .env raíz (BD dev docker)
 import './helpers/test-env';
 
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { readdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -73,8 +73,13 @@ const SUFIJO_UNICO = `${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
 /** `ciudad` de TODOS los candidatos de prueba: es la marca que usa la limpieza. */
 const MARCA = `Ciudad-ArchCV-${SUFIJO_UNICO}`;
 
-/** Cédulas únicas por ejecución (6-10 dígitos, como exige el DTO de candidatos). */
-const BASE_CEDULA = Date.now().toString().slice(-7);
+/**
+ * Cédulas únicas por ejecución (6-10 dígitos, como exige el DTO de candidatos).
+ * Prefijo ALEATORIO, no `Date.now()`: otros ficheros de e2e comparten el mismo
+ * patrón de sufijos (11/22/33/44) y un timestamp idéntico al cargar en el mismo
+ * milisegundo provocaba 409 en el beforeAll (archivos enteros salteados).
+ */
+const BASE_CEDULA = randomInt(1000000, 10000000).toString();
 const CEDULA_PRINCIPAL = `${BASE_CEDULA}11`;
 const CEDULA_SEGUNDO = `${BASE_CEDULA}22`;
 const CEDULA_TERCERO = `${BASE_CEDULA}33`;
