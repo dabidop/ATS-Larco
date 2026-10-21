@@ -13,6 +13,8 @@ import type { ListPostulacionesQueryDto } from './dto/list-postulaciones-query.d
 import type { MoverFaseDto } from './dto/mover-fase.dto';
 import {
   COLUMNAS_POSTULACION,
+  COLUMNAS_POSTULACION_CON_CANDIDATO,
+  type PostulacionFilaCruda,
   type PostulacionResponseDto,
   type PostulacionRow,
   type PostulacionesPageDto,
@@ -116,7 +118,7 @@ export class PostulacionesService {
    *     `estado` NO se escriben — son los defaults de las columnas.
    */
   async crear(dto: CreatePostulacionDto, createdBy: string): Promise<PostulacionResponseDto> {
-    await this.verificarQueExisteElCandidato(dto.candidatoId);
+    const candidato = await this.resumenDelCandidato(dto.candidatoId);
 
     const estadoRequerimiento = await this.estadoDelRequerimiento(dto.requerimientoId);
     if (estadoRequerimiento !== REQUERIMIENTO_EN_PROCESO) {
@@ -143,7 +145,14 @@ export class PostulacionesService {
         // Imposible en la práctica: un INSERT con RETURNING siempre devuelve fila.
         throw new Error('El INSERT sobre postulaciones no devolvió ninguna fila');
       }
-      return toResponse(fila);
+      // El RETURNING no puede hacer JOIN: se fusiona el resumen del candidato
+      // verificado ARRIBA (un candidato no cambia de nombre mientras existe
+      // la postulación, y `candidato_id` es inmutable).
+      return toResponse({
+        ...fila,
+        nombres_candidato: candidato.nombres,
+        apellidos_candidato: candidato.apellidos,
+      });
     } catch (error) {
       // Carrera: dos peticiones simultáneas crearon la MISMA postulación.
       if (esViolacionUnica(error, UNIQUE_POSTULACION)) {
@@ -165,35 +174,36 @@ export class PostulacionesService {
 
     if (query.requerimientoId !== undefined) {
       params.push(query.requerimientoId);
-      condiciones.push(`requerimiento_id = $${params.length}`);
+      condiciones.push(`p.requerimiento_id = $${params.length}`);
     }
     if (query.candidatoId !== undefined) {
       params.push(query.candidatoId);
-      condiciones.push(`candidato_id = $${params.length}`);
+      condiciones.push(`p.candidato_id = $${params.length}`);
     }
     if (query.fase !== undefined) {
       params.push(query.fase);
-      condiciones.push(`fase = $${params.length}`);
+      condiciones.push(`p.fase = $${params.length}`);
     }
     if (query.estado !== undefined) {
       params.push(query.estado);
-      condiciones.push(`estado = $${params.length}`);
+      condiciones.push(`p.estado = $${params.length}`);
     }
 
     const where = condiciones.length === 0 ? '' : `WHERE ${condiciones.join(' AND ')}`;
 
     const conteo = await this.database.query<{ total: number }>(
-      `SELECT count(*)::int AS total FROM postulaciones ${where}`,
+      `SELECT count(*)::int AS total FROM postulaciones p ${where}`,
       params,
     );
 
     // `id ASC` como desempate: dos filas con el MISMO created_at (resolución de
     // microsegundos) mantienen un orden estable y determinista entre páginas.
     const filas = await this.database.query<PostulacionRow>(
-      `SELECT ${COLUMNAS_POSTULACION}
-         FROM postulaciones
+      `SELECT ${COLUMNAS_POSTULACION_CON_CANDIDATO}
+         FROM postulaciones p
+         JOIN candidatos c ON c.id = p.candidato_id
         ${where}
-        ORDER BY created_at DESC, id ASC
+        ORDER BY p.created_at DESC, p.id ASC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, query.limit, (query.page - 1) * query.limit],
     );
@@ -248,7 +258,7 @@ export class PostulacionesService {
     const nuevoEstado = estadoTrasMover(dto.fase);
 
     return this.conActorDeAuditoria(actor, async (cliente) => {
-      const resultado = await cliente.query<PostulacionRow>(
+      const resultado = await cliente.query<PostulacionFilaCruda>(
         `UPDATE postulaciones
             SET fase = $1, estado = $2
           WHERE id = $3 AND estado = $4
@@ -262,7 +272,13 @@ export class PostulacionesService {
             `a '${dto.fase}'; vuelve a intentarlo`,
         );
       }
-      return toResponse(actualizada);
+      // El RETURNING no puede hacer JOIN: el resumen del candidato se toma de
+      // la LECTURA inicial (`candidato_id` es inmutable, migración 007).
+      return toResponse({
+        ...actualizada,
+        nombres_candidato: fila.nombres_candidato,
+        apellidos_candidato: fila.apellidos_candidato,
+      });
     });
   }
 
@@ -300,7 +316,7 @@ export class PostulacionesService {
     }
 
     return this.conActorDeAuditoria(actor, async (cliente) => {
-      const resultado = await cliente.query<PostulacionRow>(
+      const resultado = await cliente.query<PostulacionFilaCruda>(
         `UPDATE postulaciones
             SET estado = 'descartado', motivo_descarte = $1
           WHERE id = $2 AND estado = 'activa'
@@ -313,7 +329,13 @@ export class PostulacionesService {
           `Conflicto: la postulación cambió mientras se procesaba el descarte; vuelve a intentarlo`,
         );
       }
-      return toResponse(descartada);
+      // El RETURNING no puede hacer JOIN: el resumen del candidato se toma de
+      // la LECTURA inicial (`candidato_id` es inmutable, migración 007).
+      return toResponse({
+        ...descartada,
+        nombres_candidato: fila.nombres_candidato,
+        apellidos_candidato: fila.apellidos_candidato,
+      });
     });
   }
 
@@ -363,14 +385,23 @@ export class PostulacionesService {
 
   // ───────────────────────── helpers privados ─────────────────────────
 
-  /** 404 con mensaje claro si el candidato no existe. */
-  private async verificarQueExisteElCandidato(candidatoId: string): Promise<void> {
-    const resultado = await this.database.query('SELECT 1 FROM candidatos WHERE id = $1', [
-      candidatoId,
-    ]);
-    if ((resultado.rowCount ?? 0) === 0) {
+  /**
+   * Resumen del candidato para la respuesta (404 con mensaje claro si no
+   * existe). Es la ÚNICA lectura de `candidatos` del módulo y solo pide
+   * nombre y apellidos (sin PII sensible).
+   */
+  private async resumenDelCandidato(
+    candidatoId: string,
+  ): Promise<{ nombres: string; apellidos: string }> {
+    const resultado = await this.database.query<{ nombres: string; apellidos: string }>(
+      'SELECT nombres, apellidos FROM candidatos WHERE id = $1',
+      [candidatoId],
+    );
+    const resumen = resultado.rows[0];
+    if (resumen === undefined) {
       throw new NotFoundException(`No existe un candidato con id ${candidatoId}`);
     }
+    return resumen;
   }
 
   /** Estado ACTUAL del requerimiento; 404 con mensaje claro si no existe. */
@@ -386,10 +417,13 @@ export class PostulacionesService {
     return estado;
   }
 
-  /** Fila completa de `postulaciones` o 404 (mensaje para el cliente). */
+  /** Fila de LECTURA (con resumen del candidato) o 404 con mensaje claro. */
   private async cargarPostulacion(id: string): Promise<PostulacionRow> {
     const resultado = await this.database.query<PostulacionRow>(
-      `SELECT ${COLUMNAS_POSTULACION} FROM postulaciones WHERE id = $1`,
+      `SELECT ${COLUMNAS_POSTULACION_CON_CANDIDATO}
+         FROM postulaciones p
+         JOIN candidatos c ON c.id = p.candidato_id
+        WHERE p.id = $1`,
       [id],
     );
     const fila = resultado.rows[0];
@@ -410,8 +444,8 @@ export class PostulacionesService {
     candidatoId: string,
     requerimientoId: string,
     createdBy: string,
-  ): Promise<PostulacionRow | undefined> {
-    const resultado = await cliente.query<PostulacionRow>(
+  ): Promise<PostulacionFilaCruda | undefined> {
+    const resultado = await cliente.query<PostulacionFilaCruda>(
       `INSERT INTO postulaciones (candidato_id, requerimiento_id, created_by)
        VALUES ($1, $2, $3)
        RETURNING ${COLUMNAS_POSTULACION}`,

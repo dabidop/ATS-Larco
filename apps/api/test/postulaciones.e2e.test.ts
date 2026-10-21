@@ -117,9 +117,9 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
   let tokenLider: string;
 
   /** 3 candidatos de prueba, creados por API (con PII cifrada real). */
-  let candidatoA: { id: string };
-  let candidatoB: { id: string };
-  let candidatoC: { id: string };
+  let candidatoA: { id: string; nombres: string };
+  let candidatoB: { id: string; nombres: string };
+  let candidatoC: { id: string; nombres: string };
 
   /** `en_proceso`: lo usan POST, la cadena feliz, los saltos y el descarte. */
   let requerimientoActivo: { id: string };
@@ -277,18 +277,26 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
     };
   }
 
-  /** POST un candidato como el analista y devuelve `{ id }`. */
-  async function crearCandidato(nombres: string, cedula: string): Promise<{ id: string }> {
+  /**
+   * POST un candidato como el analista → `{ id, nombres }` (el `nombres`
+   * exacto que se envió, con el sufijo único, para poder contrastarlo en las
+   * respuestas que incluyen el resumen del candidato).
+   */
+  async function crearCandidato(
+    nombres: string,
+    cedula: string,
+  ): Promise<{ id: string; nombres: string }> {
+    const nombresCompletos = `${nombres} ${SUFIJO_UNICO}`;
     const response = await request(app.getHttpServer())
       .post('/api/candidatos')
       .set('Authorization', `Bearer ${tokenAnalista}`)
       .send({
-        nombres: `${nombres} ${SUFIJO_UNICO}`,
+        nombres: nombresCompletos,
         apellidos: APELLIDOS_MARCA,
         cedula,
       })
       .expect(201);
-    return { id: response.body.id as string };
+    return { id: response.body.id as string, nombres: nombresCompletos };
   }
 
   /** POST un requerimiento como el líder creador → `{ id }` (estado `pendiente`). */
@@ -384,6 +392,11 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       expect(response.body).toEqual({
         id: expect.any(String),
         candidatoId: candidatoA.id,
+        candidato: {
+          id: candidatoA.id,
+          nombres: candidatoA.nombres,
+          apellidos: APELLIDOS_MARCA,
+        },
         requerimientoId: requerimientoActivo.id,
         fase: 'preseleccion',
         estado: 'activa',
@@ -393,6 +406,7 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
         updatedAt: expect.any(String),
       });
       expect(Object.keys(response.body).sort()).toEqual([
+        'candidato',
         'candidatoId',
         'createdAt',
         'createdBy',
@@ -403,6 +417,9 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
         'requerimientoId',
         'updatedAt',
       ]);
+      // El resumen del candidato SOLO expone nombre y apellidos (el tablero
+      // no necesita más, y el JOIN no debe colar PII de más).
+      expect(Object.keys(response.body.candidato).sort()).toEqual(['apellidos', 'id', 'nombres']);
 
       postulacionPrincipal = { id: response.body.id as string };
     });
@@ -548,6 +565,42 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
         (item) => item.createdAt,
       );
       expect(fechas).toEqual([...fechas].sort().reverse());
+    });
+
+    it('cada item trae el resumen del candidato con su nombre EXACTO (sin PII extra)', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/api/postulaciones?requerimientoId=${requerimientoListado.id}`)
+        .set('Authorization', `Bearer ${tokenAnalista}`)
+        .expect(200);
+
+      const porCandidato = new Map<string, { id: string; nombres: string; apellidos: string }>(
+        (
+          response.body.items as Array<{
+            candidatoId: string;
+            candidato: { id: string; nombres: string; apellidos: string };
+          }>
+        ).map((item) => [item.candidatoId, item.candidato]),
+      );
+
+      // El nombre que devuelves es el que se registró (con el sufijo único),
+      // y el `id` del resumen coincide con el enlace `candidatoId`.
+      expect(porCandidato.get(candidatoA.id)).toEqual({
+        id: candidatoA.id,
+        nombres: candidatoA.nombres,
+        apellidos: APELLIDOS_MARCA,
+      });
+      expect(porCandidato.get(candidatoB.id)?.nombres).toBe(candidatoB.nombres);
+      expect(porCandidato.get(candidatoC.id)?.nombres).toBe(candidatoC.nombres);
+
+      // SOLO nombre y apellidos: el tablero no recibe cédula, email ni teléfono
+      // aunque el JOIN con `candidatos` los tendría a mano.
+      for (const item of response.body.items as Array<{ candidato: unknown }>) {
+        expect(Object.keys(item.candidato as object).sort()).toEqual([
+          'apellidos',
+          'id',
+          'nombres',
+        ]);
+      }
     });
 
     it('filtra por fase y por estado, combinables con el requerimiento', async () => {

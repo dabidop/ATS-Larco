@@ -20,7 +20,7 @@ const UNA_HORA_MS = 3_600_000;
 const FECHA = new Date('2026-10-21T12:00:00.000Z');
 const FECHA_POSTERIOR = new Date(FECHA.getTime() + UNA_HORA_MS);
 
-/** Fila `postulaciones` completa, como la entrega `pg`. */
+/** Fila `postulaciones` de LECTURA (con resumen del candidato), como la da `pg`. */
 function filaBase(): PostulacionRow {
   return {
     id: 'aaaaaaaa-1111-4111-8111-111111111111',
@@ -32,6 +32,8 @@ function filaBase(): PostulacionRow {
     created_by: 'dddddddd-4444-4444-8444-444444444444',
     created_at: FECHA,
     updated_at: FECHA_POSTERIOR,
+    nombres_candidato: 'Ana María',
+    apellidos_candidato: 'Pérez López',
   };
 }
 
@@ -53,6 +55,11 @@ describe('toResponse — fila BD → DTO público (camelCase)', () => {
     expect(toResponse(filaBase())).toEqual({
       id: 'aaaaaaaa-1111-4111-8111-111111111111',
       candidatoId: 'bbbbbbbb-2222-4222-8222-222222222222',
+      candidato: {
+        id: 'bbbbbbbb-2222-4222-8222-222222222222',
+        nombres: 'Ana María',
+        apellidos: 'Pérez López',
+      },
       requerimientoId: 'cccccccc-3333-4333-8333-333333333333',
       fase: 'antecedentes',
       estado: 'activa',
@@ -63,9 +70,20 @@ describe('toResponse — fila BD → DTO público (camelCase)', () => {
     });
   });
 
+  it('el resumen del candidato repite el candidatoId y SOLO expone nombre y apellidos', () => {
+    const respuesta = toResponse(filaBase());
+    // El `id` del resumen es el MISMO enlace que ya viaja en `candidatoId`
+    // (el tablero usa uno u otro para poblar la tarjeta).
+    expect(respuesta.candidato.id).toBe(respuesta.candidatoId);
+    // Ni una clave de más: sin cédula, email, teléfono u otras PII que el
+    // JOIN a `candidatos` podría traer en el futuro.
+    expect(Object.keys(respuesta.candidato).sort()).toEqual(['apellidos', 'id', 'nombres']);
+  });
+
   it('no se cuela NINGUNA clave interna en la respuesta', () => {
     const claves = Object.keys(toResponse(filaBase())).sort();
     expect(claves).toEqual([
+      'candidato',
       'candidatoId',
       'createdAt',
       'createdBy',

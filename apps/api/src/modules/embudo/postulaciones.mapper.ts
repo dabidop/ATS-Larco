@@ -14,11 +14,19 @@ import type { PostulacionResponseDto, PostulacionRow } from './dto/postulacion.r
  * clave interna que el cliente no necesita.
  */
 
-/** Mapea una fila `postulaciones` a su DTO público (fechas en ISO 8601). */
+/**
+ * Mapea una fila de LECTURA (`postulaciones` + resumen del candidato) a su
+ * DTO público (fechas en ISO 8601).
+ */
 export function toResponse(fila: PostulacionRow): PostulacionResponseDto {
   return {
     id: fila.id,
     candidatoId: fila.candidato_id,
+    candidato: {
+      id: fila.candidato_id,
+      nombres: fila.nombres_candidato,
+      apellidos: fila.apellidos_candidato,
+    },
     requerimientoId: fila.requerimiento_id,
     // Los enums llegan de `pg` como string; el tipo público es el del dominio.
     fase: fila.fase as Fase,
