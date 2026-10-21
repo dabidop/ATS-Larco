@@ -1,0 +1,380 @@
+================================================================================
+ ATS LARCO — DOCUMENTACIÓN TÉCNICA (concreta)
+ MVP Fases 0–5 · 21/10/2026 · Monorepo pnpm (sin Turborepo)
+ Todo lo siguiente fue VERIFICADO contra el código y la BD de desarrollo.
+================================================================================
+
+ÍNDICE
+  1. Stack y arquitectura
+  2. Estructura del monorepo
+  3. Modelo de datos (tablas y reglas a nivel de BD)
+  4. Máquinas de estados
+  5. API — superficie REST (prefijo /api)
+  6. Seguridad
+  7. Frontend (rutas, estado, componentes)
+  8. Convenciones del código
+  9. Comandos
+ 10. Limitaciones conocidas y trabajo pendiente
+ 11. Mapa de archivos clave
+
+================================================================================
+1. STACK Y ARQUITECTURA
+================================================================================
+
+  API (apps/api)
+    NestJS 11 + TypeScript estricto (Node >=20, engines del monorepo).
+    Validación de DTO con class-validator (whitelist + forbidNonWhitelisted,
+    mensajes en español); zod SOLO valida variables de entorno
+    (src/config/env.validation.ts).
+    Persistencia: pool `pg` global (DatabaseService) para casi todos los
+    módulos + DataSource de TypeORM SOLO en el módulo requerimientos.
+    Migraciones: node-pg-migrate con archivos TS en apps/api/db/migrations
+    (001–007) — NO hay Prisma en el proyecto.
+    Seguridad: helmet, CORS endurecido, Throttler global (100 peticiones/
+    minuto por IP) y @Throttle(5/min) en login; nestjs-pino (logging).
+    CV: multer en memoria, 5 MB máx., tipo real por MAGIC BYTES (PDF/DOC/
+    DOCX/RTF), dedup por SHA-256. NO hay generación de PDFs ni módulo de
+    reportes en esta versión.
+
+  Web (apps/web)
+    React 19 + Vite 8 + TypeScript estricto + Tailwind CSS 4.
+    React Router 7 · Zustand 5 (sesion, tablero) · dnd-kit (Kanban).
+    Fetch tipado propio en lib/api.ts (solicitud<T>): SIN TanStack Query,
+    SIN react-hook-form y SIN zod en el frontend (validación manual con
+    mensajes en español).
+    Vitest 5 + Testing Library: 89 pruebas (14 archivos).
+
+  BD
+    PostgreSQL 16 (imagen postgres:16-alpine) con migraciones versionadas
+    (node-pg-migrate) y la filosofía «la base de datos manda»: CHECKs,
+    triggers y unicidad viven en el esquema, no solo en la aplicación.
+
+  Infraestructura
+    docker-compose.dev.yml (db + api + web con bind mounts y watch; el flag
+    -f es obligatorio). NO hay docker-compose.prod.yml ni CI/CD en el repo.
+
+  Tests verificados: API 334/334 · Web 89/89 · gates (typecheck, lint,
+  build, format:check) en 0.
+
+================================================================================
+2. ESTRUCTURA DEL MONOREPO
+================================================================================
+
+  pnpm-workspace.yaml → apps/api, apps/web, packages/shared.
+
+  apps/api/
+    db/migrations/          001_initial_schema … 007_postulaciones (TS)
+    src/
+      config/               env validada con zod, JWT (JWT_TTL_HOURS=24)
+      common/
+        crypto/             crypto.service (AES-256-CBC), password.util (scrypt)
+        decorators/         @Public, @Roles
+        filters/            all-exceptions.filter (respuestas normalizadas)
+        guards/             auth.guard, roles.guard
+      database/             DatabaseService (pool pg global)
+      health/               GET /api/health (público)
+      modules/
+        auth/               login/logout/refresh/me, rate limit 5/min en login
+        requerimientos/     CRUD, máquina de estados (requerimientos-flujo),
+                            código atómico (codigo-generator), store TypeORM
+        candidatos/         CRUD, PII cifrada, historial desde audit_log
+                            (PII enmascarada), delega CV a uploads
+        uploads/            archivos-cv.service, magic-bytes, límite 5 MB
+        embudo/             postulaciones: fases, movimiento, descarte,
+                            historial (lee audit_log)
+        antecedentes/ entrevistas/ proveedor/ historial/ importacion/
+                            Fase 6: SOLO GET ping (marcadores de reserva)
+
+  apps/web/src/
+    pages/                  Login, requerimientos (lista/nuevo/detalle),
+                            candidatos (lista/nuevo/detalle), embudo
+                            (TableroEmbudo), NoEncontrada (404)
+    components/embudo/      ColumnaEmbudo, TarjetaPostulacion,
+                            DialogoDescarte, PanelHistorial,
+                            FormularioAgregarPostulacion
+    store/                  sesion.ts (token en localStorage), tablero.ts
+                            (optimista con rollback)
+    lib/                    api.ts (solicitud<T>), rbac.ts (predicados de
+                            botones), flujo.ts (etiquetas de transición),
+                            archivos.ts (validación en cliente)
+
+  packages/shared/          stub de salud (healthcheckLabel); los enums viven
+                            en cada app (no hay tipos compartidos aún)
+
+  docs/                     PLAN-PRODUCCION-ATS.md, PRUEBA-MANUAL-ATS.txt,
+                            DOCUMENTACION-TECNICA-ATS.txt
+
+================================================================================
+3. MODELO DE DATOS (tablas reales en BD)
+================================================================================
+
+  users                id, role_id → roles, email UNIQUE, password_hash,
+                       full_name, active, timestamps + triggers de auditoría
+  roles                3 filas: admin_rrhh, analista_seleccion, lider_area
+  requerimientos       codigo UNIQUE + code_check (REQ-YYYY-NNN); checks:
+                       numero_plazas, salario_min, salario_max,
+                       salario_rango (min <= max) y rechazo (motivo
+                       obligatorio al rechazar)
+  codigo_sequences     (anio, ultimo) — generador ATÓMICO del código
+                       (SELECT … FOR UPDATE); prohibido MAX(numero)+1
+  candidatos           cedula_cifrada (CHECK v1:…), cedula_hash (CHECK
+                       ^[0-9a-f]{64}$, UNIQUE), telefono_cifrada, email
+                       UNIQUE parcial; nombres, apellidos, ciudad,
+                       cargo_actual, expectativa_salarial, disponibilidad,
+                       notas. Cédula duplicada → 409 en la API (traduce 23505)
+  archivos_cv           candidato_id, original/stored name, mime derivado de
+                       magic bytes (pdf|doc|docx|rtf), size, sha256, subido_por
+  postulaciones        fase ENUM fase_postulacion (preseleccion,
+                       antecedentes, entrevistas, proveedor_externo,
+                       contratacion — el ORDEN del enum es la base de la
+                       adyacencia) · estado ENUM estado_postulacion (activa,
+                       contratado, descartado) · UNIQUE(candidato_id,
+                       requerimiento_id) · CHECK postulaciones_contratacion_check
+                       (estado='contratado' ⟺ fase='contratacion') · CHECK
+                       postulaciones_descarte_check (motivo obligatorio y
+                       exclusivo del descarte) · triggers de auditoría
+  audit_log            id, table_name, record_id, action (INSERT/UPDATE/DELETE),
+                       old_data, new_data, changed_by → users (ON DELETE
+                       SET NULL), created_at. INMUTABLE: el trigger
+                       audit_log_no_mutation rechaza UPDATE/DELETE. La función
+                       audit_fila() (v004) prioriza el GUC
+                       app.current_user_id que fija la API con el sub del JWT.
+
+  NO existen tablas de historial ni de transiciones: el historial de cada
+  candidato/postulación se LEE de audit_log. NO hay catálogos de áreas,
+  cargos, jornadas, etc.: jefatura, tipo de contrato, jornada y ubicación
+  se guardan como texto en requerimientos.
+
+  Aplicar migraciones: pnpm --filter @ats/api db:migrate
+  (las 7 están aplicadas en la BD dev; registro en la tabla pgmigrations).
+
+================================================================================
+4. MÁQUINAS DE ESTADOS
+================================================================================
+
+  Requerimiento — POST /api/requerimientos/:id/transiciones
+  body {destino, motivo?}; destino ∈ {aprobado, rechazado, en_proceso,
+  cerrado} (pendiente nunca es destino). La puerta @Roles deja pasar a los
+  3 roles; la MATRIZ de permisos vive en requerimientos-flujo.ts:
+
+    pendiente → aprobado    : solo admin_rrhh
+    pendiente → rechazado   : admin_rrhh (cualquiera) y lider_area SOLO si
+                              es el creador
+    aprobado  → en_proceso  : admin_rrhh y analista_seleccion
+    en_proceso → cerrado    : solo admin_rrhh
+    combinación inválida    : 409 · motivo obligatorio solo en rechazado
+                              (400 en la API + CHECK requerimientos_rechazo_check)
+
+  Editar (PATCH /:id): solo creador o admin_rrhh y SOLO en estado pendiente
+  (409 en otro estado). Los estados de postulación/lectura no se escriben con
+  PATCH genérico de estado: el cliente SIEMPRE llama /transiciones.
+
+  Embudo (postulaciones) — dos acciones de escritura:
+
+    POST /api/postulaciones           {candidatoId, requerimientoId}
+        roles: analista_seleccion, admin_rrhh · nace en preseleccion/activa
+        · 409 si el requerimiento no está en_proceso o ya existe la fila
+    PATCH /api/postulaciones/:id/fase {fase}
+        roles: analista_seleccion, admin_rrhh · solo ±1 paso (adiacencia por
+        índice del enum, reversible) · 409 si es terminal (contratado/
+        descartado), si la fase es la misma o si hay salto («Solo se puede
+        mover un paso…») · fase=contratacion ⇒ estado=contratado (terminal)
+    POST /api/postulaciones/:id/descarte {motivo}
+        roles: analista_seleccion, admin_rrhh · desde CUALQUIER fase ·
+        motivo obligatorio: 400 si viene vacío o solo espacios (el servicio
+        recorta) · la UI exige además mínimo 5 caracteres en su diálogo ·
+        estado=descartado (terminal; la fila se queda en su fase actual)
+
+================================================================================
+5. API — SUPERFICIE REST (prefijo /api)
+================================================================================
+
+  GET  /health                              público
+  POST /auth/login                          público · 5/min por IP ·
+       responde {accessToken, tokenType, expiresIn, user{email, fullName,
+       role}}
+  POST /auth/logout · POST /auth/refresh · GET /auth/me   autenticados
+
+  POST /requerimientos                      @Roles(admin_rrhh, lider_area)
+  GET  /requerimientos                      autenticado · filtros: estado,
+       page, limit (1-100, por defecto 20)
+  GET  /requerimientos/:id                  autenticado
+  PATCH /requerimientos/:id                 creador o admin_rrhh · solo
+       estado pendiente
+  POST /requerimientos/:id/transiciones     {destino, motivo?} · puerta de
+       3 roles + matriz en el servicio (ver §4)
+
+  POST /candidatos                          @Roles(analista_seleccion,
+       admin_rrhh) · cédula duplicada → 409 «Ya existe un candidato con esa
+       cédula»
+  GET  /candidatos                          autenticado · filtros: q (parcial
+       ILIKE sobre nombres/apellidos/ciudad/cargo), cedula (EXACTA, se
+       convierte a hash HMAC), page, limit (1-100)
+  GET  /candidatos/:id                      autenticado
+  GET  /candidatos/:id/historial            autenticado · audit_log con PII
+       enmascarada (***)
+  PATCH /candidatos/:id                     creador o admin_rrhh
+  POST /candidatos/:id/archivos             @Roles(analista_seleccion,
+       admin_rrhh) · multipart, campo "file" · ≤5 MB · magic bytes
+  GET  /candidatos/:id/archivos             autenticado
+  GET  /candidatos/:id/archivos/:archivoId/descarga   autenticado (blob)
+
+  POST /postulaciones                       {candidatoId, requerimientoId} ·
+       @Roles(analista_seleccion, admin_rrhh)
+  GET  /postulaciones                       autenticado · filtros:
+       requerimientoId, candidatoId, fase, estado, page, limit (1-100, por
+       defecto 50) · incluye resumen candidato {id, nombres, apellidos}
+       (sin PII sensible)
+  GET  /postulaciones/:id
+  PATCH /postulaciones/:id/fase             {fase} · @Roles(analista, admin)
+  POST /postulaciones/:id/descarte          {motivo} · @Roles(analista, admin)
+  GET  /postulaciones/:id/historial         desde audit_log (máx. 200)
+
+  GET  /embudo/ping · /uploads/ping · /antecedentes/ping · /entrevistas/ping ·
+  /proveedor/ping · /historial/ping · /importacion/ping   (Fase 6: marcadores)
+
+  NO existen endpoints de reportes ni de PDF en esta versión.
+
+  Errores: 400 validación (mensajes en español) · 401 auth · 403 rol («Su rol
+  no le permite acceder a este recurso») · 404 recurso · 409 transición o
+  duplicado · 429 rate limit. Listados paginados {items, total, page, limit};
+  mensajes SIEMPRE string (el filtro global normaliza arrays).
+
+================================================================================
+6. SEGURIDAD
+================================================================================
+
+  • Contraseñas: scrypt nativo N=16384, r=8, p=1, formato
+    scrypt$16384$8$1$salt_b64$hash_b64 (verificado en la tabla users).
+    OJO: PowerShell interpola $16384 en cadenas dobles — generar hashes con
+    un .js temporal, no con comillas dobles.
+  • JWT: HS256, TTL 24 h (JWT_TTL_HOURS=24), payload {sub, email, role} +
+    iat/exp y jti de emisión; un payload sin esos 3 campos (p. ej.
+    {sub, rol, ver}) → 401. Sin claim de versión ni revocación por usuario.
+    La web guarda {token, usuario} en localStorage (decisión MVP documentada
+    en store/sesion.ts).
+  • RBAC: AuthGuard global + RolesGuard (@Roles) + comprobaciones de
+    servicio (creador-o-admin, matriz de transiciones). La web
+    (lib/rbac.ts) solo decide QUÉ BOTONES se muestran: el 403 del servidor
+    es la verdad.
+  • PII: AES-256-CBC con IV aleatorio por registro (prefijo v1:) para cédula
+    y teléfono; HMAC-SHA256 (hash hex de 64 caracteres) para búsqueda exacta
+    de cédula SIN descifrar; historiales enmascarados (***); nunca PII en
+    claro en listados ni logs. Verificado en BD: solo cedula_cifrada +
+    cedula_hash.
+  • Rate limit: global 100/min por IP; login 5/min por IP (429 «Demasiadas
+    peticiones»). helmet + CORS endurecido.
+  • Auditoría por TRIGGERS en BD (audit_fila + audit_log inmutable); la
+    changed_by se llena con el GUC app.current_user_id que fija la API dentro
+    de la transacción. No se puede desactivar desde la aplicación.
+
+================================================================================
+7. FRONTEND (rutas, estado, componentes)
+================================================================================
+
+  Rutas (App.tsx; SIN aliases @, imports relativos):
+    /login                                 pública
+    /  →  /requerimientos                  (redirect)
+    /requerimientos                        lista + filtro de estado
+    /requerimientos/nuevo                  formulario 5 secciones (líder/admin)
+    /requerimientos/:id                    ficha + acciones por máquina
+    /requerimientos/:id/embudo             tablero Kanban (solo lectura si el
+                                           requerimiento no está en proceso)
+    /candidatos · /candidatos/nuevo · /candidatos/:id
+    *  →  404
+    NO existe /reportes.
+
+  Estado:
+    store/sesion.ts   sesión Zustand persistida en localStorage {token, usuario}
+    store/tablero.ts  entidades normalizadas + orden; fetch PRIMERO y luego
+                      store; movimiento optimista con ROLLBACK y snapshot del
+                      historial; LIMITE_LISTADO = 100 (el API rechaza
+                      limit > 100 con 400)
+    páginas/listas    estado local (useState) + solicitud<T> de lib/api.ts
+
+  Kanban (dnd-kit): sensor con activación por distancia (8 px) — el drop con
+  el ratón NO es automatizable con herramientas; los botones ◀ ▶ son el
+  equivalente accesible y sí cubierto por tests. Drop inválido ⇒ rollback +
+  toast con el motivo. Diálogo de descarte con motivo mínimo 5 caracteres
+  (botón «Aceptar» deshabilitado sin motivo válido).
+
+================================================================================
+8. CONVENCIONES DEL CÓDIGO
+================================================================================
+
+  • TypeScript estricto; comentarios y commits en ESPAÑOL, identificadores
+    en INGLÉS, mensajes de usuario en ESPAÑOL.
+  • Commits Conventional Commits, granulares y verificados con gates.
+  • Validación en DTO (class-validator) con los mismos mensajes en español
+    que replica la web en cada pantalla.
+  • Respuestas de error con mensaje claro y en español; arrays nunca llegan
+    al cliente (filtro global).
+  • Migraciones SIEMPRE versionadas (nunca synchronize/db push); la BD manda.
+
+================================================================================
+9. COMANDOS
+================================================================================
+
+  Instalar:             pnpm install
+  Levantar todo:        docker compose -f docker-compose.dev.yml up -d
+  Tras cambiar la API:  docker compose -f docker-compose.dev.yml up -d
+                        --force-recreate api
+  Tras cambiar la web:  … --force-recreate web
+                        (el watch de Windows no detecta archivos nuevos)
+  Migraciones:          pnpm --filter @ats/api db:migrate
+  Gates:                pnpm typecheck · pnpm lint · pnpm build ·
+                        pnpm format:check        (NO hay Turborepo instalado)
+  Pruebas:              pnpm --filter @ats/api test   (334)
+                        pnpm --filter @ats/web test   (89)
+  E2E HTTP (22 checks): pwsh $env:TEMP\e2e_flujo_a.ps1
+                        (esperar 65 s entre corridas: login 5/min)
+  URLs:                  web http://localhost:5173
+                         API http://localhost:3000/api/health
+
+================================================================================
+10. LIMITACIONES CONOCIDAS Y TRABAJO PENDIENTE
+================================================================================
+
+  • FASE 6 SIN IMPLEMENTAR (fuera del alcance del MVP): UI de antecedentes,
+    entrevistas, proveedor externo, importación de datos y asignación de un
+    candidato a varios requerimientos. Los módulos API existen pero solo
+    responden GET ping.
+  • Sin módulo de reportes ni generación de PDF (el plan los contempla).
+  • Drag & drop solo verificado a mano (sensor de dnd-kit exige umbral de
+    pointer); botones ◀ ▶ automatizados.
+  • La ficha de candidato no lista sus postulaciones (solo el buscador de
+    asignación y el tablero por requerimiento).
+  • packages/shared es un stub: no hay tipos compartidos entre apps.
+  • Sin docker-compose.prod.yml ni pipeline CI/CD en el repositorio.
+  • Push al remoto pendiente de que se cree el repo en GitHub de la empresa.
+
+================================================================================
+11. MAPA DE ARCHIVOS CLAVE
+================================================================================
+
+  apps/api/src/modules/requerimientos/requerimientos-flujo.ts   matriz de
+      transiciones por rol (PERMISOS_TRANSICION)
+  apps/api/src/modules/requerimientos/codigo-generator.service.ts
+      código atómico REQ-YYYY-NNN (codigo_sequences)
+  apps/api/src/modules/candidatos/candidatos.service.ts         PII, 23505→409
+  apps/api/src/modules/uploads/archivos-cv.service.ts + magic-bytes.ts
+      CV: magic bytes, 5 MB, SHA-256
+  apps/api/src/modules/embudo/postulaciones.service.ts          reglas del
+      embudo · postulaciones-fases.ts (orden/adiacencia) · mapper (qué campos
+      de audit_log se exponen)
+  apps/api/src/common/guards/auth.guard.ts + roles.guard.ts      RBAC
+  apps/api/src/common/crypto/password.util.ts + crypto.service.ts
+      scrypt y AES-256-CBC
+  apps/api/db/migrations/001…007_postulaciones.ts               esquema +
+      CHECKs + triggers de auditoría
+  apps/web/src/lib/rbac.ts + lib/flujo.ts                        predicados
+      de UI espejo de la matriz del servidor
+  apps/web/src/store/tablero.ts                                  store
+      optimista/rollback del Kanban (LIMITE_LISTADO=100)
+  apps/web/src/pages/embudo/TableroEmbudo.tsx                    tablero
+  docs/PLAN-PRODUCCION-ATS.md                                    plan y
+      trazabilidad · docs/PRUEBA-MANUAL-ATS.txt (flujo y prueba manual)
+
+================================================================================
+ Fin — Documento 2 de 2 (el documento de flujo es PRUEBA-MANUAL-ATS.txt)
+================================================================================
