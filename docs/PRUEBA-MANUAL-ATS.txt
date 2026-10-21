@@ -1,0 +1,264 @@
+================================================================================
+ ATS LARCO — SISTEMA DE GESTIÓN HUMANA
+ Documento 1 de 2: EL SOFTWARE Y SU FLUJO (para prueba manual)
+ Versión: MVP Fases 0–5 (21/10/2026) · Estado: completo y verificado
+================================================================================
+
+ÍNDICE
+  1. Qué hace el sistema
+  2. Quién hace qué (roles)
+  3. El flujo completo "hasta la contratación" (pantalla por pantalla)
+  4. Reglas que verá en pantalla
+  5. Guion de prueba manual paso a paso
+  6. Datos ya cargados para su prueba
+  7. Cómo abrir el sistema
+
+================================================================================
+1. QUÉ HACE EL SISTEMA
+================================================================================
+
+Aplicación web de gestión de talento (ATS) para LARCO. Permite:
+
+  a) GESTIONAR REQUERIMIENTOS de personal: el líder de área solicita un
+     puesto con un formulario completo; la administración de RRHH lo aprueba
+     e inicia. Cada requerimiento recibe un código único (REQ-2026-0XX) y
+     pasa por estados: Pendiente → Aprobado → En proceso → Cerrado
+     (o Rechazado, con motivo obligatorio).
+
+  b) GESTIONAR CANDIDATOS con su CV: nombre, cédula, contacto y expectativa
+     salarial. Los CV (PDF, DOC, DOCX o RTF, hasta 5 MB) se adjuntan y se
+     descargan desde la ficha del candidato. Los datos sensibles (cédula y
+     teléfono) se GUARDAN CIFRADOS y se muestran enmascarados (***).
+
+  c) LLEVAR EL EMBUDO DE SELECCIÓN en un TABLERO KANBAN de 5 columnas:
+     Preselección → Antecedentes → Entrevistas → Proveedor externo →
+     Contratación. Las tarjetas son candidatos; se arrastran con el ratón o
+     se mueven con botones; cada candidato puede avanzar, retroceder o ser
+     descartado (con motivo obligatorio). Al llegar a "Contratación" el
+     candidato queda CONTRATADO.
+
+  d) TODO QUEDA REGISTRADO: cada alta, cambio, movimiento y descarte deja
+     trazabilidad (qué cambió, antes → después, quién y cuándo) visible en
+     el "Historial" de cada ficha y en la auditoría de la base de datos.
+
+================================================================================
+2. QUIÉN HACE QUÉ (ROLES)
+================================================================================
+
+  Administración RRHH (admin@larco.co)
+    Aprueba e inicia requerimientos, cierra los procesos, ve todo y también
+    puede crear candidatos y mover el embudo.
+
+  Líder de Área (e2e-lider@larco.co)
+    Crea y edita sus propios requerimientos (solo mientras están Pendientes).
+    NO aprueba (quien pide, no autoriza): únicamente puede rechazar los suyos,
+    con motivo. Consulta requerimientos, candidatos (con PII enmascarada) y el
+    tablero en SOLO LECTURA, pero no crea candidatos ni mueve tarjetas.
+
+  Analista de Selección (e2e-analista@larco.co)
+    El dueño del día a día: crea candidatos, sube CV, postula candidatos al
+    tablero, mueve tarjetas y descarta con motivo. No cierra requerimientos.
+
+La API valida el rol en cada operación (responde 403), aunque la interfaz
+oculte los botones que no le corresponden al rol.
+
+================================================================================
+3. EL FLUJO COMPLETO "HASTA LA CONTRATACIÓN" (PANTALLA POR PANTALLA)
+================================================================================
+
+PANTALLA 1 — Inicio de sesión (http://localhost:5173)
+  Correo + contraseña → "Ingresar". Los tres roles entran en la lista de
+  requerimientos; las acciones disponibles en cada pantalla varían por rol.
+
+PANTALLA 2 — Requerimientos (lista)
+  Tabla paginada con código, título, jefatura, plazas y estado (con badge de
+  color). Filtro por estado. Botón "Nuevo requerimiento" (líder y admin).
+
+PANTALLA 3 — Nuevo requerimiento (rol líder o admin)
+  Formulario de 5 secciones:
+    1. Identificación y jefatura: título*, jefatura*, número de plazas*,
+       ubicación y fecha requerida.
+    2. Perfil profesional: perfil*, experiencia y nivel de educación.
+    3. Conocimientos y habilidades*: dos listas separadas por comas.
+    4. Condiciones: salario mínimo/máximo (el mínimo no puede superar al
+       máximo), tipo de contrato y jornada.
+    5. Justificación*: texto obligatorio.
+  Al guardar: la API genera el código REQ-2026-0XX y el estado nace
+  "Pendiente". Se abre la ficha del requerimiento.
+
+PANTALLA 4 — Ficha del requerimiento
+  Cabecera con código, título, badge de estado y las acciones que su rol
+  puede hacer:
+    • Pendiente → "Aprobar" / "Rechazar" (el rechazo exige motivo).
+    • Aprobado  → "Iniciar proceso".
+    • En proceso → "Cerrar requerimiento" (solo admin) + enlace
+      "Tablero de selección".
+    • En otros estados el enlace avisa que el tablero se usa durante el
+      proceso y el tablero abre en solo lectura.
+  Debajo: las 5 secciones en modo lectura.
+
+PANTALLA 5 — Candidatos
+  Lista con búsqueda por nombre y cédula exacta, y paginación.
+  "Nuevo candidato": nombres*, apellidos*, cédula* (6 a 10 dígitos, única),
+  email, teléfono, ciudad, cargo actual y expectativa salarial.
+  En la ficha del candidato: "Editar", la sección "Archivos (CV)" con
+  "ADJUNTAR CV" (arrastrando o seleccionando el archivo) y "Descargar", y el
+  "Historial de cambios" con cada campo "— → valor" (cédula y teléfono
+  aparecen como *** por seguridad).
+
+PANTALLA 6 — Tablero de selección (el embudo Kanban)
+  Cabecera: código + título + estado + "Volver al requerimiento".
+  Sección "Agregar candidato al tablero": buscar por nombre → resultados con
+  nombre y cédula → "Agregar". La tarjeta nace en Preselección.
+  5 columnas en orden, cada una con su contador de tarjetas.
+  Cada tarjeta muestra: nombre completo, badge de fase y estado, y acciones:
+    • "◀ / ▶" para mover un paso (hacia atrás o adelante).
+    • "Descartar" → diálogo "Descartar postulación" con el aviso «Esta
+      acción es definitiva» y el campo MOTIVO (obligatorio, mínimo 5
+      caracteres: el botón "Aceptar" permanece deshabilitado sin motivo
+      válido).
+    • "Historial" → panel lateral con cada movimiento: Alta/Cambio, fecha,
+      usuario y los campos "antes → después".
+  Arrastre: las tarjetas activas se arrastran con el ratón hasta otra
+  columna; las terminales (Contratado/Descartado) no se arrastran ni tienen
+  acciones de movimiento.
+  Al soltar en una columna: la tarjeta se mueve AL INSTANTE y el servidor
+  confirma; si el movimiento no está permitido, la tarjeta VUELVE a su
+  lugar y se muestra el motivo del error.
+
+PANTALLA 7 — Contratación
+  Mover una tarjeta hasta la columna "Contratación" la deja con badge
+  CONTRATADO: es el estado final (ya no se mueve ni se descarta).
+
+PANTALLA 8 — Cierre y trazabilidad
+  Cuando el proceso termina, el admin cierra el requerimiento desde su
+  ficha. El historial de cada candidato/postulación conserva la historia
+  completa del proceso.
+
+================================================================================
+4. REGRAS QUE VERÁ EN PANTALLA
+================================================================================
+
+  • Estados del requerimiento: Pendiente → Aprobado → En proceso → Cerrado;
+    Pendiente → Rechazado (con motivo). Una combinación inválida responde
+    409 con mensaje claro (ej. cerrar algo que no está en proceso).
+  • Fases del embudo: solo se mueve UN PASO por vez, en cualquier dirección.
+    Un salto (p. ej. Preselección → Entrevistas) NO se permite: aparece
+    «Solo se puede mover un paso».
+  • "Contratación" equivale a CONTRATADO (terminal). El descarte funciona
+    desde cualquier fase y exige motivo.
+  • Un candidato no puede postular dos veces al mismo requerimiento
+    (la API responde 409 y la interfaz lo muestra tal cual).
+  • Solo se puede postular a requerimientos "En proceso".
+  • Un candidato no puede tener dos cédulas distintas (la cédula es única).
+  • El login admite 5 intentos por minuto; después responde "Demasiadas
+    peticiones" durante 1 minuto.
+
+================================================================================
+5. GUION DE PRUEBA MANUAL PASO A PASO
+================================================================================
+
+CUENTAS (ya creadas en la base de datos de prueba):
+
+  Rol                    Correo                   Contraseña
+  ---------------------  -----------------------  ------------
+  Administración RRHH    admin@larco.co           DevAdmin2026!
+  Líder de Área          e2e-lider@larco.co       DevE2e2026!
+  Analista de Selección  e2e-analista@larco.co    DevE2e2026!
+
+--------------------------------------------------------------------------------
+PRUEBA 1 — Flujo completo con los 3 roles (≈10 minutos)
+--------------------------------------------------------------------------------
+  1. Inicie sesión con e2e-lider → "Nuevo requerimiento" → cree "Analista
+     de Datos – Prueba Manual" (complete las 5 secciones).
+     ESPERADO: ficha con código REQ-2026-0XX y estado "Pendiente".
+  2. Con e2e-lider revise la ficha: NO debe existir el botón "Aprobar"
+     (un líder no autoriza lo que pidió).
+  3. Cierre sesión, entre con admin → "Aprobar" → "Iniciar proceso".
+     ESPERADO: estados "Aprobado" y "En proceso"; aparece "Tablero de
+     selección".
+  4. Entre con e2e-analista → "Nuevo candidato": cree "Carla Prueba
+     Manual" (cédula 55009999) y "Diego Prueba Manual" (cédula 55008888).
+     En la ficha de Carla: "ADJUNTAR CV" con un PDF pequeño y luego
+     "Descargar".
+     ESPERADO: mensaje «CV adjuntado: archivo.pdf» y descarga exitosa.
+  5. "Tablero de selección" del REQ-2026-0XX → "Agregar candidato" →
+     busque "Carla" → "Agregar"; repita con "Diego".
+     ESPERADO: dos tarjetas en Preselección con badge "Activa".
+  6. DRAG & DROP (pruebe con el ratón; no se pudo automatizar):
+     arrastre la tarjeta de Carla de "Preselección" a "Antecedentes".
+     ESPERADO: la tarjeta se mueve al instante y los contadores cambian;
+     si recarga la página, la tarjeta sigue en Antecedentes.
+     Intente además arrastrarla de "Antecedentes" DIRECTAMENTE a
+     "Entrevistas" (2 columnas de más).
+     ESPERADO: no se mueve y aparece «Solo se puede mover un paso».
+     Repita un movimiento con los botones "▶" (equivalente accesible).
+  7. Descarte: "Descartar" en Diego → deje el motivo vacío → ESPERADO:
+     "Aceptar" deshabilitado; escriba 3 caracteres → sigue deshabilitado;
+     escriba "No cumple el perfil" → "Aceptar".
+     ESPERADO: tarjeta "Descartada" con «Motivo: No cumple el perfil».
+  8. Historial: "Historial" en la tarjeta de Carla. ESPERADO: entrada
+     "Alta" y un "Cambio" por movimiento, con fase antes → después,
+     usuario y fecha.
+  9. Contratación: mueva a Carla 4 pasos (Antecedentes → Entrevistas →
+     Proveedor externo → Contratación). ESPERADO: badge "Contratado" y
+     tarjeta deshabilitada (sin ▶ ni Descartar).
+ 10. Cierre: con admin, en la ficha del requerimiento → "Cerrar
+     requerimiento". ESPERADO: estado "Cerrado".
+
+--------------------------------------------------------------------------------
+PRUEBA 2 — Casos negativos (≈3 minutos)
+--------------------------------------------------------------------------------
+  1. Agregue al mismo candidato dos veces al tablero.
+     ESPERADO: alerta «El candidato ... ya tiene una postulación ...».
+  2. Cree un candidato con la cédula de otro. ESPERADO: 409 con el mensaje
+     «Ya existe un candidato con esa cédula».
+  3. Abra el tablero de un requerimiento que NO esté en proceso.
+     ESPERADO: solo lectura con aviso.
+  4. Fall el login 5 veces seguidas. ESPERADO: bloqueo de 1 minuto.
+  5. Suba un CV de más de 5 MB o un .exe. ESPERADO: rechazo con mensaje.
+
+--------------------------------------------------------------------------------
+PRUEBA 3 — Auditoría y privacidad (≈2 minutos)
+--------------------------------------------------------------------------------
+  1. Ficha de un candidato → "Historial de cambios": cada campo muestra
+     "— → valor"; cédula y teléfono aparecen como "***".
+  2. Cada movimiento del embudo queda en la auditoría de la base de datos
+     (tabla audit_log) con usuario, fecha y JSON de antes/después.
+
+================================================================================
+6. DATOS YA CARGADOS PARA SU PRUEBA
+================================================================================
+
+  • REQ-2026-005 "Ingeniero de Datos — Flujo E2E": CERRADO. Flujo completo
+    ya ejecutado (Ana CONTRATADA, Bert y Carla descartados con motivo, CV
+    subido). Sirve para revisar un proceso terminado con auditoría completa.
+
+  • REQ-2026-006 "Desarrollador QA - Flujo Navegador": EN PROCESO, tablero
+    listo para tocar: Laura Manual QA (Antecedentes) y Pedro Manual QA
+    (Entrevistas). Úselo para probar el arrastre, los movimientos ◀ ▶, el
+    descarte y el historial SIN crear nada nuevo.
+
+  • Candidatos: Ana, Bert y Carla Flujo E2E; Laura y Pedro Manual QA.
+
+================================================================================
+7. CÓMO ABRIR EL SISTEMA
+================================================================================
+
+  1. Abra Docker Desktop y espere a que esté en ejecución.
+  2. En la carpeta del proyecto:
+         docker compose -f docker-compose.dev.yml up -d
+  3. Espere ~30 segundos y abra http://localhost:5173
+     (la API responde en http://localhost:3000/api/health).
+  4. Si el frontend no muestra una pantalla nueva tras un cambio de código:
+         docker compose -f docker-compose.dev.yml up -d --force-recreate web
+     (y --force-recreate api si cambió el backend: en Windows el modo watch
+     no siempre detecta archivos nuevos).
+
+  NOTA: el arrastre de tarjetas (drag & drop) requiere ratón y es la única
+  parte del flujo que quedó pendiente de verificación automatizada — el
+  Paso 6 de la Prueba 1 la cubre a mano.
+
+================================================================================
+ Fin — Documento 1 de 2 (el documento 2 es la DOCUMENTACION-TECNICA-ATS.txt)
+================================================================================
