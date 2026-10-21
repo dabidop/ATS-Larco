@@ -79,6 +79,25 @@ export function puedeEditarCandidato(rol: string | null | undefined, esCreador: 
   return esCreador || rol === 'admin_rrhh';
 }
 
+// ──────────────────────────── Embudo de selección ────────────────────────────
+
+/**
+ * Mover fases y descartar (`PATCH /:id/fase` y `POST /:id/descarte`):
+ * `analista_seleccion` y `admin_rrhh`. `lider_area` solo CONSULTA el tablero
+ * (su 403 del servidor es la verdad; aquí solo se ocultan los botones).
+ */
+export function puedeMoverPostulaciones(rol: string | null | undefined): boolean {
+  return rol === 'analista_seleccion' || rol === 'admin_rrhh';
+}
+
+/**
+ * Registrar altas (`POST /api/postulaciones`): mismos roles que mover fases
+ * (`@Roles('analista_seleccion','admin_rrhh')` en el controlador).
+ */
+export function puedeAgregarPostulaciones(rol: string | null | undefined): boolean {
+  return puedeMoverPostulaciones(rol);
+}
+
 // ───────────────────────────────── Navegación ─────────────────────────────────
 
 /**

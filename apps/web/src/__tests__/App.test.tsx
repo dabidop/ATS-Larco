@@ -67,4 +67,28 @@ describe('App (árbol de rutas completo)', () => {
       await screen.findByRole('heading', { name: /Página no encontrada/i }),
     ).toBeInTheDocument();
   });
+
+  it('la ruta del tablero de selección protegida pinta el tablero con sesión', async () => {
+    irA('/requerimientos/req-1/embudo');
+    sembrarSesion('analista_seleccion');
+    instalarFetch((url) => {
+      if (url.startsWith('/api/requerimientos/req-1')) {
+        return { cuerpo: fixtureRequerimiento({ estado: 'en_proceso' }) };
+      }
+      if (url.startsWith('/api/postulaciones?requerimientoId=req-1')) {
+        return { cuerpo: fixturePagina([]) };
+      }
+      return undefined;
+    });
+
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: /Tablero de selección/i }),
+    ).toBeInTheDocument();
+  });
 });

@@ -5,7 +5,9 @@ import type {
   ArchivoCv,
   Candidato,
   EntradaHistorial,
+  EntradaHistorialPostulacion,
   Pagina,
+  Postulacion,
   Requerimiento,
   RespuestaLogin,
   UsuarioSesion,
@@ -169,4 +171,36 @@ export function fixtureHistorial(extra: Partial<EntradaHistorial> = {}): Entrada
 /** Respuesta paginada de mentira. */
 export function fixturePagina<T>(items: T[], extra: Partial<Pagina<T>> = {}): Pagina<T> {
   return { items, total: items.length, page: 1, limit: 10, ...extra };
+}
+
+/** Postulación de mentira con la forma de `PostulacionResponseDto`. */
+export function fixturePostulacion(extra: Partial<Postulacion> = {}): Postulacion {
+  return {
+    id: 'pos-1',
+    candidatoId: 'can-1',
+    candidato: { id: 'can-1', nombres: 'María', apellidos: 'Pérez' },
+    requerimientoId: 'req-1',
+    fase: 'preseleccion',
+    estado: 'activa',
+    motivoDescarte: null,
+    createdBy: 'usuario-de-prueba',
+    createdAt: '2026-02-10T09:00:00.000Z',
+    updatedAt: '2026-02-10T09:00:00.000Z',
+    ...extra,
+  };
+}
+
+/** Entrada del historial de una postulación (`EntradaHistorialPostulacionDto`). */
+export function fixtureHistorialPostulacion(
+  extra: Partial<EntradaHistorialPostulacion> = {},
+): EntradaHistorialPostulacion {
+  return {
+    id: '1',
+    accion: 'UPDATE',
+    fecha: '2026-02-12T15:30:00.000Z',
+    usuario: 'usuario-de-prueba',
+    usuarioEmail: 'ana@larco.test',
+    campos: [{ campo: 'fase', antes: 'preseleccion', despues: 'antecedentes' }],
+    ...extra,
+  };
 }

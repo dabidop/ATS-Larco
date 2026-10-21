@@ -198,3 +198,62 @@ export interface EntradaHistorial {
   usuarioEmail: string | null;
   campos: CambioHistorial[];
 }
+
+// ───────────────────────── Embudo de selección (postulaciones) ─────────────────────────
+
+/**
+ * Las 5 fases del embudo, EN ORDEN de avance (columnas del tablero Kanban).
+ * Espejo del ENUM `fase_postulacion` (migración 007 de la API) y de
+ * `apps/api/src/modules/embudo/postulaciones-fases.ts`.
+ */
+export const FASES_POSTULACION = [
+  'preseleccion',
+  'antecedentes',
+  'entrevistas',
+  'proveedor_externo',
+  'contratacion',
+] as const;
+
+/** Una de las 5 fases del embudo. */
+export type FasePostulacion = (typeof FASES_POSTULACION)[number];
+
+/** Estados del ENUM `estado_postulacion`: 1 activa + 2 terminales. */
+export type EstadoPostulacion = 'activa' | 'contratado' | 'descartado';
+
+/** Resumen PÚBLICO del candidato que viaja en cada postulación (sin PII). */
+export interface CandidatoResumen {
+  id: string;
+  nombres: string;
+  apellidos: string;
+}
+
+/** `GET /api/postulaciones` (item) y respuestas de POST/PATCH (`PostulacionResponseDto`). */
+export interface Postulacion {
+  id: string;
+  candidatoId: string;
+  candidato: CandidatoResumen;
+  requerimientoId: string;
+  fase: FasePostulacion;
+  estado: EstadoPostulacion;
+  motivoDescarte: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Un campo concreto del historial de una postulación (`CambioHistorialDto`). */
+export interface CambioHistorialPostulacion {
+  campo: 'fase' | 'estado' | 'motivoDescarte';
+  antes: unknown;
+  despues: unknown;
+}
+
+/** Entrada de `GET /api/postulaciones/:id/historial` (máx. 200, DESC). */
+export interface EntradaHistorialPostulacion {
+  id: string;
+  accion: 'INSERT' | 'UPDATE' | 'DELETE';
+  fecha: string;
+  usuario: string | null;
+  usuarioEmail: string | null;
+  campos: CambioHistorialPostulacion[];
+}

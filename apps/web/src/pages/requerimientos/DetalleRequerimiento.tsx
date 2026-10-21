@@ -114,6 +114,15 @@ export function PaginaDetalleRequerimiento() {
         </div>
         <div className="flex items-center gap-3">
           <BadgeEstado estado={requerimiento.estado} />
+          {requerimiento.estado === 'en_proceso' ? (
+            <Link to={`/requerimientos/${id}/embudo`} className={CLASE_BOTON_SECUNDARIO}>
+              Tablero de selección
+            </Link>
+          ) : (
+            <p className="max-w-56 text-xs text-slate-500">
+              El tablero de selección se usa cuando el requerimiento está «En proceso».
+            </p>
+          )}
           {editable && !editando && (
             <button
               type="button"

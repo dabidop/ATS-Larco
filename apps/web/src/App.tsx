@@ -10,6 +10,7 @@ import { PaginaLogin } from './pages/Login';
 import { PaginaDetalleRequerimiento } from './pages/requerimientos/DetalleRequerimiento';
 import { PaginaRequerimientos } from './pages/requerimientos/ListaRequerimientos';
 import { PaginaNuevoRequerimiento } from './pages/requerimientos/NuevoRequerimiento';
+import { TableroEmbudo } from './pages/embudo/TableroEmbudo';
 
 /**
  * Árbol de rutas (modo declarativo de react-router-dom).
@@ -18,9 +19,9 @@ import { PaginaNuevoRequerimiento } from './pages/requerimientos/NuevoRequerimie
  *  - `/*` con `RutaProtegida`        → exige token; sin él → `/login` dejando
  *    la ruta original en `location.state.from`.
  *  - Dentro, el `Layout` aporta header + navegación por rol.
+ *  - `/requerimientos/:id/embudo` → tablero Kanban del embudo de selección
+ *    (protegida, dentro del Layout).
  *  - `/` → redirect a `/requerimientos`; cualquier otra ruta → 404.
- *
- * NO hay rutas de embudo/canvas (kanban): llegan en la parte 2.
  */
 export function RutasAplicacion() {
   return (
@@ -32,6 +33,7 @@ export function RutasAplicacion() {
           <Route path="requerimientos" element={<PaginaRequerimientos />} />
           <Route path="requerimientos/nuevo" element={<PaginaNuevoRequerimiento />} />
           <Route path="requerimientos/:id" element={<PaginaDetalleRequerimiento />} />
+          <Route path="requerimientos/:id/embudo" element={<TableroEmbudo />} />
           <Route path="candidatos" element={<PaginaCandidatos />} />
           <Route path="candidatos/nuevo" element={<PaginaNuevoCandidato />} />
           <Route path="candidatos/:id" element={<PaginaDetalleCandidato />} />
