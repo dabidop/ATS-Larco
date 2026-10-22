@@ -46,7 +46,7 @@ class ConAnioFijo extends CodigoGeneratorService {
  */
 function crearStoreDoble(ultimoDevuelto: number | null) {
   const emFalso = {
-    query: vi.fn(async (sql: string) => {
+    query: vi.fn(async (sql: string, _params?: unknown[]) => {
       if (sql.includes('FROM requerimientos')) {
         return []; // código libre por defecto
       }
