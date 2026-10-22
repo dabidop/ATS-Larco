@@ -4,10 +4,7 @@ import './helpers/test-env';
 import { DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import {
-  CodigoGeneratorService,
-  ZONA_HORARIA_EMPRESA,
-} from '../src/modules/requerimientos/codigo-generator.service';
+import { CodigoGeneratorService } from '../src/modules/requerimientos/codigo-generator.service';
 import { Requerimiento } from '../src/modules/requerimientos/requerimiento.entity';
 import { RequerimientosStoreService } from '../src/modules/requerimientos/requerimientos-store.service';
 
@@ -23,8 +20,19 @@ import { RequerimientosStoreService } from '../src/modules/requerimientos/requer
  * (`src/modules/requerimientos/codigo-generator.service.test.ts`) siguen
  * siendo herméticos: la suite completa no depende de dobles contra BD falsa.
  *
- * Limpieza: `afterAll` borra SOLO la fila del año que este test pudo crear en
- * `codigo_sequences` y comprueba que no se insertó ninguna fila en
+ * AISLAMIENTO (Etapa 8, arreglo de flakiness): el test congela el año en
+ * 1990 —una fila PROPIA de `codigo_sequences`— en lugar de usar el año en
+ * curso. Antes compartía la fila del año real con el resto de la suite (que
+ * crea requerimientos vía API en paralelo), con dos efectos nocivos:
+ *  1. `afterAll` borraba el contador del año en curso y las creaciones
+ *     posteriores chocaban con `requerimientos_code_key` → 500 esporádicos.
+ *  2. Un requerimiento creado por OTRO archivo entre medias se llevaba un
+ *     número de la tira y rompía la aserción de «correlativos sin huecos».
+ * Con año propio, la fila 1990 solo la usa este test: la serialización que
+ * se demuestra (bloqueo de fila del upsert) es idéntica sea cual sea el año.
+ *
+ * Limpieza: `afterAll` borra SOLO la fila del año 1990 que este test pudo
+ * crear en `codigo_sequences` y comprueba que no se insertó ninguna fila en
  * `requerimientos`, de modo que la BD dev queda como estaba (el test puede
  * repetirse —seguidas o no— con el mismo resultado).
  */
@@ -32,20 +40,24 @@ import { RequerimientosStoreService } from '../src/modules/requerimientos/requer
 /** Número de llamadas concurrentes (exigido por el plan de la Fase 3). */
 const LLAMADAS_CONCURRENTES = 25;
 
-/** Año actual en la zona horaria de la empresa (misma regla que el servicio). */
-function anioActualEnBogota(): number {
-  return Number(
-    new Intl.DateTimeFormat('en-US', { timeZone: ZONA_HORARIA_EMPRESA, year: 'numeric' }).format(
-      new Date(),
-    ),
-  );
+/**
+ * Año CONGELADO de este test: ficticio y propio (1990). Ningún otro archivo
+ * de la suite genera códigos de 1990, así que la fila del contador está
+ * garantizadamente aislada del resto del mundo (BD dev incluida).
+ */
+const ANIO_DE_PRUEBA = 1990;
+
+/** Subclase que CONGELA el año (mismo patrón hermético que los tests unitarios). */
+class GeneradorConAnioFijo extends CodigoGeneratorService {
+  protected override anioEnZonaDeLaEmpresa(_fecha?: Date): number {
+    return ANIO_DE_PRUEBA;
+  }
 }
 
 describe('CodigoGeneratorService — concurrencia real (BD dev docker)', () => {
   let dataSource: DataSource;
   let store: RequerimientosStoreService;
   let generador: CodigoGeneratorService;
-  let anioActual: number;
   /** Filas en `requerimientos` ANTES del test: el generador no debe tocarla. */
   let requerimientosAntes: number;
 
@@ -59,8 +71,6 @@ describe('CodigoGeneratorService — concurrencia real (BD dev docker)', () => {
       );
     }
 
-    anioActual = anioActualEnBogota();
-
     // Mismo DataSource que construye el módulo (entidades y synchronize:false
     // idénticos); el store hace la inicialización LAZY al primer uso.
     dataSource = new DataSource({
@@ -70,10 +80,15 @@ describe('CodigoGeneratorService — concurrencia real (BD dev docker)', () => {
       synchronize: false,
     });
     store = new RequerimientosStoreService(dataSource);
-    generador = new CodigoGeneratorService(store);
+    generador = new GeneradorConAnioFijo(store);
 
     // Inicialización perezosa del store (patrón de la parte 1).
     await store.repo();
+
+    // Estado limpio garantizado: si una corrida anterior se cortó a medias,
+    // la fila 1990 residual no debe contaminar la tira de esta corrida.
+    await dataSource.query('DELETE FROM codigo_sequences WHERE anio = $1', [ANIO_DE_PRUEBA]);
+
     const filas = (await dataSource.query(
       'SELECT COUNT(*)::int AS total FROM requerimientos',
     )) as Array<{ total: number }>;
@@ -87,9 +102,9 @@ describe('CodigoGeneratorService — concurrencia real (BD dev docker)', () => {
       return;
     }
 
-    // Limpieza quirúrgica: SOLO la fila del año usado por este test, para
+    // Limpieza quirúrgica: SOLO la fila del año propio de este test, para
     // dejar la BD dev como estaba (cualquier otro año queda intacto).
-    await dataSource.query('DELETE FROM codigo_sequences WHERE anio = $1', [anioActual]);
+    await dataSource.query('DELETE FROM codigo_sequences WHERE anio = $1', [ANIO_DE_PRUEBA]);
 
     // El generador solo RESERVA números: no debe haber creado requerimientos.
     const filas = (await dataSource.query(
@@ -100,7 +115,7 @@ describe('CodigoGeneratorService — concurrencia real (BD dev docker)', () => {
     await store.onModuleDestroy(); // cierra la conexión que este test abrió
   });
 
-  it(`${LLAMADAS_CONCURRENTES} llamadas en paralelo producen códigos únicos, consecutivos y del año actual`, async () => {
+  it(`${LLAMADAS_CONCURRENTES} llamadas en paralelo producen códigos únicos, consecutivos y del año congelado`, async () => {
     const codigos = await Promise.all(
       Array.from({ length: LLAMADAS_CONCURRENTES }, () => generador.siguienteCodigo()),
     );
@@ -109,9 +124,9 @@ describe('CodigoGeneratorService — concurrencia real (BD dev docker)', () => {
     expect(codigos).toHaveLength(LLAMADAS_CONCURRENTES);
     expect(new Set(codigos).size).toBe(LLAMADAS_CONCURRENTES);
 
-    // 2) Formato y año: todos `REQ-<año actual en Bogotá>-NNN`.
+    // 2) Formato y año: todos `REQ-<año congelado>-NNN`.
     for (const codigo of codigos) {
-      expect(codigo).toMatch(new RegExp(`^REQ-${anioActual}-[0-9]{3,}$`));
+      expect(codigo).toMatch(new RegExp(`^REQ-${ANIO_DE_PRUEBA}-[0-9]{3,}$`));
     }
 
     // 3) Consecutividad SIN huecos: 25 números distintos cuyo recorrido mide
@@ -124,7 +139,7 @@ describe('CodigoGeneratorService — concurrencia real (BD dev docker)', () => {
 
     // 4) El contador en BD coincide con el último código emitido.
     const filas = (await dataSource.query('SELECT ultimo FROM codigo_sequences WHERE anio = $1', [
-      anioActual,
+      ANIO_DE_PRUEBA,
     ])) as Array<{ ultimo: number | string }>;
     expect(Number(filas[0]?.ultimo)).toBe(maximo);
   });
