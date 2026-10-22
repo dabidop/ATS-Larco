@@ -137,7 +137,7 @@ export function PaginaDetalleRequerimiento() {
             </button>
           )}
           <Link to="/requerimientos" className={CLASE_BOTON_SECUNDARIO}>
-            Volver
+            ← Volver
           </Link>
         </div>
       </div>

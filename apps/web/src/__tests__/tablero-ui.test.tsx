@@ -117,6 +117,11 @@ describe('tablero Kanban (columnas y tarjetas)', () => {
 
     // Las 5 columnas, en orden.
     expect(await screen.findByRole('region', { name: 'Columna Preselección' })).toBeInTheDocument();
+    // Vuelta visible con la flecha ← (Etapa 8C), sigue siendo un <Link>.
+    expect(screen.getByRole('link', { name: '← Volver al requerimiento' })).toHaveAttribute(
+      'href',
+      '/requerimientos/req-1',
+    );
     expect(screen.getByRole('region', { name: 'Columna Antecedentes' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Columna Entrevistas' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Columna Proveedor externo' })).toBeInTheDocument();

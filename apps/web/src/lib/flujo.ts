@@ -10,11 +10,16 @@ import type { DestinoTransicion, EstadoRequerimiento } from '../tipos';
  * `apps/api/src/modules/requerimientos/requerimientos-flujo.ts`:
  *
  *  pendiente → aprobado → en_proceso → cerrado | rechazado
- *  - `pendiente → aprobado`   solo `admin_rrhh` (quién aprueba: RRHH)
- *  - `pendiente → rechazado`  `admin_rrhh` o `lider_area` CREADOR (retira lo suyo)
- *  - `aprobado → en_proceso`  `admin_rrhh` o `analista_seleccion`
- *  - `en_proceso → cerrado`   solo `admin_rrhh` (quién cierra: RRHH)
+ *  - `pendiente → aprobado`   `admin_rrhh` o `superusuario` (quién aprueba: RRHH)
+ *  - `pendiente → rechazado`  `admin_rrhh`/`superusuario`, o `lider_area`
+ *    CREADOR (retira lo suyo)
+ *  - `aprobado → en_proceso`  `admin_rrhh`/`superusuario` o `analista_seleccion`
+ *  - `en_proceso → cerrado`   `admin_rrhh` o `superusuario` (quién cierra: RRHH)
  *  - `cerrado`/`rechazado`    estados TERMINALES, sin salida
+ *
+ * El `superusuario` (IT, migración 008, Etapa 8B) ocupa el MISMO sitio que
+ * `admin_rrhh` en las 4 transiciones (segunda posición de cada lista, igual
+ * que en `requerimientos-flujo.ts` del servidor).
  *
  * SINCRONÍA: si la API cambia su matriz, hay que cambiarla AQUÍ. Aun así la
  * autoridad sigue siendo el servidor (el servicio responde 409/403 si el
@@ -37,15 +42,16 @@ export const TRANSICIONES_VALIDAS: Readonly<
  * significa «ningún rol la puede ejecutar».
  */
 export const PERMISOS_TRANSICION: Readonly<Partial<Record<string, readonly string[]>>> = {
-  'pendiente>aprobado': ['admin_rrhh'],
-  'pendiente>rechazado': ['admin_rrhh', 'lider_area'],
-  'aprobado>en_proceso': ['admin_rrhh', 'analista_seleccion'],
-  'en_proceso>cerrado': ['admin_rrhh'],
+  'pendiente>aprobado': ['admin_rrhh', 'superusuario'],
+  'pendiente>rechazado': ['admin_rrhh', 'superusuario', 'lider_area'],
+  'aprobado>en_proceso': ['admin_rrhh', 'superusuario', 'analista_seleccion'],
+  'en_proceso>cerrado': ['admin_rrhh', 'superusuario'],
 };
 
 /**
  * Regla extra «cada quien retira lo suyo»: `lider_area` solo puede rechazar un
- * requerimiento QUE ÉL CREÓ; `admin_rrhh` rechaza cualquier solicitud.
+ * requerimiento QUE ÉL CREÓ; `admin_rrhh` y `superusuario` rechazan cualquier
+ * solicitud (no están sujetos a la regla, igual que en el servidor).
  */
 const REQUIERE_SER_CREADOR: Readonly<Partial<Record<string, readonly string[]>>> = {
   'pendiente>rechazado': ['lider_area'],

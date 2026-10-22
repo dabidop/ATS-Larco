@@ -89,7 +89,7 @@ export function PaginaDetalleCandidato() {
             </button>
           )}
           <Link to="/candidatos" className={CLASE_BOTON_SECUNDARIO}>
-            Volver
+            ← Volver
           </Link>
         </div>
       </div>
@@ -131,9 +131,9 @@ export function PaginaDetalleCandidato() {
 }
 
 /**
- * Sección de archivos de CV: subida (solo `analista_seleccion`/`admin_rrhh`,
- * con validación de tipo y tamaño ANTES de enviar) y descarga (fetch→blob→
- * objectURL, porque el endpoint exige el header `Authorization`).
+ * Sección de archivos de CV: subida (solo `analista_seleccion`/`admin_rrhh`/
+ * `superusuario`, con validación de tipo y tamaño ANTES de enviar) y descarga
+ * (fetch→blob→objectURL, porque el endpoint exige el header `Authorization`).
  */
 function SeccionArchivos({ candidatoId, rol }: { candidatoId: string; rol: string | null }) {
   const archivos = useRecurso<ArchivoCv[]>(

@@ -15,7 +15,7 @@ export function Pagina404() {
         to="/requerimientos"
         className="mt-4 inline-block text-sm font-semibold text-emerald-400 hover:text-emerald-300"
       >
-        Volver a Requerimientos
+        ← Volver a Requerimientos
       </Link>
     </div>
   );

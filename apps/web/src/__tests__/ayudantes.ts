@@ -10,6 +10,7 @@ import type {
   Postulacion,
   Requerimiento,
   RespuestaLogin,
+  Usuario,
   UsuarioSesion,
 } from '../tipos';
 
@@ -171,6 +172,20 @@ export function fixtureHistorial(extra: Partial<EntradaHistorial> = {}): Entrada
 /** Respuesta paginada de mentira. */
 export function fixturePagina<T>(items: T[], extra: Partial<Pagina<T>> = {}): Pagina<T> {
   return { items, total: items.length, page: 1, limit: 10, ...extra };
+}
+
+/** Usuario de mentira con la forma de `UsuarioResponseDto` (NUNCA trae password). */
+export function fixtureUsuario(extra: Partial<Usuario> = {}): Usuario {
+  return {
+    id: 'usr-1',
+    nombre: 'Ana Torres',
+    email: 'ana@larco.test',
+    rol: 'admin_rrhh',
+    rolNombre: 'Administrador RRHH',
+    activo: true,
+    creadoEn: '2026-01-10T08:00:00.000Z',
+    ...extra,
+  };
 }
 
 /** Postulación de mentira con la forma de `PostulacionResponseDto`. */

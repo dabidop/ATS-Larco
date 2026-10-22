@@ -18,7 +18,7 @@ const LIMITE = 10;
 /**
  * Listado paginado de requerimientos (`GET /api/requerimientos`), con filtro
  * por estado. Cualquier rol autenticado puede verlo; el botón «Nuevo» solo
- * aparece para `admin_rrhh` y `lider_area`.
+ * aparece para `admin_rrhh`, `superusuario` y `lider_area`.
  */
 export function PaginaRequerimientos() {
   const [pagina, setPagina] = useState(1);

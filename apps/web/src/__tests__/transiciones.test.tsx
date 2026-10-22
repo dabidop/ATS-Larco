@@ -43,6 +43,11 @@ describe('transiciones de estado del requerimiento (botones según estado y rol)
     expect(await screen.findByRole('button', { name: 'Aprobar' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Rechazar' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Iniciar proceso' })).not.toBeInTheDocument();
+    // Vuelta visible con la flecha ← (Etapa 8C), sigue siendo un <Link>.
+    expect(screen.getByRole('link', { name: '← Volver' })).toHaveAttribute(
+      'href',
+      '/requerimientos',
+    );
   });
 
   it('analista_seleccion en pendiente NO ve ninguna transición', async () => {

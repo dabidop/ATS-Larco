@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { solicitud } from '../../lib/api';
 import { puedeGestionarRequerimientos } from '../../lib/rbac';
@@ -8,8 +8,9 @@ import { FormularioRequerimiento } from '../../components/requerimientos/Formula
 
 /**
  * Alta de requerimientos (`POST /api/requerimientos`) con las 5 secciones.
- * Solo `admin_rrhh` y `lider_area` pueden crear; el botón y el propio envío
- * se condicionan con el mismo predicado (el backend respondería 403 igual).
+ * Solo `admin_rrhh`, `superusuario` y `lider_area` pueden crear; el botón y el
+ * propio envío se condicionan con el mismo predicado (el backend respondería
+ * 403 igual).
  */
 export function PaginaNuevoRequerimiento() {
   const navegar = useNavigate();
@@ -33,7 +34,15 @@ export function PaginaNuevoRequerimiento() {
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-bold tracking-tight text-slate-100">Nuevo requerimiento</h1>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Link
+          to="/requerimientos"
+          className="text-sm font-semibold text-emerald-400 hover:text-emerald-300"
+        >
+          ← Volver
+        </Link>
+        <h1 className="text-xl font-bold tracking-tight text-slate-100">Nuevo requerimiento</h1>
+      </div>
       <FormularioRequerimiento textoGuardar="Crear requerimiento" onGuardar={alGuardar} />
     </div>
   );

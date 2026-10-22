@@ -10,6 +10,8 @@ import { PaginaLogin } from './pages/Login';
 import { PaginaDetalleRequerimiento } from './pages/requerimientos/DetalleRequerimiento';
 import { PaginaRequerimientos } from './pages/requerimientos/ListaRequerimientos';
 import { PaginaNuevoRequerimiento } from './pages/requerimientos/NuevoRequerimiento';
+import { PaginaUsuarios } from './pages/usuarios/ListaUsuarios';
+import { PaginaNuevoUsuario } from './pages/usuarios/NuevoUsuario';
 import { TableroEmbudo } from './pages/embudo/TableroEmbudo';
 
 /**
@@ -21,6 +23,8 @@ import { TableroEmbudo } from './pages/embudo/TableroEmbudo';
  *  - Dentro, el `Layout` aporta header + navegación por rol.
  *  - `/requerimientos/:id/embudo` → tablero Kanban del embudo de selección
  *    (protegida, dentro del Layout).
+ *  - `/usuarios` (+ `/usuarios/nuevo`) → SOLO `superusuario`
+ *    (`RutaProtegida rolPermitido`); cualquier otro rol → `/requerimientos`.
  *  - `/` → redirect a `/requerimientos`; cualquier otra ruta → 404.
  */
 export function RutasAplicacion() {
@@ -37,6 +41,10 @@ export function RutasAplicacion() {
           <Route path="candidatos" element={<PaginaCandidatos />} />
           <Route path="candidatos/nuevo" element={<PaginaNuevoCandidato />} />
           <Route path="candidatos/:id" element={<PaginaDetalleCandidato />} />
+          <Route path="usuarios" element={<RutaProtegida rolPermitido="superusuario" />}>
+            <Route index element={<PaginaUsuarios />} />
+            <Route path="nuevo" element={<PaginaNuevoUsuario />} />
+          </Route>
           <Route path="*" element={<Pagina404 />} />
         </Route>
       </Route>

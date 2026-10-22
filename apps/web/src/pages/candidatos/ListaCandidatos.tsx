@@ -20,8 +20,8 @@ const LIMITE = 10;
 /**
  * Listado paginado de candidatos (`GET /api/candidatos`) con búsqueda por
  * nombre (`q`, parcial) y por cédula (exacta). Cualquier rol autenticado
- * puede consultarlo; «Nuevo candidato» es de `analista_seleccion` y
- * `admin_rrhh`.
+ * puede consultarlo; «Nuevo candidato» es de `analista_seleccion`,
+ * `admin_rrhh` y `superusuario`.
  */
 export function PaginaCandidatos() {
   const [valores, setValores] = useState({ q: '', cedula: '' });

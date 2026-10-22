@@ -7,8 +7,8 @@
  * los textos visibles en español, según la convención del monorepo.
  */
 
-/** Códigos de rol admitidos por el RBAC (`roles.code` en BD). */
-export type Rol = 'admin_rrhh' | 'analista_seleccion' | 'lider_area';
+/** Códigos de rol admitidos por el RBAC (`roles.code` en BD, migración 008). */
+export type Rol = 'admin_rrhh' | 'analista_seleccion' | 'lider_area' | 'superusuario';
 
 /**
  * Estados del ciclo de vida de un requerimiento.
@@ -256,4 +256,42 @@ export interface EntradaHistorialPostulacion {
   usuario: string | null;
   usuarioEmail: string | null;
   campos: CambioHistorialPostulacion[];
+}
+
+// ─────────────────────── Usuarios (gestión de cuentas, Etapa 8B) ───────────────────────
+
+/**
+ * Usuario tal y como lo devuelve `/api/usuarios` (`UsuarioResponseDto`).
+ * La API NUNCA devuelve la contraseña (ni el hash): la forma pública está
+ * fijada en `apps/api/src/modules/usuarios/dto/usuario.response.ts`.
+ */
+export interface Usuario {
+  id: string;
+  nombre: string;
+  email: string;
+  /** Código del rol (`roles.code`), fuente de verdad del RBAC. */
+  rol: string;
+  /** Nombre legible del rol (`roles.name`) para pintar la tabla. */
+  rolNombre: string;
+  activo: boolean;
+  /** ISO 8601 (UTC). */
+  creadoEn: string;
+}
+
+/** Cuerpo de `POST /api/usuarios` (contraseña mínima de 8 caracteres). */
+export interface UsuarioNuevo {
+  nombre: string;
+  email: string;
+  password: string;
+  rol: string;
+}
+
+/**
+ * Cuerpo de `PATCH /api/usuarios/:id`: parcial, y SOLO estos 3 campos (el DTO
+ * del servidor rechaza `email`/`nombre` con 400). Al menos uno es obligatorio.
+ */
+export interface UsuarioActualizacion {
+  activo?: boolean;
+  rol?: string;
+  password?: string;
 }

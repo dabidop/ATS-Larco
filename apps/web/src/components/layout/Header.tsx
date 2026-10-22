@@ -5,6 +5,7 @@ import {
   etiquetaRol,
   puedeVerSeccionCandidatos,
   puedeVerSeccionRequerimientos,
+  puedeVerSeccionUsuarios,
 } from '../../lib/rbac';
 import { useSesionStore } from '../../store/sesion';
 import { CLASE_BOTON_SECUNDARIO } from '../ui/estilos';
@@ -30,6 +31,7 @@ export function Header() {
       visible: puedeVerSeccionRequerimientos(rol),
     },
     { destino: '/candidatos', etiqueta: 'Candidatos', visible: puedeVerSeccionCandidatos(rol) },
+    { destino: '/usuarios', etiqueta: 'Usuarios', visible: puedeVerSeccionUsuarios(rol) },
   ].filter((seccion) => seccion.visible);
 
   const alSalir = () => {

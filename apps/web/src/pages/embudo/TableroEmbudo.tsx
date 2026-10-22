@@ -38,8 +38,8 @@ import { CLASE_BOTON_SECUNDARIO, CLASE_TARJETA } from '../../components/ui/estil
  *
  * SOLO LECTURA: el tablero es editable solo si (a) el requerimiento está
  * `en_proceso` (fuera de ese estado la API responde 409) y (b) el rol es
- * `analista_seleccion` o `admin_rrhh` (el resto recibiría 403). En otro caso
- * el tablero se pinta con un aviso y SIN acciones.
+ * `analista_seleccion`, `admin_rrhh` o `superusuario` (el resto recibiría
+ * 403). En otro caso el tablero se pinta con un aviso y SIN acciones.
  */
 export function TableroEmbudo() {
   const parametros = useParams();
@@ -130,7 +130,7 @@ export function TableroEmbudo() {
             <BadgeEstado estado={requerimiento.estado} />
           )}
           <Link to={`/requerimientos/${id}`} className={CLASE_BOTON_SECUNDARIO}>
-            Volver al requerimiento
+            ← Volver al requerimiento
           </Link>
         </div>
       </div>

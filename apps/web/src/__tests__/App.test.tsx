@@ -66,6 +66,10 @@ describe('App (árbol de rutas completo)', () => {
     expect(
       await screen.findByRole('heading', { name: /Página no encontrada/i }),
     ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '← Volver a Requerimientos' })).toHaveAttribute(
+      'href',
+      '/requerimientos',
+    );
   });
 
   it('la ruta del tablero de selección protegida pinta el tablero con sesión', async () => {

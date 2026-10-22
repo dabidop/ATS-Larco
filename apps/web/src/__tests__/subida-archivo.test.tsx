@@ -72,6 +72,9 @@ describe('archivos de CV del candidato', () => {
     const fetchMock = pintarDetalle();
     await screen.findByText('cv-maria.pdf');
 
+    // Vuelta visible con la flecha ← (Etapa 8C), sigue siendo un <Link>.
+    expect(screen.getByRole('link', { name: '← Volver' })).toHaveAttribute('href', '/candidatos');
+
     adjuntar(new File(['hola'], 'notas.txt', { type: 'text/plain' }));
 
     expect(await screen.findByText(/Formato no admitido/i)).toBeInTheDocument();

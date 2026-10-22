@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { solicitud } from '../../lib/api';
 import { puedeGestionarCandidatos } from '../../lib/rbac';
@@ -7,8 +7,9 @@ import type { Candidato, CandidatoNuevo } from '../../tipos';
 import { FormularioCandidato } from '../../components/candidatos/FormularioCandidato';
 
 /**
- * Alta de candidatos (`POST /api/candidatos`). Solo `analista_seleccion` y
- * `admin_rrhh` pueden crear; el backend respondería 403 igualmente.
+ * Alta de candidatos (`POST /api/candidatos`). Solo `analista_seleccion`,
+ * `admin_rrhh` y `superusuario` pueden crear; el backend respondería 403
+ * igualmente.
  */
 export function PaginaNuevoCandidato() {
   const navegar = useNavigate();
@@ -29,7 +30,15 @@ export function PaginaNuevoCandidato() {
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-bold tracking-tight text-slate-100">Nuevo candidato</h1>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Link
+          to="/candidatos"
+          className="text-sm font-semibold text-emerald-400 hover:text-emerald-300"
+        >
+          ← Volver
+        </Link>
+        <h1 className="text-xl font-bold tracking-tight text-slate-100">Nuevo candidato</h1>
+      </div>
       <FormularioCandidato textoGuardar="Crear candidato" onGuardar={alGuardar} />
     </div>
   );
