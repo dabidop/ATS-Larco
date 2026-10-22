@@ -8,12 +8,18 @@ import { EstadoRequerimiento } from './requerimiento.entity';
  * Fichero de DATOS puros: sin BD, sin Nest, sin I/O — se puede testear en
  * unitarios herméticos y consultar desde el servicio.
  *
- * Flujo: `pendiente → aprobado → en_proceso → cerrado | rechazado`
+ * Flujo: `pendiente → aprobado → en_proceso → cerrado | rechazado`, más
+ * `exitoso` (Etapa 9, migración 009):
  *  - `pendiente → aprobado`   QUIÉN APRUEBA: RRHH (`admin_rrhh`) o `superusuario`.
  *  - `pendiente → rechazado`  RRHH/superusuario, o el líder sobre SU propia solicitud.
  *  - `aprobado → en_proceso`  RRHH/superusuario o el analista de selección que lo ejecuta.
- *  - `en_proceso → cerrado`   QUIÉN CIERRA: RRHH (`admin_rrhh`) o `superusuario`.
- *  - `cerrado` y `rechazado`  son estados TERMINALES (sin salida).
+ *  - `en_proceso → cerrado`   QUIÉN CIERRA: RRHH (`admin_rrhh`) o `superusuario`
+ *                             (exige motivo + resultado: ¿se contrató?).
+ *  - `en_proceso → exitoso`   SOLO automático: las contrataciones cubrieron las
+ *     plazas pedidas (lo dispara el servicio del embudo al mover a
+ *     «Contratación»; NINGÚN rol la ejecuta a mano ni figura en el DTO de
+ *     transiciones). Ninguna transición puede llegar a `exitoso`.
+ *  - `cerrado`, `rechazado` y `exitoso` son estados TERMINALES (sin salida).
  *
  * `superusuario` (IT, migración 008) hereda TODO el poder de `admin_rrhh`
  * sobre el negocio (Etapa 8B), por eso figura en las MISMAS 4 transiciones.
@@ -22,13 +28,15 @@ import { EstadoRequerimiento } from './requerimiento.entity';
  * `estado_requerimiento` de PostgreSQL (migración 003).
  */
 
-/** Clave de matriz `"origen>destino"` para los 5 × 5 pares de estados. */
+/** Clave de matriz `"origen>destino"` para los pares de estados (6 × 6). */
 export type ClaveTransicion = `${EstadoRequerimiento}>${EstadoRequerimiento}`;
 
 /**
  * Transiciones ESTRUCTURALMENTE válidas por estado (qué se puede hacer desde
  * cada estado, con independencia de quién lo pida). Los estados terminales
- * (`cerrado`, `rechazado`) apuntan a `[]`: sin salida.
+ * (`cerrado`, `rechazado`, `exitoso`) apuntan a `[]`: sin salida. `exitoso`
+ * tampoco es destino de NINGUNA entrada: se alcanza solo por el servicio del
+ * embudo (UPDATE directo auditado), nunca vía `POST /transiciones`.
  */
 export const TRANSICIONES_VALIDAS: Readonly<
   Record<EstadoRequerimiento, readonly EstadoRequerimiento[]>
@@ -38,6 +46,7 @@ export const TRANSICIONES_VALIDAS: Readonly<
   [EstadoRequerimiento.EnProceso]: [EstadoRequerimiento.Cerrado],
   [EstadoRequerimiento.Cerrado]: [],
   [EstadoRequerimiento.Rechazado]: [],
+  [EstadoRequerimiento.Exitoso]: [],
 };
 
 /**

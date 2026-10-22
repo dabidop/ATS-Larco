@@ -1,3 +1,7 @@
+import {
+  ModalidadRequerimiento,
+  UrgenciaRequerimiento,
+} from './requerimiento.entity';
 import type { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
 import type { RequerimientoResponseDto } from './dto/requerimiento.response';
 import type { UpdateRequerimientoDto } from './dto/update-requerimiento.dto';
@@ -25,7 +29,15 @@ import type { Requerimiento } from './requerimiento.entity';
  */
 export type RequerimientoEditable = Omit<
   Requerimiento,
-  'id' | 'code' | 'estado' | 'createdBy' | 'motivoRechazo' | 'createdAt' | 'updatedAt'
+  | 'id'
+  | 'code'
+  | 'estado'
+  | 'createdBy'
+  | 'motivoRechazo'
+  | 'motivoCierre'
+  | 'resultadoCierre'
+  | 'createdAt'
+  | 'updatedAt'
 >;
 
 /**
@@ -39,6 +51,9 @@ export function buildCreateData(dto: CreateRequerimientoDto): RequerimientoEdita
     titulo: dto.identificacion.titulo,
     jefatura: dto.identificacion.jefatura,
     numeroPlazas: dto.identificacion.numeroPlazas,
+    urgencia: dto.identificacion.urgencia ?? UrgenciaRequerimiento.Normal,
+    modalidad: dto.identificacion.modalidad ?? ModalidadRequerimiento.Directa,
+    departamentoId: dto.identificacion.departamentoId ?? null,
     ubicacion: dto.identificacion.ubicacion ?? null,
     fechaRequerida: dto.identificacion.fechaRequerida ?? null,
     experienciaRequerida: dto.perfil.experienciaRequerida ?? null,
@@ -71,6 +86,11 @@ export function buildUpdateData(dto: UpdateRequerimientoDto): Partial<Requerimie
     if (identificacion.jefatura !== undefined) cambios.jefatura = identificacion.jefatura;
     if (identificacion.numeroPlazas !== undefined)
       cambios.numeroPlazas = identificacion.numeroPlazas;
+    if (identificacion.urgencia !== undefined) cambios.urgencia = identificacion.urgencia;
+    if (identificacion.modalidad !== undefined) cambios.modalidad = identificacion.modalidad;
+    if (identificacion.departamentoId !== undefined) {
+      cambios.departamentoId = identificacion.departamentoId ?? null;
+    }
     if (identificacion.ubicacion !== undefined) cambios.ubicacion = identificacion.ubicacion;
     if (identificacion.fechaRequerida !== undefined) {
       cambios.fechaRequerida = identificacion.fechaRequerida;
@@ -123,6 +143,9 @@ export function toResponse(entidad: Requerimiento): RequerimientoResponseDto {
     titulo: entidad.titulo,
     jefatura: entidad.jefatura,
     numeroPlazas: entidad.numeroPlazas,
+    urgencia: entidad.urgencia,
+    modalidad: entidad.modalidad,
+    departamentoId: entidad.departamentoId,
     ubicacion: entidad.ubicacion,
     fechaRequerida: entidad.fechaRequerida,
     experienciaRequerida: entidad.experienciaRequerida,
@@ -136,6 +159,8 @@ export function toResponse(entidad: Requerimiento): RequerimientoResponseDto {
     jornada: entidad.jornada,
     justificacion: entidad.justificacion,
     motivoRechazo: entidad.motivoRechazo,
+    motivoCierre: entidad.motivoCierre,
+    resultadoCierre: entidad.resultadoCierre,
     createdAt: entidad.createdAt.toISOString(),
     updatedAt: entidad.updatedAt.toISOString(),
   };

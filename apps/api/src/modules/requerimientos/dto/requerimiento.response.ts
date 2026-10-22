@@ -1,4 +1,9 @@
-import type { EstadoRequerimiento } from '../requerimiento.entity';
+import type {
+  EstadoRequerimiento,
+  ModalidadRequerimiento,
+  ResultadoCierre,
+  UrgenciaRequerimiento,
+} from '../requerimiento.entity';
 
 /**
  * Forma PÚBLICA de un requerimiento tal y como sale por la API (camelCase).
@@ -17,6 +22,12 @@ export interface RequerimientoResponseDto {
   titulo: string;
   jefatura: string;
   numeroPlazas: number;
+  /** Prioridad: `normal` | `alta` | `critica` (badges del listado). */
+  urgencia: UrgenciaRequerimiento;
+  /** `directa` | `indirecta` | `terceros` («Terceros/Contratistas» en UI). */
+  modalidad: ModalidadRequerimiento;
+  /** FK al área LARCO; `null` si el requerimiento no está asociado. */
+  departamentoId: string | null;
   ubicacion: string | null;
   /** `'YYYY-MM-DD'`: la columna `date` se hidrata como string, no como Date. */
   fechaRequerida: string | null;
@@ -35,6 +46,10 @@ export interface RequerimientoResponseDto {
   // Sección 5 — justificación
   justificacion: string;
   motivoRechazo: string | null;
+  /** Poblado solo cuando `estado = 'cerrado'` (obligatorio, CHECK en BD). */
+  motivoCierre: string | null;
+  /** `contratacion` | `cierre_vacante`; solo al cerrar. */
+  resultadoCierre: ResultadoCierre | null;
   // Control temporal (ISO 8601, UTC)
   createdAt: string;
   updatedAt: string;

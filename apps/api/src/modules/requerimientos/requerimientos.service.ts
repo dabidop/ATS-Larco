@@ -239,12 +239,25 @@ export class RequerimientosService {
       throw new ForbiddenException(denegacion);
     }
 
-    // 400 — rechazar exige decir por qué (el motivo viaja recortado).
+    // 400 — rechazar o cerrar exigen decir por qué (viajan recortados). Cerrar
+    // además pregunta SI SE CONTRATÓ (Etapa 9: resultado_cierre, CHECK de BD).
     const esRechazo = destino === EstadoRequerimiento.Rechazado;
+    const esCierre = destino === EstadoRequerimiento.Cerrado;
     const motivo = dto.motivo?.trim() ?? null;
     if (esRechazo && motivo === null) {
       throw new BadRequestException(
         'Para rechazar un requerimiento el campo "motivo" es obligatorio',
+      );
+    }
+    if (esCierre && motivo === null) {
+      throw new BadRequestException(
+        'Para cerrar un requerimiento el campo "motivo" es obligatorio',
+      );
+    }
+    if (esCierre && dto.resultado === undefined) {
+      throw new BadRequestException(
+        'Para cerrar un requerimiento el campo "resultado" es obligatorio: ' +
+          `'contratacion' (se contrató a alguien) o 'cierre_vacante' (se cerró sin contratar)`,
       );
     }
 
@@ -256,11 +269,13 @@ export class RequerimientosService {
       // el valor muere con la transacción y no se filtra al resto del pool.
       await this.fijarActorDeAuditoria(em, user.sub);
 
-      const resultado = await em.update(
-        Requerimiento,
-        { id, estado: origen },
-        esRechazo ? { estado: destino, motivoRechazo: motivo } : { estado: destino },
-      );
+      const cambios =
+        esRechazo
+          ? { estado: destino, motivoRechazo: motivo }
+          : esCierre
+            ? { estado: destino, motivoCierre: motivo, resultadoCierre: dto.resultado }
+            : { estado: destino };
+      const resultado = await em.update(Requerimiento, { id, estado: origen }, cambios);
       if (resultado.affected === 0) {
         throw new ConflictException(
           `Conflicto: el requerimiento cambió de estado mientras se procesaba ` +

@@ -1,6 +1,6 @@
 import { IsEnum, IsOptional, IsString } from 'class-validator';
 
-import { EstadoRequerimiento } from '../requerimiento.entity';
+import { EstadoRequerimiento, ResultadoCierre } from '../requerimiento.entity';
 
 /**
  * Cuerpo de `POST /api/requerimientos/:id/transiciones`.
@@ -34,8 +34,22 @@ export class TransicionarRequerimientoDto {
    * Obligatorio SOLO cuando `destino = 'rechazado'` (lo exige el servicio con
    * un 400 claro y, en última instancia, el CHECK `requerimientos_rechazo_check`
    * de la BD). Para el resto de destinos se ignora si viene.
+   *
+   * Etapa 9: `destino = 'cerrado'` TAMBIÉN lo exige («cerrar» ahora responde
+   * POR QUÉ se cierra; CHECK `requerimientos_cierre_check`).
    */
   @IsOptional()
   @IsString({ message: 'motivo debe ser una cadena de texto' })
   motivo?: string;
+
+  /**
+   * Obligatorio SOLO cuando `destino = 'cerrado'` (Etapa 9): ¿se cerró con
+   * ALGUIEN CONTRATADO (`contratacion`) o se vació la plaza
+   * (`cierre_vacante`)? El servicio responde 400 si falta.
+   */
+  @IsOptional()
+  @IsEnum(ResultadoCierre, {
+    message: `resultado debe ser uno de: ${Object.values(ResultadoCierre).join(', ')}`,
+  })
+  resultado?: ResultadoCierre;
 }

@@ -4,15 +4,18 @@ import {
   IsArray,
   IsDateString,
   IsDefined,
+  IsEnum,
   IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Min,
   ValidateNested,
 } from 'class-validator';
 
+import { ModalidadRequerimiento, UrgenciaRequerimiento } from '../requerimiento.entity';
 import { IsSalarioRangoValido } from './salary-range.validator';
 
 /**
@@ -47,6 +50,25 @@ export class IdentificacionRequerimientoDto {
   @IsInt({ message: 'numeroPlazas debe ser un número entero' })
   @Min(1, { message: 'numeroPlazas debe ser al menos 1' })
   numeroPlazas!: number;
+
+  /** Prioridad de la vacante (default `normal` en BD). */
+  @IsOptional()
+  @IsEnum(UrgenciaRequerimiento, {
+    message: `urgencia debe ser una de: ${Object.values(UrgenciaRequerimiento).join(', ')}`,
+  })
+  urgencia?: UrgenciaRequerimiento;
+
+  /** Modalidad de contratación (default `directa` en BD). */
+  @IsOptional()
+  @IsEnum(ModalidadRequerimiento, {
+    message: `modalidad debe ser una de: ${Object.values(ModalidadRequerimiento).join(', ')}`,
+  })
+  modalidad?: ModalidadRequerimiento;
+
+  /** Área LARCO solicitante (FK a `departamentos`; nullable). */
+  @IsOptional()
+  @IsUUID('4', { message: 'departamentoId debe ser un UUID válido' })
+  departamentoId?: string;
 
   @IsOptional()
   @IsString({ message: 'ubicacion debe ser una cadena de texto' })

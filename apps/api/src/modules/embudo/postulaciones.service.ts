@@ -20,11 +20,14 @@ import {
   type PostulacionesPageDto,
 } from './dto/postulacion.response';
 import {
-  esAdyacente,
+  FASE_CONTRATACION,
+  esRetroceso,
+  esSiguiente,
   esTerminal,
   estadoTrasMover,
   mensajeFaseActual,
   mensajeNoAdyacente,
+  mensajeRetroceso,
   mensajeTerminal,
   type Estado,
   type Fase,
@@ -37,15 +40,19 @@ import {
   type FilaAuditoriaPostulacion,
 } from './postulaciones.mapper';
 
-/** Nombre EXACTO del índice único creado en la migración 007. */
-const UNIQUE_POSTULACION = 'postulaciones_candidato_requerimiento_unique';
+/** Nombre EXACTO de la constraint única creada en la migración 009 (1 candidato = 1 requerimiento). */
+const UNIQUE_POSTULACION = 'postulaciones_candidato_unico';
 
 /** Único estado del requerimiento en el que se selecciona personal (ENUM de 003). */
 const REQUERIMIENTO_EN_PROCESO = 'en_proceso';
 
+/** Estado del requerimiento «Contrato exitoso» (ENUM 009; solo lo pone el servicio). */
+const REQUERIMIENTO_EXITOSO = 'exitoso';
+
 /** Mensaje de duplicado, compartido por el chequeo previo y el 23505 de BD. */
-const MENSAJE_DUPLICADO = (candidatoId: string, requerimientoId: string): string =>
-  `El candidato ${candidatoId} ya tiene una postulación para el requerimiento ${requerimientoId}`;
+const MENSAJE_DUPLICADO = (candidatoId: string): string =>
+  `El candidato ${candidatoId} ya pertenece a un requerimiento: ` +
+  `un candidato solo puede estar en UNO (regla de negocio)`;
 
 /** Forma mínima del error de BD que interesa (pg copia `code`/`constraint`). */
 interface ErrorConConstraint {
@@ -79,17 +86,21 @@ function esViolacionUnica(error: unknown, constraint: string): boolean {
  * comprobar algo de un candidato o de un requerimiento, lo consulta por SQL
  * crudo en la MISMA base de datos.
  *
- * Invariantes que sostiene (además de los CHECK y el índice único de la 007):
+ * Invariantes que sostiene (además de los CHECK y el índice único de la 007/009):
  *  - Toda postulación NACE en `preseleccion`/`activa` (defaults de la columna;
  *    el cliente no elige ni la fase ni el estado).
  *  - Solo se postula a un requerimiento en `en_proceso` (la selección se
  *    ejecuta durante la fase activa del requerimiento) → 409 en otro estado.
- *  - Un candidato postula UNA sola vez por requerimiento → 409 (hay chequeo
- *    previo para responder limpio y el índice único cierra la CARRERA).
- *  - Un movimiento solo va a una fase ADYACENTE (un paso, en ambas
- *    direcciones); saltar fases → 409.
+ *  - Un candidato pertenece a UN solo requerimiento (reglas 6 y 8 de la
+ *    retroalimentación, Etapa 9) → 409 si ya está en cualquier otro; el índice
+ *    único `postulaciones_candidato_unico` (migración 009) cierra la carrera.
+ *  - Un movimiento solo avanza UN paso hacia adelante (el embudo NO retrocede,
+ *    regla 11 de la retroalimentación); saltar o devolver → 409.
  *  - Llegar a `contratacion` ES contratar: `estado = 'contratado'` (terminal)
- *    en la MISMA escritura.
+ *    en la MISMA escritura. El cupo de `numero_plazas` manda: no se mueve a
+ *    contratación ni se aceptan candidatos cuando ya está cubierto (reglas 3 y
+ *    4), y al llenar la última plaza el requerimiento pasa SOLO a `exitoso`
+ *    («Contrato exitoso», auditado con el actor que movió).
  *  - Descartar exige motivo y deja la fila en `descartado` (terminal). El
  *    CHECK `postulaciones_descarte_check` es la red de seguridad final.
  *
@@ -110,31 +121,42 @@ export class PostulacionesService {
    *  2. **404** si no existe el requerimiento.
    *  3. **409** si el requerimiento NO está `en_proceso`: solo se selecciona
    *     durante la fase activa del requerimiento (en `pendiente` aún no se
-   *     ha aprobado; en `cerrado`/`rechazado` la vacante ya no se cubre).
-   *  4. **409** si el candidato YA postuló a ese requerimiento (chequeo previo
-   *     para responder sin llegar a la constraint; el índice único
-   *     `postulaciones_candidato_requerimiento_unique` cubre la carrera).
-   *  5. INSERT dentro de la transacción con el GUC del actor: `fase` y
+   *     ha aprobado; en `cerrado`/`rechazado`/`exitoso` la vacante ya no se
+   *     cubre).
+   *  4. **409** si el candidato YA pertenece a OTRO requerimiento (regla 8,
+   *     Etapa 9: un candidato = un requerimiento; chequeo previo para responder
+   *     sin llegar a la constraint `postulaciones_candidato_unico`, que cubre
+   *     la carrera).
+   *  5. **409** si el requerimiento ya cubrió sus plazas (regla 4: no se
+   *     aceptan más candidatos cuando la sección de contratación está llena).
+   *  6. INSERT dentro de la transacción con el GUC del actor: `fase` y
    *     `estado` NO se escriben — son los defaults de las columnas.
    */
   async crear(dto: CreatePostulacionDto, createdBy: string): Promise<PostulacionResponseDto> {
     const candidato = await this.resumenDelCandidato(dto.candidatoId);
 
-    const estadoRequerimiento = await this.estadoDelRequerimiento(dto.requerimientoId);
-    if (estadoRequerimiento !== REQUERIMIENTO_EN_PROCESO) {
+    const requerimiento = await this.datosDelRequerimiento(dto.requerimientoId);
+    if (requerimiento.estado !== REQUERIMIENTO_EN_PROCESO) {
       throw new ConflictException(
         `Solo se pueden registrar postulaciones en requerimientos en proceso: ` +
-          `el requerimiento ${dto.requerimientoId} está en '${estadoRequerimiento}'`,
+          `el requerimiento ${dto.requerimientoId} está en '${requerimiento.estado}'`,
       );
     }
 
-    const mensajeDuplicado = MENSAJE_DUPLICADO(dto.candidatoId, dto.requerimientoId);
-    const existente = await this.database.query(
-      'SELECT 1 FROM postulaciones WHERE candidato_id = $1 AND requerimiento_id = $2',
-      [dto.candidatoId, dto.requerimientoId],
-    );
+    const mensajeDuplicado = MENSAJE_DUPLICADO(dto.candidatoId);
+    const existente = await this.database.query('SELECT 1 FROM postulaciones WHERE candidato_id = $1', [
+      dto.candidatoId,
+    ]);
     if ((existente.rowCount ?? 0) > 0) {
       throw new ConflictException(mensajeDuplicado);
+    }
+
+    const contratados = await this.contratadosDelRequerimiento(dto.requerimientoId);
+    if (contratados >= requerimiento.numeroPlazas) {
+      throw new ConflictException(
+        `El requerimiento ${dto.requerimientoId} ya cubrió sus ${requerimiento.numeroPlazas} ` +
+          `plaza(s): no se aceptan más candidatos (sección de contratación llena)`,
+      );
     }
 
     try {
@@ -229,12 +251,20 @@ export class PostulacionesService {
    *  2. **409** si el estado es TERMINAL (`contratado`/`descartado`): el
    *     desenlace ya está decidido, el embudo no se mueve más.
    *  3. **409** si la fase destino es la MISMA que la actual.
-   *  4. **409** si la fase destino NO es ADYACENTE: solo se puede mover UN
-   *     paso, en cualquiera de las dos direcciones (el Kanban permite
-   *     regresar, pero nunca saltar).
-   *  5. Escritura dentro de la transacción con el GUC del actor, con criterio
+   *  4. **409** si la fase destino es un RETROCESO (el embudo SOLO AVANZA,
+   *     regla 11 de la retroalimentación, Etapa 9).
+   *  5. **409** si la fase destino NO es la SIGUIENTE (no se saltan fases).
+   *  6. Al mover a `contratacion` (y SOLO en ese caso): se bloquea la fila del
+   *     requerimiento (`SELECT ... FOR UPDATE`) y se cuenta el cupo — si ya
+   *     está lleno, **409** (regla 4: no se mueve nadie más a contratación).
+   *  7. Escritura dentro de la transacción con el GUC del actor, con criterio
    *     `estado = <leído>` como blindaje ante carreras: si otra petición
    *     cambió la postulación en medio, `rowCount = 0` → 409.
+   *  8. Si tras el movimiento las contrataciones CUBREN las plazas, el
+   *     requerimiento pasa SOLO a `exitoso` («Contrato exitoso», regla 3) en
+   *     la MISMA transacción: el trigger de auditoría lo registra con el
+   *     actor que movió. El `UPDATE` del paso 8 lleva criterio
+   *     `estado = 'en_proceso'`, así que no pisa un cierre simultáneo.
    *
    * El estado RESULTANTE lo decide `estadoTrasMover`: destino `contratacion`
    * ⇒ `contratado` (llegar allí ES contratar, y es terminal); el resto ⇒
@@ -251,13 +281,21 @@ export class PostulacionesService {
     if (dto.fase === faseActual) {
       throw new ConflictException(mensajeFaseActual(dto.fase));
     }
-    if (!esAdyacente(faseActual, dto.fase)) {
+    if (esRetroceso(faseActual, dto.fase)) {
+      throw new ConflictException(mensajeRetroceso(faseActual, dto.fase));
+    }
+    if (!esSiguiente(faseActual, dto.fase)) {
       throw new ConflictException(mensajeNoAdyacente(faseActual, dto.fase));
     }
 
     const nuevoEstado = estadoTrasMover(dto.fase);
+    const esContratacion = dto.fase === FASE_CONTRATACION;
 
     return this.conActorDeAuditoria(actor, async (cliente) => {
+      if (esContratacion) {
+        await this.assertCupoDisponible(cliente, fila.requerimiento_id);
+      }
+
       const resultado = await cliente.query<PostulacionFilaCruda>(
         `UPDATE postulaciones
             SET fase = $1, estado = $2
@@ -272,6 +310,11 @@ export class PostulacionesService {
             `a '${dto.fase}'; vuelve a intentarlo`,
         );
       }
+
+      if (esContratacion) {
+        await this.marcarExitosoSiCupoLleno(cliente, fila.requerimiento_id);
+      }
+
       // El RETURNING no puede hacer JOIN: el resumen del candidato se toma de
       // la LECTURA inicial (`candidato_id` es inmutable, migración 007).
       return toResponse({
@@ -404,17 +447,84 @@ export class PostulacionesService {
     return resumen;
   }
 
-  /** Estado ACTUAL del requerimiento; 404 con mensaje claro si no existe. */
-  private async estadoDelRequerimiento(requerimientoId: string): Promise<string> {
-    const resultado = await this.database.query<{ estado: string }>(
-      'SELECT estado FROM requerimientos WHERE id = $1',
+  /**
+   * Estado ACTUAL y plazas del requerimiento; 404 con mensaje claro si no
+   * existe. Devuelve `numeroPlazas` para los chequeos de cupo (Etapa 9).
+   */
+  private async datosDelRequerimiento(
+    requerimientoId: string,
+  ): Promise<{ estado: string; numeroPlazas: number }> {
+    const resultado = await this.database.query<{ estado: string; numero_plazas: number }>(
+      'SELECT estado, numero_plazas FROM requerimientos WHERE id = $1',
       [requerimientoId],
     );
-    const estado = resultado.rows[0]?.estado;
-    if (estado === undefined) {
+    const fila = resultado.rows[0];
+    if (fila === undefined) {
       throw new NotFoundException(`No existe un requerimiento con id ${requerimientoId}`);
     }
-    return estado;
+    return { estado: fila.estado, numeroPlazas: fila.numero_plazas };
+  }
+
+  /** Contratados ACTUALES del requerimiento (`estado = 'contratado'`). */
+  private async contratadosDelRequerimiento(requerimientoId: string): Promise<number> {
+    const resultado = await this.database.query<{ total: number }>(
+      `SELECT count(*)::int AS total FROM postulaciones
+        WHERE requerimiento_id = $1 AND estado = 'contratado'`,
+      [requerimientoId],
+    );
+    return resultado.rows[0]?.total ?? 0;
+  }
+
+  /**
+   * 409 si el cupo de `numero_plazas` ya está cubierto. Se ejecuta DENTRO de
+   * la transacción de `cambiarFase`, tras bloquear la fila del requerimiento
+   * (`FOR UPDATE`): dos movimientos simultáneos a la última plaza se
+   * SERIALIZAN aquí, y el segundo ve el cupo lleno en vez de pasarlo de largo.
+   */
+  private async assertCupoDisponible(cliente: PoolClient, requerimientoId: string): Promise<void> {
+    const resultado = await cliente.query<{ numero_plazas: number }>(
+      `SELECT numero_plazas FROM requerimientos WHERE id = $1 FOR UPDATE`,
+      [requerimientoId],
+    );
+    const numeroPlazas = resultado.rows[0]?.numero_plazas;
+    if (numeroPlazas === undefined) {
+      // Imposible en la práctica: la postulación tiene FK a este requerimiento.
+      throw new NotFoundException(`No existe un requerimiento con id ${requerimientoId}`);
+    }
+    const contratados = await cliente.query<{ total: number }>(
+      `SELECT count(*)::int AS total FROM postulaciones
+        WHERE requerimiento_id = $1 AND estado = 'contratado'`,
+      [requerimientoId],
+    );
+    const total = contratados.rows[0]?.total ?? 0;
+    if (total >= numeroPlazas) {
+      throw new ConflictException(
+        `El requerimiento ${requerimientoId} ya cubrió sus ${numeroPlazas} plaza(s): ` +
+          `no se pueden mover más candidatos a 'contratacion'`,
+      );
+    }
+  }
+
+  /**
+   * Regla 3 (Etapa 9): si las contrataciones CUBREN las plazas, el
+   * requerimiento pasa SOLO a `exitoso` («Contrato exitoso») dentro de la MISMA
+   * transacción que movió al candidato. El criterio `estado = 'en_proceso'`
+   * protege contra un cierre/rechazo simultáneo (affected = 0 y se ignora), y
+   * el GUC del actor ya está fijado → el trigger audita QUIÉN movió.
+   */
+  private async marcarExitosoSiCupoLleno(
+    cliente: PoolClient,
+    requerimientoId: string,
+  ): Promise<void> {
+    await cliente.query(
+      `UPDATE requerimientos
+          SET estado = '${REQUERIMIENTO_EXITOSO}'
+        WHERE id = $1
+          AND estado = '${REQUERIMIENTO_EN_PROCESO}'
+          AND (SELECT count(*) FROM postulaciones
+                WHERE requerimiento_id = $1 AND estado = 'contratado') >= numero_plazas`,
+      [requerimientoId],
+    );
   }
 
   /** Fila de LECTURA (con resumen del candidato) o 404 con mensaje claro. */

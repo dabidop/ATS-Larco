@@ -20,11 +20,12 @@ import type { EntradaHistorialPostulacionDto } from '../src/modules/embudo/postu
  * ⚠ ESTE test usa la base de datos de desarrollo (`DATABASE_URL` del `.env`
  * raíz → localhost:5432/ats_dev), igual que el resto de e2e que tocan BD.
  * Motivo: lo que se verifica ES de PostgreSQL y de la capa real — los CHECK
- * `postulaciones_descarte_check` y `postulaciones_contratacion_check`, el
- * índice único `postulaciones_candidato_requerimiento_unique`, el trigger
- * `postulaciones_audit_log` con el GUC del actor (migración 004/007) y la
- * escritura `UPDATE ... WHERE estado = <origen>` dentro de transacción.
- * Falsear el pool demostraría exactamente nada.
+ * `postulaciones_descarte_check` y `postulaciones_contratacion_check`, la
+ * restricción única `postulaciones_candidato_unico` (un candidato = un
+ * requerimiento, Etapa 9), el cupo de plazas con el estado automático
+ * `exitoso`, el trigger `postulaciones_audit_log` con el GUC del actor
+ * (migración 004/007/009) y la escritura `UPDATE ... WHERE estado = <origen>`
+ * dentro de transacción. Falsear el pool demostraría exactamente nada.
  *
  * ACCESO A LA BD: el pool `pg` GLOBAL (`DatabaseService`), MISMO acceso que
  * usa el propio módulo `embudo` (y el que tiene ventaja: siendo un singleton
@@ -82,11 +83,21 @@ const APELLIDOS_MARCA = `EmbudoPrueba ${SUFIJO_UNICO}`;
 /**
  * Cédulas únicas por ejecución (9 dígitos, como exige el DTO). Prefijo
  * ALEATORIO, no `Date.now()`: evita el flake entre workers descrito arriba.
+ *
+ * Etapa 9: un candidato pertenece a UN solo requerimiento, así que cada bloque
+ * necesita SU propio candidato (antes varios bloques compartían A/B/C).
  */
 const BASE_CEDULA = randomInt(1000000, 10000000).toString();
 const CEDULA_A = `${BASE_CEDULA}11`;
 const CEDULA_B = `${BASE_CEDULA}22`;
 const CEDULA_C = `${BASE_CEDULA}33`;
+const CEDULA_D = `${BASE_CEDULA}44`;
+const CEDULA_E = `${BASE_CEDULA}55`;
+const CEDULA_F = `${BASE_CEDULA}66`;
+const CEDULA_G = `${BASE_CEDULA}77`;
+const CEDULA_H = `${BASE_CEDULA}88`;
+const CEDULA_I = `${BASE_CEDULA}99`;
+const CEDULA_J = `${BASE_CEDULA}00`;
 
 /** Motivo canónico del descarte que SÍ debe persistir. */
 const MOTIVO_DESCARTE = 'No cubre el perfil del requerimiento';
@@ -116,24 +127,38 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
   let tokenAnalista: string;
   let tokenLider: string;
 
-  /** 3 candidatos de prueba, creados por API (con PII cifrada real). */
-  let candidatoA: { id: string; nombres: string };
-  let candidatoB: { id: string; nombres: string };
-  let candidatoC: { id: string; nombres: string };
+  /**
+   * Candidatos de prueba, creados por API (con PII cifrada real). Etapa 9:
+   * como un candidato = UN requerimiento, cada bloque tiene el SUYO.
+   */
+  let candidatoA: { id: string; nombres: string }; // → Activo (principal, al final DESCARTADA)
+  let candidatoB: { id: string; nombres: string }; // → Listado (avanza a antecedentes)
+  let candidatoC: { id: string; nombres: string }; // // solo intentos DENEGADOS (sin postulación)
+  let candidatoD: { id: string; nombres: string }; // → Listado
+  let candidatoE: { id: string; nombres: string }; // → Listado
+  let candidatoF: { id: string; nombres: string }; // → Activo (la cadena completa → exitoso)
+  let candidatoG: { id: string; nombres: string }; // → Errores (saltos/retrocesos/historial)
+  let candidatoH: { id: string; nombres: string }; // // intento en req exitoso (409, sin fila)
+  let candidatoI: { id: string; nombres: string }; // → Activo (cupo: llega a proveedor_externo)
+  let candidatoJ: { id: string; nombres: string }; // // CHECK crudos de BD (sin postulación)
 
-  /** `en_proceso`: lo usan POST, la cadena feliz, los saltos y el descarte. */
+  /** `en_proceso`: lo usan POST, la cadena feliz, el cupo y el descarte. */
   let requerimientoActivo: { id: string };
   /** `en_proceso`: exclusivo del bloque de LISTADO (agrupación y paginación). */
   let requerimientoListado: { id: string };
+  /** `en_proceso`: exclusivo del bloque de ERRORES de la máquina de fases. */
+  let requerimientoErrores: { id: string };
   /** Sigue `pendiente`: sirve para el 409 de «solo en proceso». */
   let requerimientoPendiente: { id: string };
 
   /** Postulación creada en el bloque POST (candidatoA → requerimientoActivo). */
   let postulacionPrincipal: { id: string };
-  /** CandidatoB → requerimientoActivo: la que recorre TODAS las fases. */
+  /** CandidatoF → requerimientoActivo: la que recorre TODAS las fases (exitoso). */
   let postulacionCadena: { id: string };
-  /** CandidatoC → requerimientoActivo: saltos, retrocesos y errores de forma. */
+  /** CandidatoG → requerimientoErrores: saltos, retrocesos y errores de forma. */
   let postulacionSalto: { id: string };
+  /** CandidatoI → requerimientoActivo: demuestra el CUPO de plazas lleno. */
+  let postulacionCupo: { id: string };
 
   beforeAll(async () => {
     const url = process.env.DATABASE_URL;
@@ -207,15 +232,24 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
     });
     tokenLider = jwt.sign({ sub: idDe(EMAIL_LIDER), email: EMAIL_LIDER, role: 'lider_area' });
 
-    // Fixtures: 3 candidatos creados VÍA API (PII cifrada de verdad).
+    // Fixtures: 10 candidatos creados VÍA API (PII cifrada de verdad). Etapa 9:
+    // un candidato = UN requerimiento, así que cada bloque necesita los suyos.
     candidatoA = await crearCandidato('Ana', CEDULA_A);
     candidatoB = await crearCandidato('Berta', CEDULA_B);
     candidatoC = await crearCandidato('Carlos', CEDULA_C);
+    candidatoD = await crearCandidato('Diana', CEDULA_D);
+    candidatoE = await crearCandidato('Elena', CEDULA_E);
+    candidatoF = await crearCandidato('Fernando', CEDULA_F);
+    candidatoG = await crearCandidato('Gloria', CEDULA_G);
+    candidatoH = await crearCandidato('Hugo', CEDULA_H);
+    candidatoI = await crearCandidato('Inés', CEDULA_I);
+    candidatoJ = await crearCandidato('Jorge', CEDULA_J);
 
-    // 3 requerimientos: dos EN PROCESO (líder crea → admin aprueba → analista
+    // 4 requerimientos: tres EN PROCESO (líder crea → admin aprueba → analista
     // inicia) y uno que sigue PENDIENTE para el 409 del POST.
     requerimientoActivo = { id: await crearRequerimientoEnProceso('Vacante activa del embudo') };
     requerimientoListado = { id: await crearRequerimientoEnProceso('Vacante del tablero') };
+    requerimientoErrores = { id: await crearRequerimientoEnProceso('Vacante de errores de fases') };
     requerimientoPendiente = await crearRequerimiento('Vacante aún no aprobada');
   });
 
@@ -226,7 +260,12 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       return;
     }
 
-    const requerimientos = [requerimientoActivo, requerimientoListado, requerimientoPendiente]
+    const requerimientos = [
+      requerimientoActivo,
+      requerimientoListado,
+      requerimientoErrores,
+      requerimientoPendiente,
+    ]
       .map((requerimiento) => requerimiento?.id)
       .filter((id): id is string => typeof id === 'string');
 
@@ -424,7 +463,7 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       postulacionPrincipal = { id: response.body.id as string };
     });
 
-    it('el mismo candidato en el MISMO requerimiento → 409 (única por par, incluida la carrera)', async () => {
+    it('el mismo candidato otra vez → 409 (un candidato = un requerimiento, Etapa 9)', async () => {
       const response = await crearPostulacion(
         candidatoA.id,
         requerimientoActivo.id,
@@ -432,12 +471,29 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       ).expect(409);
 
       expect(response.body.statusCode).toBe(409);
-      expect(response.body.message).toContain('ya tiene una postulación');
+      expect(response.body.message).toContain('ya pertenece a un requerimiento');
 
-      // Solo existe UNA fila para ese par (candidato, requerimiento).
+      // Solo existe UNA fila para ese candidato.
       const resultado = await database.query(
-        'SELECT count(*)::int AS n FROM postulaciones WHERE candidato_id = $1 AND requerimiento_id = $2',
-        [candidatoA.id, requerimientoActivo.id],
+        'SELECT count(*)::int AS n FROM postulaciones WHERE candidato_id = $1',
+        [candidatoA.id],
+      );
+      expect((resultado.rows as Array<{ n: number }>)[0]?.n).toBe(1);
+    });
+
+    it('un candidato YA en OTRO requerimiento → 409 (regla 6/8: no se reasigna)', async () => {
+      // candidatoA ya está en requerimientoActivo: otro requerimiento en
+      // proceso NO lo admite (tampoco para «mueve y reasigna»).
+      const response = await crearPostulacion(
+        candidatoA.id,
+        requerimientoListado.id,
+        tokenAnalista,
+      ).expect(409);
+
+      expect(response.body.message).toContain('ya pertenece a un requerimiento');
+      const resultado = await database.query(
+        'SELECT count(*)::int AS n FROM postulaciones WHERE candidato_id = $1',
+        [candidatoA.id],
       );
       expect((resultado.rows as Array<{ n: number }>)[0]?.n).toBe(1);
     });
@@ -528,14 +584,15 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
   describe('GET /api/postulaciones (tablero y paginación)', () => {
     beforeAll(async () => {
       // 3 postulaciones en el requerimiento del tablero; una de ellas avanza a
-      // `antecedentes` para poder comprobar el AGRUPADO por fase.
-      await crearPostulacion(candidatoA.id, requerimientoListado.id, tokenAnalista).expect(201);
+      // `antecedentes` para poder comprobar el AGRUPADO por fase. Candidatos
+      // D/B/E: exclusivos de este bloque (Etapa 9: 1 candidato = 1 requerimiento).
+      await crearPostulacion(candidatoD.id, requerimientoListado.id, tokenAnalista).expect(201);
       const respuestaB = await crearPostulacion(
         candidatoB.id,
         requerimientoListado.id,
         tokenAnalista,
       ).expect(201);
-      await crearPostulacion(candidatoC.id, requerimientoListado.id, tokenAnalista).expect(201);
+      await crearPostulacion(candidatoE.id, requerimientoListado.id, tokenAnalista).expect(201);
 
       await mover(respuestaB.body.id as string, 'antecedentes', tokenAnalista).expect(200);
     });
@@ -556,9 +613,9 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
           item.fase,
         ]),
       );
-      expect(porCandidato.get(candidatoA.id)).toBe('preseleccion');
+      expect(porCandidato.get(candidatoD.id)).toBe('preseleccion');
       expect(porCandidato.get(candidatoB.id)).toBe('antecedentes');
-      expect(porCandidato.get(candidatoC.id)).toBe('preseleccion');
+      expect(porCandidato.get(candidatoE.id)).toBe('preseleccion');
 
       // Orden created_at DESC: las fechas nunca ascendentes.
       const fechas = (response.body.items as Array<{ createdAt: string }>).map(
@@ -584,13 +641,13 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
 
       // El nombre que devuelves es el que se registró (con el sufijo único),
       // y el `id` del resumen coincide con el enlace `candidatoId`.
-      expect(porCandidato.get(candidatoA.id)).toEqual({
-        id: candidatoA.id,
-        nombres: candidatoA.nombres,
+      expect(porCandidato.get(candidatoD.id)).toEqual({
+        id: candidatoD.id,
+        nombres: candidatoD.nombres,
         apellidos: APELLIDOS_MARCA,
       });
       expect(porCandidato.get(candidatoB.id)?.nombres).toBe(candidatoB.nombres);
-      expect(porCandidato.get(candidatoC.id)?.nombres).toBe(candidatoC.nombres);
+      expect(porCandidato.get(candidatoE.id)?.nombres).toBe(candidatoE.nombres);
 
       // SOLO nombre y apellidos: el tablero no recibe cédula, email ni teléfono
       // aunque el JOIN con `candidatos` los tendría a mano.
@@ -630,14 +687,13 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       expect(descartadas.body.items).toEqual([]);
     });
 
-    it('filtra por candidatoId (una fila por requerimiento: el par es único)', async () => {
+    it('filtra por candidatoId (un candidato = UN requerimiento, Etapa 9)', async () => {
       const response = await request(app.getHttpServer())
         .get(`/api/postulaciones?candidatoId=${candidatoB.id}`)
         .set('Authorization', `Bearer ${tokenAnalista}`)
         .expect(200);
 
-      // El candidatoB solo postuló al tablero: la postulación de la cadena
-      // (otro requerimiento) todavía no existe.
+      // El candidatoB solo tiene SU postulación del tablero.
       expect(response.body.total).toBe(1);
       expect((response.body.items as Array<{ fase: string }>)[0]?.fase).toBe('antecedentes');
     });
@@ -742,11 +798,21 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
   describe('PATCH /api/postulaciones/:id/fase — la cadena completa del embudo', () => {
     it('preseleccion → antecedentes → entrevistas → proveedor_externo → contratacion (4 movimientos de un paso, todos 200)', async () => {
       const respuesta = await crearPostulacion(
-        candidatoB.id,
+        candidatoF.id,
         requerimientoActivo.id,
         tokenAnalista,
       ).expect(201);
       postulacionCadena = { id: respuesta.body.id as string };
+
+      // Otro candidato en el MISMO requerimiento ANTES de llenar el cupo: el
+      // bloque «cupo de plazas» demostrará más adelante que, una vez cubiertas
+      // las plazas, ese candidato NO puede pasar a contratación.
+      const respuestaCupo = await crearPostulacion(
+        candidatoI.id,
+        requerimientoActivo.id,
+        tokenAnalista,
+      ).expect(201);
+      postulacionCupo = { id: respuestaCupo.body.id as string };
 
       // 4 fases consecutivas = 5 fases del tablero − 1: cada movimiento avanza
       // EXACTAMENTE un paso y la respuesta refleja la fase ya materializada.
@@ -764,7 +830,7 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
           motivoDescarte: null,
         });
         // El resto de campos quedan intactos.
-        expect(respuestaMovimiento.body.candidatoId).toBe(candidatoB.id);
+        expect(respuestaMovimiento.body.candidatoId).toBe(candidatoF.id);
         expect(respuestaMovimiento.body.requerimientoId).toBe(requerimientoActivo.id);
         expect(respuestaMovimiento.body.createdBy).toBe(analistaId);
         expect(anterior).toBeDefined();
@@ -811,26 +877,91 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
     });
   });
 
+  // ─────────────── cupo de plazas y «Contrato exitoso» (Etapa 9) ───────────────
+
+  describe('cupo de plazas — al cubrirlas el requerimiento pasa SOLO a exitoso', () => {
+    it('la última plaza cubierta marcó el requerimiento como exitoso (auditado al actor)', async () => {
+      // La cadena movió al ÚNICO candidato contratado con numeroPlazas = 1.
+      const respuesta = await request(app.getHttpServer())
+        .get(`/api/requerimientos/${requerimientoActivo.id}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .expect(200);
+      expect(respuesta.body.estado).toBe('exitoso');
+
+      // El trigger de auditoría registró el CAMBIO con el que lo MOVió (no el
+      // creador del requerimiento): el analista, vía el GUC de la transacción.
+      const auditoria = await database.query(
+        `SELECT action, changed_by, new_data->>'estado' AS estado
+           FROM audit_log
+          WHERE table_name = 'requerimientos' AND record_id = $1 AND action = 'UPDATE'
+          ORDER BY id DESC LIMIT 1`,
+        [requerimientoActivo.id],
+      );
+      const ultima = (
+        auditoria.rows as Array<{ action: string; changed_by: string | null; estado: string }>
+      )[0];
+      expect(ultima?.estado).toBe('exitoso');
+      expect(ultima?.changed_by).toBe(analistaId);
+    });
+
+    it('no se aceptan MÁS candidatos en un requerimiento exitoso → 409', async () => {
+      const response = await crearPostulacion(
+        candidatoH.id,
+        requerimientoActivo.id,
+        tokenAnalista,
+      ).expect(409);
+
+      expect(response.body.message).toContain("en 'exitoso'");
+      // Sin fila: el candidatoH sigue libre.
+      const resultado = await database.query(
+        'SELECT count(*)::int AS n FROM postulaciones WHERE candidato_id = $1',
+        [candidatoH.id],
+      );
+      expect((resultado.rows as Array<{ n: number }>)[0]?.n).toBe(0);
+    });
+
+    it('avanzar hasta el CUPO lleno → 409 al mover a contratacion (y nada se escribe)', async () => {
+      // La postulación de candidatoI existía ANTES de que se cubriera el cupo:
+      // puede avanzar por el embudo… hasta el cupo: la contratación queda
+      // BLOQUEADA (regla 4).
+      for (const fase of ['antecedentes', 'entrevistas', 'proveedor_externo']) {
+        await mover(postulacionCupo.id, fase, tokenAnalista).expect(200);
+      }
+
+      const response = await mover(postulacionCupo.id, 'contratacion', tokenAnalista).expect(409);
+      expect(response.body.message).toContain('ya cubrió sus 1 plaza(s)');
+      expect(response.body.message).toContain('contratacion');
+
+      // Nada se escribió: sigue en proveedor_externo/activa.
+      expect(await filaEnBD(postulacionCupo.id)).toMatchObject({
+        fase: 'proveedor_externo',
+        estado: 'activa',
+      });
+    });
+  });
+
   describe('PATCH /api/postulaciones/:id/fase — errores de la máquina de fases', () => {
     beforeAll(async () => {
+      // CandidatoG en SU propio requerimiento (el Activo ya está exitoso y el
+      // cupo manda: este bloque no debe acoplarse a él).
       const respuesta = await crearPostulacion(
-        candidatoC.id,
-        requerimientoActivo.id,
+        candidatoG.id,
+        requerimientoErrores.id,
         tokenAnalista,
       ).expect(201);
       postulacionSalto = { id: respuesta.body.id as string };
     });
 
-    it('un SALTO de fase (preseleccion → entrevistas) → 409 «Solo se puede mover un paso»', async () => {
+    it('un SALTO de fase (preseleccion → entrevistas) → 409 «El embudo solo avanza UN paso»', async () => {
       const response = await mover(postulacionSalto.id, 'entrevistas', tokenAnalista).expect(409);
 
       expect(response.body.statusCode).toBe(409);
-      expect(response.body.message).toContain('Solo se puede mover un paso');
+      expect(response.body.message).toContain('El embudo solo avanza UN paso');
       expect(response.body.message).toContain("'preseleccion'");
       expect(response.body.message).toContain("'entrevistas'");
       // El salto también se puede intentar hacia ATRÁS: mismo rechazo.
       const atras = await mover(postulacionSalto.id, 'contratacion', tokenAnalista).expect(409);
-      expect(atras.body.message).toContain('Solo se puede mover un paso');
+      expect(atras.body.message).toContain('El embudo solo avanza UN paso');
 
       // Nada se escribió: sigue en preseleccion/activa.
       expect(await filaEnBD(postulacionSalto.id)).toMatchObject({
@@ -846,13 +977,22 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       expect(response.body.message).toContain("'preseleccion'");
     });
 
-    it('un movimiento HACIA ATRÁS un paso → 200 (el Kanban permite regresar)', async () => {
+    it('un RETROCESO (antecedentes → preseleccion) → 409 (el embudo NO retrocede, Etapa 9)', async () => {
+      // Avanza un paso (válido)…
       await mover(postulacionSalto.id, 'antecedentes', tokenAnalista).expect(200);
 
-      const respuesta = await mover(postulacionSalto.id, 'preseleccion', tokenAnalista).expect(200);
-      expect(respuesta.body).toMatchObject({
-        id: postulacionSalto.id,
-        fase: 'preseleccion',
+      // …y ahora intenta DEVOLVERLO: 409 con el mensaje específico.
+      const respuesta = await mover(postulacionSalto.id, 'preseleccion', tokenAnalista).expect(
+        409,
+      );
+      expect(respuesta.body.message).toContain('solo avanza');
+      expect(respuesta.body.message).toContain('no se puede devolver');
+      expect(respuesta.body.message).toContain("'antecedentes'");
+      expect(respuesta.body.message).toContain("'preseleccion'");
+
+      // Nada se escribió: sigue en antecedentes/activa.
+      expect(await filaEnBD(postulacionSalto.id)).toMatchObject({
+        fase: 'antecedentes',
         estado: 'activa',
       });
     });
@@ -861,7 +1001,7 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       const response = await mover(postulacionSalto.id, 'contratado', tokenAnalista).expect(400);
 
       expect(JSON.stringify(response.body.message)).toContain('fase debe ser una de');
-      expect(await filaEnBD(postulacionSalto.id)).toMatchObject({ fase: 'preseleccion' });
+      expect(await filaEnBD(postulacionSalto.id)).toMatchObject({ fase: 'antecedentes' });
     });
 
     it('404 si la postulación no existe y 400 si el id no es uuid', async () => {
@@ -941,10 +1081,11 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
     it('la BASE DE DATOS impide el descarte sin motivo (CHECK postulaciones_descarte_check)', async () => {
       // Escritura CRUDA, sin pasar por la API: el CHECK es la red de seguridad
       // final aunque un cliente o una migración future intenten saltárselo.
+      // candidatoJ no pertenece a NINGÚN requerimiento: solo revienta el CHECK.
       const descarteSinMotivo = database.query(
         `INSERT INTO postulaciones (candidato_id, requerimiento_id, estado, created_by)
          VALUES ($1, $2, 'descartado', $3)`,
-        [candidatoA.id, requerimientoPendiente.id, analistaId],
+        [candidatoJ.id, requerimientoPendiente.id, analistaId],
       );
       await expect(descarteSinMotivo).rejects.toThrow(/postulaciones_descarte_check/);
 
@@ -952,7 +1093,7 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       const activaConMotivo = database.query(
         `INSERT INTO postulaciones (candidato_id, requerimiento_id, estado, motivo_descarte, created_by)
          VALUES ($1, $2, 'activa', 'Motivo imposible', $3)`,
-        [candidatoB.id, requerimientoPendiente.id, analistaId],
+        [candidatoJ.id, requerimientoPendiente.id, analistaId],
       );
       await expect(activaConMotivo).rejects.toThrow(/postulaciones_descarte_check/);
 
@@ -961,14 +1102,14 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       const activaEnContratacion = database.query(
         `INSERT INTO postulaciones (candidato_id, requerimiento_id, fase, estado, created_by)
          VALUES ($1, $2, 'contratacion', 'activa', $3)`,
-        [candidatoA.id, requerimientoPendiente.id, analistaId],
+        [candidatoJ.id, requerimientoPendiente.id, analistaId],
       );
       await expect(activaEnContratacion).rejects.toThrow(/postulaciones_contratacion_check/);
 
       const contratadoFueraDeContratacion = database.query(
         `INSERT INTO postulaciones (candidato_id, requerimiento_id, fase, estado, created_by)
          VALUES ($1, $2, 'antecedentes', 'contratado', $3)`,
-        [candidatoB.id, requerimientoPendiente.id, analistaId],
+        [candidatoJ.id, requerimientoPendiente.id, analistaId],
       );
       await expect(contratadoFueraDeContratacion).rejects.toThrow(
         /postulaciones_contratacion_check/,
@@ -987,11 +1128,11 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
 
   describe('GET /api/postulaciones/:id/historial — audit_log', () => {
     it('registra el alta y cada movimiento de fase, con changed_by del QUE lo hizo', async () => {
-      // Esta postulación ya retrocedió 2 pasos en el bloque anterior (2 UPDATE
-      // del analista) y ahora avanzan 2 más: el 2.º lo ejecuta el ADMIN para
+      // Esta postulación ya avanzó 1 paso (el bloque anterior: 1 UPDATE del
+      // analista) y ahora avanzan 2 más: el último lo ejecuta el ADMIN para
       // demostrar que changed_by sigue al actor real, no al creador.
-      await mover(postulacionSalto.id, 'antecedentes', tokenAnalista).expect(200);
-      await mover(postulacionSalto.id, 'entrevistas', tokenAdmin).expect(200);
+      await mover(postulacionSalto.id, 'entrevistas', tokenAnalista).expect(200);
+      await mover(postulacionSalto.id, 'proveedor_externo', tokenAdmin).expect(200);
 
       const response = await request(app.getHttpServer())
         .get(`/api/postulaciones/${postulacionSalto.id}/historial`)
@@ -1000,11 +1141,10 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
 
       const entradas = response.body as EntradaHistorialPostulacionDto[];
 
-      // Alta + 4 movimientos (2 retrocesos + 2 avances) = 5 escrituras, en
-      // created_at DESC: lo último primero, el alta al final.
-      expect(entradas).toHaveLength(5);
+      // Alta + 3 avances = 4 escrituras, en created_at DESC: lo último
+      // primero, el alta al final.
+      expect(entradas).toHaveLength(4);
       expect(entradas.map((entrada) => entrada.accion)).toEqual([
-        'UPDATE',
         'UPDATE',
         'UPDATE',
         'UPDATE',
@@ -1013,21 +1153,17 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
 
       // El diff de CADA movimiento nombra la fase anterior y la nueva.
       expect(entradas[0]?.campos).toEqual([
-        { campo: 'fase', antes: 'antecedentes', despues: 'entrevistas' },
+        { campo: 'fase', antes: 'entrevistas', despues: 'proveedor_externo' },
       ]);
       expect(entradas[1]?.campos).toEqual([
-        { campo: 'fase', antes: 'preseleccion', despues: 'antecedentes' },
+        { campo: 'fase', antes: 'antecedentes', despues: 'entrevistas' },
       ]);
-      // Los 2 retrocesos del bloque anterior también quedaron registrados.
       expect(entradas[2]?.campos).toEqual([
-        { campo: 'fase', antes: 'antecedentes', despues: 'preseleccion' },
-      ]);
-      expect(entradas[3]?.campos).toEqual([
         { campo: 'fase', antes: 'preseleccion', despues: 'antecedentes' },
       ]);
       // El alta informa fase y estado con `antes: null` (el motivo, al ser
       // NULL, no se lista).
-      expect(entradas[4]?.campos).toEqual([
+      expect(entradas[3]?.campos).toEqual([
         { campo: 'fase', antes: null, despues: 'preseleccion' },
         { campo: 'estado', antes: null, despues: 'activa' },
       ]);
@@ -1036,7 +1172,6 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       // analista en todo lo demás, incluida la escritura del alta.
       expect(entradas.map((entrada) => entrada.usuario)).toEqual([
         adminId,
-        analistaId,
         analistaId,
         analistaId,
         analistaId,
@@ -1106,23 +1241,21 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
         'UPDATE',
         'UPDATE',
         'UPDATE',
-        'UPDATE',
       ]);
       // El INSERT es del analista (sin GUC en el alta manda `created_by`).
       expect(filas[0]).toMatchObject({ action: 'INSERT', changed_by: analistaId });
 
-      // creó el analista → movió el analista 3 veces (los retrocesos y el
-      // primer avance) → movió el ADMIN (el último avance). Sin el GUC de la
+      // creó el analista → movió el analista 2 veces (el primer y segundo
+      // avance) → movió el ADMIN (el último avance). Sin el GUC de la
       // migración 004 las UPDATE habrían quedado con el creador de la fila:
       // el test lo detectaría.
       const cambios = filas.filter((fila) => fila.action === 'UPDATE');
       expect(cambios.map((fila) => fila.changed_by)).toEqual([
         analistaId,
         analistaId,
-        analistaId,
         adminId,
       ]);
-      expect(cambios.map((fila) => fila.changed_by)).not.toContain(candidatoC.id);
+      expect(cambios.map((fila) => fila.changed_by)).not.toContain(candidatoG.id);
     });
 
     it('las operaciones DENEGADAS (403/400/409) no dejan rastro en audit_log', async () => {

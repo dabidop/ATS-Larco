@@ -247,12 +247,12 @@ describe('Requerimientos — máquina de estados e2e (BD dev docker real)', () =
   // ───────────────────────── ciclo feliz ─────────────────────────
 
   describe('POST /:id/transiciones — ciclo con los roles correctos', () => {
-    it('líder crea → admin aprueba → analista pone en proceso → admin cierra', async () => {
+    it('líder crea → admin aprueba → analista pone en proceso → admin cierra (motivo + resultado, Etapa 9)', async () => {
       const id = await crear('Ciclo feliz del flujo');
 
       const aprobado = await transicionar(tokenAdmin, id, {
         destino: 'aprobado',
-        // Un `motivo` ajeno al rechazo se IGNORA: no debe poblar motivoRechazo.
+        // Un `motivo` ajeno al rechazo/cierre se IGNORA: no debe poblar nada.
         motivo: 'esto no debe persistirse',
       }).expect(200);
       expect(aprobado.body).toMatchObject({ id, estado: 'aprobado', motivoRechazo: null });
@@ -262,8 +262,19 @@ describe('Requerimientos — máquina de estados e2e (BD dev docker real)', () =
       );
       expect(enProceso.body).toMatchObject({ id, estado: 'en_proceso', motivoRechazo: null });
 
-      const cerrado = await transicionar(tokenAdmin, id, { destino: 'cerrado' }).expect(200);
-      expect(cerrado.body).toMatchObject({ id, estado: 'cerrado', motivoRechazo: null });
+      // Etapa 9: cerrar exige MOTIVO y RESULTADO (¿se contrató o se vació?).
+      const cerrado = await transicionar(tokenAdmin, id, {
+        destino: 'cerrado',
+        motivo: 'Vacante cubierta con contrato interno',
+        resultado: 'contratacion',
+      }).expect(200);
+      expect(cerrado.body).toMatchObject({
+        id,
+        estado: 'cerrado',
+        motivoRechazo: null,
+        motivoCierre: 'Vacante cubierta con contrato interno',
+        resultadoCierre: 'contratacion',
+      });
 
       // Persiste en BD (lectura fresca) con la MISMA forma que el CRUD.
       const verificacion = await request(app.getHttpServer())
@@ -273,8 +284,48 @@ describe('Requerimientos — máquina de estados e2e (BD dev docker real)', () =
       expect(verificacion.body.estado).toBe('cerrado');
       expect(verificacion.body.createdBy).toBe(creadorId);
       expect(verificacion.body.motivoRechazo).toBeNull();
+      expect(verificacion.body.motivoCierre).toBe('Vacante cubierta con contrato interno');
+      expect(verificacion.body.resultadoCierre).toBe('contratacion');
 
       requerimientoCerradoId = id;
+    });
+
+    it('cerrar SIN motivo → 400 y SIN resultado → 400 (Etapa 9: el cierre se traza)', async () => {
+      const id = await crear('Cierre trazable');
+      await transicionar(tokenAdmin, id, { destino: 'aprobado' }).expect(200);
+      await transicionar(tokenAnalista, id, { destino: 'en_proceso' }).expect(200);
+
+      const sinMotivo = await transicionar(tokenAdmin, id, {
+        destino: 'cerrado',
+        resultado: 'cierre_vacante',
+      }).expect(400);
+      expect(sinMotivo.body.message).toContain('"motivo" es obligatorio');
+
+      const sinResultado = await transicionar(tokenAdmin, id, {
+        destino: 'cerrado',
+        motivo: 'La vacante ya no es necesaria',
+      }).expect(400);
+      expect(sinResultado.body.message).toContain('"resultado" es obligatorio');
+
+      // Nada se escribió: sigue en proceso.
+      const verificacion = await request(app.getHttpServer())
+        .get(`/api/requerimientos/${id}`)
+        .set('Authorization', `Bearer ${tokenAnalista}`)
+        .expect(200);
+      expect(verificacion.body.estado).toBe('en_proceso');
+      expect(verificacion.body.motivoCierre).toBeNull();
+
+      // Y el cierre VÁLIDO con el otro resultado también persiste.
+      const cerrado = await transicionar(tokenAdmin, id, {
+        destino: 'cerrado',
+        motivo: 'Sin candidatos viables; se retira la plaza',
+        resultado: 'cierre_vacante',
+      }).expect(200);
+      expect(cerrado.body).toMatchObject({
+        estado: 'cerrado',
+        motivoCierre: 'Sin candidatos viables; se retira la plaza',
+        resultadoCierre: 'cierre_vacante',
+      });
     });
 
     it('sobre CERRADO: el ciclo de PATCH responde 409 (solo se edita en pendiente)', async () => {

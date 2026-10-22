@@ -1,6 +1,19 @@
-import { IsEmail, IsNumber, IsOptional, IsString, Matches, Min } from 'class-validator';
+import {
+  IsEmail,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Matches,
+  Min,
+  MinLength,
+} from 'class-validator';
 
-import { CEDULA_MENSAJE, CEDULA_PATTERN } from './create-candidato.dto';
+import {
+  CEDULA_MENSAJE,
+  CEDULA_PATTERN,
+  LIMITES_CANDIDATO,
+} from './create-candidato.dto';
 
 /**
  * Cuerpo de `PATCH /api/candidatos/:id`.
@@ -13,20 +26,36 @@ import { CEDULA_MENSAJE, CEDULA_PATTERN } from './create-candidato.dto';
  * admite editarla. El servicio, al recibirla, la RE-CIFRA y RE-CALCULA su
  * `cedula_hash`; si la nueva cédula colisiona con OTRO candidato responde 409.
  *
+ * Etapa 9 (regla 9 de la retroalimentación): los MISMOS límites de longitud y
+ * mínimos del DTO de creación (`LIMITES_CANDIDATO`, MinLength 3 en nombres y
+ * apellidos) se replican AQUÍ: un PATCH tampoco puede dejar «P» ni «Si» como
+ * nombre completo ni notas eternas.
+ *
  * `@nestjs/mapped-types` no está instalado, así que este DTO parcial se
  * declara a mano (mismo criterio que `UpdateRequerimientoDto`).
  */
 export class UpdateCandidatoDto {
   @IsOptional()
   @IsString({ message: 'nombres debe ser una cadena de texto' })
+  @MinLength(3, { message: 'nombres debe tener al menos 3 caracteres' })
+  @MaxLength(LIMITES_CANDIDATO.nombres, {
+    message: `nombres no puede superar ${LIMITES_CANDIDATO.nombres} caracteres`,
+  })
   nombres?: string;
 
   @IsOptional()
   @IsString({ message: 'apellidos debe ser una cadena de texto' })
+  @MinLength(3, { message: 'apellidos debe tener al menos 3 caracteres' })
+  @MaxLength(LIMITES_CANDIDATO.apellidos, {
+    message: `apellidos no puede superar ${LIMITES_CANDIDATO.apellidos} caracteres`,
+  })
   apellidos?: string;
 
   @IsOptional()
   @IsEmail({}, { message: 'email debe ser un correo electrónico válido' })
+  @MaxLength(LIMITES_CANDIDATO.email, {
+    message: `email no puede superar ${LIMITES_CANDIDATO.email} caracteres`,
+  })
   email?: string;
 
   /** Editable: el servicio re-cifra y re-hashea. Colisión con otro → 409. */
@@ -37,14 +66,23 @@ export class UpdateCandidatoDto {
 
   @IsOptional()
   @IsString({ message: 'telefono debe ser una cadena de texto' })
+  @MaxLength(LIMITES_CANDIDATO.telefono, {
+    message: `telefono no puede superar ${LIMITES_CANDIDATO.telefono} caracteres`,
+  })
   telefono?: string;
 
   @IsOptional()
   @IsString({ message: 'ciudad debe ser una cadena de texto' })
+  @MaxLength(LIMITES_CANDIDATO.ciudad, {
+    message: `ciudad no puede superar ${LIMITES_CANDIDATO.ciudad} caracteres`,
+  })
   ciudad?: string;
 
   @IsOptional()
   @IsString({ message: 'cargoActual debe ser una cadena de texto' })
+  @MaxLength(LIMITES_CANDIDATO.cargoActual, {
+    message: `cargoActual no puede superar ${LIMITES_CANDIDATO.cargoActual} caracteres`,
+  })
   cargoActual?: string;
 
   @IsOptional()
@@ -54,9 +92,15 @@ export class UpdateCandidatoDto {
 
   @IsOptional()
   @IsString({ message: 'disponibilidad debe ser una cadena de texto' })
+  @MaxLength(LIMITES_CANDIDATO.disponibilidad, {
+    message: `disponibilidad no puede superar ${LIMITES_CANDIDATO.disponibilidad} caracteres`,
+  })
   disponibilidad?: string;
 
   @IsOptional()
   @IsString({ message: 'notas debe ser una cadena de texto' })
+  @MaxLength(LIMITES_CANDIDATO.notas, {
+    message: `notas no puede superar ${LIMITES_CANDIDATO.notas} caracteres`,
+  })
   notas?: string;
 }

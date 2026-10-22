@@ -363,6 +363,38 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
 
       expect(JSON.stringify(response.body.message)).toContain('cedulaCifrada');
     });
+
+    it('nombres o apellidos de UNA letra → 400 (Etapa 9: mínimo 3 caracteres)', async () => {
+      const nombresCortos = await request(app.getHttpServer())
+        .post('/api/candidatos')
+        .set('Authorization', `Bearer ${tokenAnalista}`)
+        .send({ ...cuerpoValido(`${CEDULA_POST}7`), nombres: 'P' })
+        .expect(400);
+      expect(JSON.stringify(nombresCortos.body.message)).toContain('al menos 3 caracteres');
+
+      const apellidosCortos = await request(app.getHttpServer())
+        .post('/api/candidatos')
+        .set('Authorization', `Bearer ${tokenAnalista}`)
+        .send({ ...cuerpoValido(`${CEDULA_POST}6`), apellidos: 'Si' })
+        .expect(400);
+      expect(JSON.stringify(apellidosCortos.body.message)).toContain('al menos 3 caracteres');
+    });
+
+    it('un email inválido o notas que superan el límite → 400 (Etapa 9)', async () => {
+      const emailInvalido = await request(app.getHttpServer())
+        .post('/api/candidatos')
+        .set('Authorization', `Bearer ${tokenAnalista}`)
+        .send({ ...cuerpoValido(`${CEDULA_POST}5`), email: 'no-es-un-correo' })
+        .expect(400);
+      expect(JSON.stringify(emailInvalido.body.message)).toContain('correo electrónico válido');
+
+      const notasLargas = await request(app.getHttpServer())
+        .post('/api/candidatos')
+        .set('Authorization', `Bearer ${tokenAnalista}`)
+        .send({ ...cuerpoValido(`${CEDULA_POST}4`), notas: 'x'.repeat(2001) })
+        .expect(400);
+      expect(JSON.stringify(notasLargas.body.message)).toContain('notas no puede superar 2000');
+    });
   });
 
   // ───────────────────────── GET listado ─────────────────────────

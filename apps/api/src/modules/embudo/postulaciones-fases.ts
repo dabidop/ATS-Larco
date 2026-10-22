@@ -7,13 +7,17 @@
  * ÚNICA fuente de verdad del orden del tablero en la capa de aplicación (en BD
  * el orden vive en el ENUM `fase_postulacion` de la migración 007).
  *
- * REGLAS DE NEGOCIO que sostiene (decisiones ya tomadas en el plan):
+ * REGLAS DE NEGOCIO que sostiene (decisiones ya tomadas en el plan +
+ * retroalimentación Etapa 9):
  *  - El embudo tiene 5 fases EN ESTE ORDEN:
  *    `preseleccion → antecedentes → entrevistas → proveedor_externo → contratacion`.
- *  - Un movimiento VÁLIDO solo avanza o retrocede UN PASO (adyacencia): el
- *    Kanban permite regresar, pero nunca saltar fases.
+ *  - Un movimiento VÁLIDO solo avanza UN PASO (el embudo NO retrocede: regla
+ *    11 de la retroalimentación, Etapa 9 — antes admitía ±1). Saltar fases o
+ *    devolver a una anterior → 409.
  *  - Llegar a `contratacion` ES contratar: la postulación pasa a estado
- *    `contratado` (terminal) en la MISMA operación.
+ *    `contratado` (terminal) en la MISMA operación, y SIEMPRE que se llene la
+ *    última plaza disponible del requerimiento el servicio marca su requerimiento
+ *    como `exitoso` («Contrato exitoso», Etapa 9).
  *  - `contratado` y `descartado` son ESTADOS TERMINALES: sin cambios de fase.
  *  - Descartar vale desde CUALQUIER fase (el endpoint no filtra por fase) y
  *    exige motivo; el resultado es el terminal `descartado`.
@@ -52,11 +56,6 @@ const INDICE_FASE: Readonly<Record<Fase, number>> = {
   contratacion: 4,
 };
 
-/** Texto de una lista de fases para los mensajes: `'a', 'b'`. */
-function entrecomillar(fases: readonly Fase[]): string {
-  return fases.map((fase) => `'${fase}'`).join(', ');
-}
-
 /**
  * ¿`estado` es TERMINAL? Un terminal no admite cambios de fase ni descartes:
  * la postulación ya tiene un desenlace definitivo.
@@ -66,27 +65,26 @@ export function esTerminal(estado: Estado): boolean {
 }
 
 /**
- * ¿`destino` está a UN solo paso de `origen`, en cualquiera de las DOS
- * direcciones? El Kanban permite regresar (`entrevistas → antecedentes` es
- * válido), pero NUNCA saltar (`preseleccion → entrevistas` no lo es).
+ * ¿`destino` es el SIGUIENTE paso de `origen`? El embudo SOLO AVANZA un paso
+ * (Etapa 9): `antecedentes → entrevistas` es válido; `entrevistas →
+ * antecedentes` (retroceso) y `preseleccion → entrevistas` (salto) NO lo son.
  */
-export function esAdyacente(origen: Fase, destino: Fase): boolean {
-  return Math.abs(INDICE_FASE[origen] - INDICE_FASE[destino]) === 1;
+export function esSiguiente(origen: Fase, destino: Fase): boolean {
+  return INDICE_FASE[destino] - INDICE_FASE[origen] === 1;
 }
 
-/** Fases a las que SE PUEDE mover desde `fase` (en orden de avance). */
-export function fasesAdyacentes(fase: Fase): Fase[] {
-  const indice = INDICE_FASE[fase];
-  const adyacentes: Fase[] = [];
-  const anterior = FASES[indice - 1];
-  const posterior = FASES[indice + 1];
-  if (anterior !== undefined) {
-    adyacentes.push(anterior);
-  }
-  if (posterior !== undefined) {
-    adyacentes.push(posterior);
-  }
-  return adyacentes;
+/**
+ * ¿`destino` es un RETROCESO respecto de `origen`? Existe solo para que el
+ * servicio responda con el mensaje correcto («el embudo no retrocede» en vez
+ * de «no se salta»).
+ */
+export function esRetroceso(origen: Fase, destino: Fase): boolean {
+  return INDICE_FASE[destino] < INDICE_FASE[origen];
+}
+
+/** Fase SIGUIENTE a `fase`, o `undefined` si ya es la última (contratación). */
+export function faseSiguiente(fase: Fase): Fase | undefined {
+  return FASES[INDICE_FASE[fase] + 1];
 }
 
 /**
@@ -105,15 +103,27 @@ export function mensajeFaseActual(fase: Fase): string {
 }
 
 /**
- * 409 — destino NO adyacente. El mensaje nombra SIEMPRE el origen, el destino
- * recibido y las fases a las que sí se puede mover (útil para el cliente y
- * para testear el texto).
+ * 409 — destino NO es el SIGUIENTE paso (salto de fases). El mensaje nombra
+ * SIEMPRE el origen, el destino recibido y la ÚNICA fase a la que sí se puede
+ * avanzar (útil para el cliente y para testear el texto).
  */
 export function mensajeNoAdyacente(origen: Fase, destino: Fase): string {
-  const adyacentes = fasesAdyacentes(origen);
+  const siguiente = faseSiguiente(origen);
+  const admitida = siguiente === undefined ? '(ninguna: es la última fase)' : `'${siguiente}'`;
   return (
-    `Solo se puede mover un paso: de '${origen}' solo se admite ${entrecomillar(adyacentes)} ` +
+    `El embudo solo avanza UN paso: de '${origen}' solo se admite ${admitida} ` +
     `(recibido '${destino}')`
+  );
+}
+
+/**
+ * 409 — intento de RETROCESO a una fase anterior (Etapa 9: el embudo no
+ * retrocede; solo se puede descartar o avanzar).
+ */
+export function mensajeRetroceso(origen: Fase, destino: Fase): string {
+  return (
+    `El embudo solo avanza: no se puede devolver un candidato de '${origen}' a ` +
+    `'${destino}'. Si necesitas revisarlo, usa el descarte con su motivo`
   );
 }
 
