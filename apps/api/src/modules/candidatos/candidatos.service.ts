@@ -21,6 +21,17 @@ import { SearchHashService } from './search-hash.service';
 const ROLE_ADMIN = 'admin_rrhh';
 
 /**
+ * Heredero directo de `admin_rrhh` (migración 008, Etapa 8B): el
+ * `superusuario` (IT) edita candidatos ajenos con el MISMO poder que RRHH.
+ */
+const ROLE_SUPERUSUARIO = 'superusuario';
+
+/** ¿`role` administra los candidatos (RRHH o su heredero IT)? */
+function esRolAdministrador(role: string): boolean {
+  return role === ROLE_ADMIN || role === ROLE_SUPERUSUARIO;
+}
+
+/**
  * Nombres EXACTOS de los índices únicos creados en la migración 005. La capa
  * de servicio los usa para traducir el error 23505 (unique_violation) de
  * PostgreSQL a un 409 con mensaje claro, distinguiendo cédula de email.
@@ -385,7 +396,8 @@ export class CandidatosService {
    *
    * Reglas, en este orden:
    *  1. 404 si el candidato no existe.
-   *  2. 403 si no lo creó el usuario actual y no es `admin_rrhh`.
+   *  2. 403 si no lo creó el usuario actual y no es `admin_rrhh` ni
+   *     `superusuario`.
    *  3. 409 si se cambia la cédula por la de OTRO candidato (colisión del hash
    *     de búsqueda; el índice único también lo blindaría).
    *
@@ -408,7 +420,9 @@ export class CandidatosService {
       throw new NotFoundException(`No existe un candidato con id ${id}`);
     }
 
-    if (entidad.createdBy !== user.sub && user.role !== ROLE_ADMIN) {
+    // `admin_rrhh` y su heredero `superusuario` (Etapa 8B) editan cualquier
+    // fila; el resto solo lo que creó.
+    if (entidad.createdBy !== user.sub && !esRolAdministrador(user.role)) {
       throw new ForbiddenException(
         'Solo el creador del candidato o un administrador de RRHH pueden modificarlo',
       );

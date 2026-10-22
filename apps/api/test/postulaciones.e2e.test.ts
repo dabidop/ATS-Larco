@@ -442,7 +442,7 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       expect((resultado.rows as Array<{ n: number }>)[0]?.n).toBe(1);
     });
 
-    it('con rol lider_area → 403 (solo analista_seleccion y admin_rrhh)', async () => {
+    it('con rol lider_area → 403 (solo analista_seleccion, admin_rrhh y superusuario)', async () => {
       const response = await crearPostulacion(
         candidatoB.id,
         requerimientoActivo.id,

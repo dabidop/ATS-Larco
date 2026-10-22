@@ -578,7 +578,7 @@ describe('Archivos de CV — subida, dedup y descarga e2e (BD dev docker real)',
       );
     });
 
-    it('con rol lider_area → 403 (solo analista_seleccion y admin_rrhh)', async () => {
+    it('con rol lider_area → 403 (solo analista_seleccion, admin_rrhh y superusuario)', async () => {
       const response = await subir(
         candidatoTercero.id,
         {

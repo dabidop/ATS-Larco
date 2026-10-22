@@ -61,14 +61,17 @@ function requireUser(request: AuthenticatedRequest): AuthenticatedUser {
  * `fase_postulacion` de la migración 007).
  *
  * Matriz RBAC de este controlador:
- * | Ruta                              | Acceso                                    |
- * |-----------------------------------|-------------------------------------------|
- * | POST /api/postulaciones           | @Roles('analista_seleccion','admin_rrhh') |
- * | GET  /api/postulaciones           | autenticado (cualquier rol)               |
- * | GET  /api/postulaciones/:id       | autenticado (cualquier rol)               |
- * | PATCH /api/postulaciones/:id/fase | @Roles('analista_seleccion','admin_rrhh') |
- * | POST /api/postulaciones/:id/descarte | @Roles('analista_seleccion','admin_rrhh') |
- * | GET  /api/postulaciones/:id/historial | autenticado (cualquier rol)           |
+ * | Ruta                              | Acceso                                                |
+ * |-----------------------------------|-------------------------------------------------------|
+ * | POST /api/postulaciones           | @Roles('analista_seleccion','admin_rrhh','superusuario') |
+ * | GET  /api/postulaciones           | autenticado (cualquier rol)                           |
+ * | GET  /api/postulaciones/:id       | autenticado (cualquier rol)                           |
+ * | PATCH /api/postulaciones/:id/fase | @Roles('analista_seleccion','admin_rrhh','superusuario') |
+ * | POST /api/postulaciones/:id/descarte | @Roles('analista_seleccion','admin_rrhh','superusuario') |
+ * | GET  /api/postulaciones/:id/historial | autenticado (cualquier rol)                       |
+ *
+ * `superusuario` (IT, migración 008) hereda TODO el poder de `admin_rrhh`
+ * sobre el embudo (Etapa 8B): postula, mueve la fase y descarta como RRHH.
  *
  * El cliente NUNCA escribe `estado` ni `motivoDescarte` directamente: la fase
  * la mueve `PATCH /:id/fase` (un paso adyacente; `contratacion` ⇒
@@ -98,7 +101,7 @@ export class PostulacionesController {
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles('analista_seleccion', 'admin_rrhh')
+  @Roles('analista_seleccion', 'admin_rrhh', 'superusuario')
   async crear(
     @Body() body: CreatePostulacionDto,
     @Req() request: AuthenticatedRequest,
@@ -138,7 +141,7 @@ export class PostulacionesController {
    */
   @Patch(':id/fase')
   @HttpCode(HttpStatus.OK)
-  @Roles('analista_seleccion', 'admin_rrhh')
+  @Roles('analista_seleccion', 'admin_rrhh', 'superusuario')
   async cambiarFase(
     @Param('id', UUID_PARAM) id: string,
     @Body() body: MoverFaseDto,
@@ -159,7 +162,7 @@ export class PostulacionesController {
    */
   @Post(':id/descarte')
   @HttpCode(HttpStatus.OK)
-  @Roles('analista_seleccion', 'admin_rrhh')
+  @Roles('analista_seleccion', 'admin_rrhh', 'superusuario')
   async descartar(
     @Param('id', UUID_PARAM) id: string,
     @Body() body: DescartarPostulacionDto,

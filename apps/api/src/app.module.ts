@@ -22,6 +22,7 @@ import { ImportacionModule } from './modules/importacion/importacion.module';
 import { ProveedorModule } from './modules/proveedor/proveedor.module';
 import { RequerimientosModule } from './modules/requerimientos/requerimientos.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
+import { UsuariosModule } from './modules/usuarios/usuarios.module';
 
 /**
  * Módulo raíz de la API (Fase 1).
@@ -35,7 +36,7 @@ import { UploadsModule } from './modules/uploads/uploads.module';
  * (rate limiting, Fase 2, parte 4) al FINAL, para limitar peticiones por IP
  * una vez resueltas autenticación y autorización.
  *
- * Matriz RBAC inicial:
+ * Matriz RBAC inicial (ampliada con `superusuario` en la Etapa 8B):
  * | Ruta                                  | Acceso                                |
  * |---------------------------------------|---------------------------------------|
  * | GET /api/health                       | @Public()                             |
@@ -45,9 +46,14 @@ import { UploadsModule } from './modules/uploads/uploads.module';
  * | POST /api/auth/refresh                | autenticado (cualquier rol)           |
  * | GET /api/auth/me                      | autenticado (cualquier rol)           |
  * | GET /api/auth|candidatos|embudo|antecedentes|entrevistas|proveedor|historial/ping | autenticado (sin @Roles) |
- * | GET /api/requerimientos/ping          | @Roles('admin_rrhh', 'lider_area')    |
- * | GET /api/importacion/ping             | @Roles('admin_rrhh', 'analista_seleccion') |
- * | GET /api/uploads/ping                 | @Roles('admin_rrhh', 'analista_seleccion') |
+ * | GET /api/requerimientos/ping          | @Roles('admin_rrhh', 'superusuario', 'lider_area') |
+ * | GET /api/importacion/ping             | @Roles('admin_rrhh', 'superusuario', 'analista_seleccion') |
+ * | GET /api/uploads/ping                 | @Roles('admin_rrhh', 'analista_seleccion', 'superusuario') |
+ * | GET|POST /api/usuarios, /:id          | @Roles('superusuario') (gestión de usuarios) |
+ *
+ * `superusuario` (IT, migración 008) hereda TODO el poder de `admin_rrhh`
+ * sobre el negocio (crear/aprobar/cerrar requerimientos, crear candidatos,
+ * mover el embudo) y es el ÚNICO rol que gestiona `/api/usuarios`.
  *
  * Toda ruta NO marcada con `@Public()` exige JWT válido; sin `@Roles(...)`
  * basta con estar autenticado.
@@ -99,6 +105,8 @@ const THROTTLE_LIMIT = 100;
     UploadsModule,
     RequerimientosModule,
     ImportacionModule,
+    // Gestión de cuentas: EXCLUSIVA del `superusuario` (IT, Etapa 8B).
+    UsuariosModule,
   ],
   providers: [
     // Todas las respuestas de error usan el mismo formato JSON.

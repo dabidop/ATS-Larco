@@ -23,6 +23,12 @@ import { RequerimientosStoreService } from './requerimientos-store.service';
 const ROLE_ADMIN = 'admin_rrhh';
 
 /**
+ * Heredero directo de `admin_rrhh` (migración 008, Etapa 8B): el
+ * `superusuario` (IT) edita requerimientos ajenos con el MISMO poder que RRHH.
+ */
+const ROLE_SUPERUSUARIO = 'superusuario';
+
+/**
  * Campos obligatorios de la entidad: un `PATCH` no puede dejarlos vacíos
  * (las columnas son NOT NULL en BD y la API responde 400 en vez del 500 que
  * devolvería el CHECK de la base de datos).
@@ -121,7 +127,8 @@ export class RequerimientosService {
    *  2. 409 si no está `pendiente`: el ciclo de vida lo decide la máquina de
    *     estados (parte 4); editar un requerimiento aprobado/en proceso ya
    *     rompería la trazabilidad.
-   *  3. 403 si no lo creó el usuario actual y no es `admin_rrhh`.
+   *  3. 403 si no lo creó el usuario actual y no es `admin_rrhh` ni
+   *     `superusuario`.
    *  4. 400 si el cambio dejaría un campo obligatorio vacío o el rango
    *     salarial inconsistente (el CHECK de BD devolvería un 500).
    *
@@ -148,7 +155,9 @@ export class RequerimientosService {
       );
     }
 
-    const esAdministrador = user.role === ROLE_ADMIN;
+    // `admin_rrhh` y su heredero `superusuario` (Etapa 8B) editan cualquier
+    // fila; el resto solo lo que creó.
+    const esAdministrador = user.role === ROLE_ADMIN || user.role === ROLE_SUPERUSUARIO;
     if (entidad.createdBy !== user.sub && !esAdministrador) {
       throw new ForbiddenException(
         'Solo el creador del requerimiento o un administrador de RRHH pueden modificarlo',

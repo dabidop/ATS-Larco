@@ -334,7 +334,7 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
       expect(response.body.message).toBe('Ya existe un candidato con esa cédula');
     });
 
-    it('con rol lider_area → 403 (solo analista_seleccion y admin_rrhh)', async () => {
+    it('con rol lider_area → 403 (solo analista_seleccion, admin_rrhh y superusuario)', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/candidatos')
         .set('Authorization', `Bearer ${tokenLider}`)

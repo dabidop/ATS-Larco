@@ -164,6 +164,15 @@ describe('Guards de autenticación y autorización (e2e)', () => {
     expect(typeof response.body.timestamp).toBe('string');
   });
 
+  it('GET /api/requerimientos/ping con token role=superusuario → 200 (hereda admin_rrhh)', async () => {
+    const response = await get(
+      '/api/requerimientos/ping',
+      jwt.sign(payload('superusuario')),
+    ).expect(200);
+
+    expect(response.body).toEqual({ modulo: 'requerimientos', status: 'placeholder' });
+  });
+
   it('GET /api/importacion/ping con token role=analista_seleccion → 200', async () => {
     const response = await get(
       '/api/importacion/ping',

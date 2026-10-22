@@ -61,12 +61,16 @@ function requireUser(request: AuthenticatedRequest): AuthenticatedUser {
  * Matriz RBAC de este controlador:
  * | Ruta                                      | Acceso                                                 |
  * |-------------------------------------------|--------------------------------------------------------|
- * | GET  /api/requerimientos/ping             | @Roles('admin_rrhh','lider_area')                      |
- * | POST /api/requerimientos                  | @Roles('admin_rrhh','lider_area')                      |
+ * | GET  /api/requerimientos/ping             | @Roles('admin_rrhh','superusuario','lider_area')       |
+ * | POST /api/requerimientos                  | @Roles('admin_rrhh','superusuario','lider_area')       |
  * | GET  /api/requerimientos                  | autenticado (cualquier rol)                            |
  * | GET  /api/requerimientos/:id              | autenticado (cualquier rol)                            |
- * | PATCH /api/requerimientos/:id             | creador o @Roles('admin_rrhh')                         |
- * | POST /api/requerimientos/:id/transiciones | @Roles('admin_rrhh','analista_seleccion','lider_area') |
+ * | PATCH /api/requerimientos/:id             | creador o @Roles('admin_rrhh','superusuario')          |
+ * | POST /api/requerimientos/:id/transiciones | @Roles('admin_rrhh','superusuario','analista_seleccion','lider_area') |
+ *
+ * `superusuario` (IT, migración 008) hereda TODO el poder de `admin_rrhh`
+ * sobre el negocio (Etapa 8B): crea requerimientos, los aprueba/cierra y los
+ * edita como si fuera RRHH.
  *
  * SOLO LECTURA de estado en el CRUD: `estado` y `motivoRechazo` no se aceptan
  * en los cuerpos de POST/PATCH (los DTO no los declaran → 400 con
@@ -87,7 +91,7 @@ function requireUser(request: AuthenticatedRequest): AuthenticatedUser {
 export class RequerimientosController {
   constructor(private readonly requerimientos: RequerimientosService) {}
 
-  @Roles('admin_rrhh', 'lider_area')
+  @Roles('admin_rrhh', 'superusuario', 'lider_area')
   @Get('ping')
   ping() {
     return { modulo: 'requerimientos', status: 'placeholder' } as const;
@@ -96,7 +100,7 @@ export class RequerimientosController {
   /** Crea un requerimiento (201) con código `REQ-YYYY-NNN` y estado `pendiente`. */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles('admin_rrhh', 'lider_area')
+  @Roles('admin_rrhh', 'superusuario', 'lider_area')
   async create(
     @Body() body: CreateRequerimientoDto,
     @Req() request: AuthenticatedRequest,
@@ -116,7 +120,7 @@ export class RequerimientosController {
     return this.requerimientos.findById(id);
   }
 
-  /** Actualización parcial: solo en `pendiente` y solo creador o `admin_rrhh`. */
+  /** Actualización parcial: solo en `pendiente` y solo creador, `admin_rrhh` o `superusuario`. */
   @Patch(':id')
   async update(
     @Param('id', UUID_PARAM) id: string,
@@ -130,14 +134,14 @@ export class RequerimientosController {
    * Transición de la máquina de estados (parte 4) → 200 con el requerimiento
    * ACTUALIZADO (misma forma que el CRUD, no un sub-recurso).
    *
-   * `@Roles(...)` es solo la puerta: los 3 roles del flujo llegan al servicio,
+   * `@Roles(...)` es solo la puerta: los 4 roles del flujo llegan al servicio,
    * que aplica la matriz real `origen → destino` (409 estructural → 403 por
    * rol → 400 si falta motivo al rechazar). El guard global de throttling ya
    * cubre esta ruta; aquí no se duplica nada.
    */
   @Post(':id/transiciones')
   @HttpCode(HttpStatus.OK)
-  @Roles('admin_rrhh', 'analista_seleccion', 'lider_area')
+  @Roles('admin_rrhh', 'superusuario', 'analista_seleccion', 'lider_area')
   async transicionar(
     @Param('id', UUID_PARAM) id: string,
     @Body() body: TransicionarRequerimientoDto,

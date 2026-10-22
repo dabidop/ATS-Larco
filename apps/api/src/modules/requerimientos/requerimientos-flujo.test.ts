@@ -16,8 +16,8 @@ import {
  * requerimientos (Fase 3, parte 4): datos puros, cero BD.
  *
  * Cobertura: transiciones válidas/inválidas por estado, estados terminales sin
- * salida, la matriz de permisos COMPLETA (5 estados × 5 destinos × 3 roles ×
- * creador/no-creador = 150 combinaciones contra el contrato declarado) y las
+ * salida, la matriz de permisos COMPLETA (5 estados × 5 destinos × 4 roles ×
+ * creador/no-creador = 200 combinaciones contra el contrato declarado) y las
  * reglas extra —`lider_area` solo retira SU solicitud—. Los errores HTTP que
  * la máquina produce (409/403/400) se verifican en
  * `test/requerimientos-flujo.e2e.test.ts` contra la BD dev.
@@ -28,7 +28,13 @@ import {
 
 const E = EstadoRequerimiento;
 const TODOS_ESTADOS = Object.values(E);
-const TODOS_ROLES: readonly RoleCode[] = ['admin_rrhh', 'analista_seleccion', 'lider_area'];
+/** Los 4 roles del RBAC (Etapa 8B): `superusuario` hereda el poder de RRHH. */
+const TODOS_ROLES: readonly RoleCode[] = [
+  'admin_rrhh',
+  'superusuario',
+  'analista_seleccion',
+  'lider_area',
+];
 
 describe('TRANSICIONES_VALIDAS — transiciones por estado', () => {
   it('pendiente → [aprobado, rechazado] (única bifurcación del flujo)', () => {
@@ -84,14 +90,19 @@ describe('PERMISOS_TRANSICION — matriz por rol', () => {
     ]);
   });
 
-  it('aplica la matriz exacta del negocio', () => {
-    expect(PERMISOS_TRANSICION['pendiente>aprobado']).toEqual(['admin_rrhh']);
-    expect(PERMISOS_TRANSICION['pendiente>rechazado']).toEqual(['admin_rrhh', 'lider_area']);
+  it('aplica la matriz exacta del negocio (admin_rrhh + su heredero superusuario)', () => {
+    expect(PERMISOS_TRANSICION['pendiente>aprobado']).toEqual(['admin_rrhh', 'superusuario']);
+    expect(PERMISOS_TRANSICION['pendiente>rechazado']).toEqual([
+      'admin_rrhh',
+      'superusuario',
+      'lider_area',
+    ]);
     expect(PERMISOS_TRANSICION['aprobado>en_proceso']).toEqual([
       'admin_rrhh',
+      'superusuario',
       'analista_seleccion',
     ]);
-    expect(PERMISOS_TRANSICION['en_proceso>cerrado']).toEqual(['admin_rrhh']);
+    expect(PERMISOS_TRANSICION['en_proceso>cerrado']).toEqual(['admin_rrhh', 'superusuario']);
   });
 
   it('cada clave de permisos corresponde a una transición estructuralmente válida', () => {
@@ -108,26 +119,34 @@ describe('PERMISOS_TRANSICION — matriz por rol', () => {
 describe('puedeTransitar — matriz COMPLETA (estados × destinos × roles × autoría)', () => {
   /**
    * Contrato declarado: TODAS las combinaciones permitidas. El test cruza el
-   * producto cartesiano completo (150 combinaciones) contra este conjunto;
+   * producto cartesiano completo (200 combinaciones) contra este conjunto;
    * cualquier permiso que no esté declarado aquí abajo hace fallar la suite.
    *
    * Formato: `origen>destino>rol` — la dimensión creador/no-creador se expande
    * abajo: solo `pendiente>rechazado>lider_area` distingue autoría (y SOLO en
    * modo creador).
+   *
+   * `superusuario` ocupa el MISMO sitio que `admin_rrhh` en las 4 transiciones
+   * (hereda TODO su poder, Etapa 8B) y TAMPOCO está sujeto a la regla del
+   * creador, porque esa regla es exclusiva de `lider_area`.
    */
   const PERMITIDAS = new Set([
     'pendiente>aprobado>admin_rrhh',
+    'pendiente>aprobado>superusuario',
     'pendiente>rechazado>admin_rrhh',
+    'pendiente>rechazado>superusuario',
     'pendiente>rechazado>lider_area',
     'aprobado>en_proceso>admin_rrhh',
+    'aprobado>en_proceso>superusuario',
     'aprobado>en_proceso>analista_seleccion',
     'en_proceso>cerrado>admin_rrhh',
+    'en_proceso>cerrado>superusuario',
   ]);
 
   /** La ÚNICA combinación restringida a ser el creador de la solicitud. */
   const EXIGE_CREADOR = new Set(['pendiente>rechazado>lider_area']);
 
-  it('verifica las 150 combinaciones posibles contra el contrato', () => {
+  it('verifica las 200 combinaciones posibles contra el contrato', () => {
     for (const origen of TODOS_ESTADOS) {
       for (const destino of TODOS_ESTADOS) {
         for (const role of TODOS_ROLES) {
@@ -148,14 +167,29 @@ describe('puedeTransitar — matriz COMPLETA (estados × destinos × roles × au
   it('regla extra: lider_area NO rechaza una solicitud ajena, SÍ la suya', () => {
     expect(puedeTransitar(E.Pendiente, E.Rechazado, 'lider_area', true)).toBe(true);
     expect(puedeTransitar(E.Pendiente, E.Rechazado, 'lider_area', false)).toBe(false);
-    // admin_rrhh no está sujeto a la regla del creador: rechaza cualquier fila.
+    // Ni admin_rrhh ni superusuario están sujetos a la regla del creador:
+    // rechazan cualquier fila.
     expect(puedeTransitar(E.Pendiente, E.Rechazado, 'admin_rrhh', false)).toBe(true);
+    expect(puedeTransitar(E.Pendiente, E.Rechazado, 'superusuario', false)).toBe(true);
   });
 
-  it('quién aprueba y quién cierra es SOLO admin_rrhh', () => {
+  it('quién aprueba y quién cierra es admin_rrhh Y superusuario (nadie más)', () => {
     for (const role of TODOS_ROLES) {
-      expect(puedeTransitar(E.Pendiente, E.Aprobado, role, true)).toBe(role === 'admin_rrhh');
-      expect(puedeTransitar(E.EnProceso, E.Cerrado, role, true)).toBe(role === 'admin_rrhh');
+      const esAdministrador = role === 'admin_rrhh' || role === 'superusuario';
+      expect(puedeTransitar(E.Pendiente, E.Aprobado, role, true)).toBe(esAdministrador);
+      expect(puedeTransitar(E.EnProceso, E.Cerrado, role, true)).toBe(esAdministrador);
+    }
+  });
+
+  it('superusuario transita exactamente igual que admin_rrhh en las 4 transiciones', () => {
+    for (const origen of TODOS_ESTADOS) {
+      for (const destino of TODOS_ESTADOS) {
+        for (const esCreador of [true, false]) {
+          expect(puedeTransitar(origen, destino, 'superusuario', esCreador)).toBe(
+            puedeTransitar(origen, destino, 'admin_rrhh', esCreador),
+          );
+        }
+      }
     }
   });
 
@@ -163,6 +197,10 @@ describe('puedeTransitar — matriz COMPLETA (estados × destinos × roles × au
     expect(puedeTransitar(E.Pendiente, E.EnProceso, 'admin_rrhh', true)).toBe(false);
     expect(puedeTransitar(E.Aprobado, E.Cerrado, 'admin_rrhh', true)).toBe(false);
     expect(puedeTransitar(E.Aprobado, E.Aprobado, 'admin_rrhh', true)).toBe(false);
+    // El superusuario hereda los permisos, no la potestad de romper la máquina.
+    expect(puedeTransitar(E.Pendiente, E.EnProceso, 'superusuario', true)).toBe(false);
+    expect(puedeTransitar(E.Aprobado, E.Cerrado, 'superusuario', true)).toBe(false);
+    expect(puedeTransitar(E.Aprobado, E.Aprobado, 'superusuario', true)).toBe(false);
   });
 });
 
@@ -178,6 +216,17 @@ describe('transicionesPermitidas — opciones visibles por estado y rol', () => 
     ]);
   });
 
+  it('pendiente + superusuario → exactamente las mismas opciones que admin_rrhh', () => {
+    expect(transicionesPermitidas(E.Pendiente, 'superusuario', true)).toEqual([
+      E.Aprobado,
+      E.Rechazado,
+    ]);
+    expect(transicionesPermitidas(E.Pendiente, 'superusuario', false)).toEqual([
+      E.Aprobado,
+      E.Rechazado,
+    ]);
+  });
+
   it('pendiente + analista_seleccion → ninguna opción (no administra el flujo)', () => {
     expect(transicionesPermitidas(E.Pendiente, 'analista_seleccion', true)).toEqual([]);
     expect(transicionesPermitidas(E.Pendiente, 'analista_seleccion', false)).toEqual([]);
@@ -188,14 +237,16 @@ describe('transicionesPermitidas — opciones visibles por estado y rol', () => 
     expect(transicionesPermitidas(E.Pendiente, 'lider_area', false)).toEqual([]);
   });
 
-  it('aprobado → en_proceso para admin y analista; nunca para líder', () => {
+  it('aprobado → en_proceso para admin, superusuario y analista; nunca para líder', () => {
     expect(transicionesPermitidas(E.Aprobado, 'admin_rrhh', false)).toEqual([E.EnProceso]);
+    expect(transicionesPermitidas(E.Aprobado, 'superusuario', false)).toEqual([E.EnProceso]);
     expect(transicionesPermitidas(E.Aprobado, 'analista_seleccion', false)).toEqual([E.EnProceso]);
     expect(transicionesPermitidas(E.Aprobado, 'lider_area', false)).toEqual([]);
   });
 
-  it('en_proceso → cerrado solo para admin_rrhh', () => {
+  it('en_proceso → cerrado solo para admin_rrhh y superusuario', () => {
     expect(transicionesPermitidas(E.EnProceso, 'admin_rrhh', false)).toEqual([E.Cerrado]);
+    expect(transicionesPermitidas(E.EnProceso, 'superusuario', false)).toEqual([E.Cerrado]);
     expect(transicionesPermitidas(E.EnProceso, 'analista_seleccion', false)).toEqual([]);
     expect(transicionesPermitidas(E.EnProceso, 'lider_area', false)).toEqual([]);
   });
@@ -213,6 +264,7 @@ describe('transicionesPermitidas — opciones visibles por estado y rol', () => 
 describe('denegacionPermiso — motivos de 403 en español', () => {
   it('devuelve null cuando la transición está permitida', () => {
     expect(denegacionPermiso(E.Pendiente, E.Aprobado, 'admin_rrhh', false)).toBeNull();
+    expect(denegacionPermiso(E.Pendiente, E.Aprobado, 'superusuario', false)).toBeNull();
     expect(denegacionPermiso(E.Pendiente, E.Rechazado, 'lider_area', true)).toBeNull();
   });
 
@@ -220,7 +272,9 @@ describe('denegacionPermiso — motivos de 403 en español', () => {
     const motivo = denegacionPermiso(E.Pendiente, E.Aprobado, 'analista_seleccion', false);
     expect(motivo).toContain('analista_seleccion');
     expect(motivo).toContain('pendiente → aprobado');
-    expect(motivo).toContain('admin_rrhh'); // informa de quién SÍ puede
+    // informa de quién SÍ puede: RRHH y su heredero IT.
+    expect(motivo).toContain('admin_rrhh');
+    expect(motivo).toContain('superusuario');
   });
 
   it('explica la regla del creador cuando un líder intenta rechazar lo ajeno', () => {

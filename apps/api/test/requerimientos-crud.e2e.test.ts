@@ -289,7 +289,7 @@ describe('Requerimientos — API CRUD e2e (BD dev docker real)', () => {
   // ───────────────────────── POST ─────────────────────────
 
   describe('POST /api/requerimientos', () => {
-    it('con rol analista_seleccion → 403 (solo lider_area y admin_rrhh)', async () => {
+    it('con rol analista_seleccion → 403 (solo lider_area, admin_rrhh y superusuario)', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/requerimientos')
         .set('Authorization', `Bearer ${tokenAnalista}`)

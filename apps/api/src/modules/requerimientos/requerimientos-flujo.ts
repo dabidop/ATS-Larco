@@ -9,11 +9,14 @@ import { EstadoRequerimiento } from './requerimiento.entity';
  * unitarios herméticos y consultar desde el servicio.
  *
  * Flujo: `pendiente → aprobado → en_proceso → cerrado | rechazado`
- *  - `pendiente → aprobado`   QUIÉN APRUEBA: RRHH (`admin_rrhh`).
- *  - `pendiente → rechazado`  RRHH, o el líder sobre SU propia solicitud.
- *  - `aprobado → en_proceso`  RRHH o el analista de selección que lo ejecuta.
- *  - `en_proceso → cerrado`   QUIÉN CIERRA: RRHH (`admin_rrhh`).
+ *  - `pendiente → aprobado`   QUIÉN APRUEBA: RRHH (`admin_rrhh`) o `superusuario`.
+ *  - `pendiente → rechazado`  RRHH/superusuario, o el líder sobre SU propia solicitud.
+ *  - `aprobado → en_proceso`  RRHH/superusuario o el analista de selección que lo ejecuta.
+ *  - `en_proceso → cerrado`   QUIÉN CIERRA: RRHH (`admin_rrhh`) o `superusuario`.
  *  - `cerrado` y `rechazado`  son estados TERMINALES (sin salida).
+ *
+ * `superusuario` (IT, migración 008) hereda TODO el poder de `admin_rrhh`
+ * sobre el negocio (Etapa 8B), por eso figura en las MISMAS 4 transiciones.
  *
  * El ORDEN de las claves de `TRANSICIONES_VALIDAS` replica el orden del ENUM
  * `estado_requerimiento` de PostgreSQL (migración 003).
@@ -49,25 +52,29 @@ export const TRANSICIONES_VALIDAS: Readonly<
  *
  * | Transición                | Roles                                    |
  * |---------------------------|------------------------------------------|
- * | `pendiente>aprobado`      | admin_rrhh (quién aprueba: RRHH)         |
- * | `pendiente>rechazado`     | admin_rrhh, lider_area (+ regla creador) |
- * | `aprobado>en_proceso`     | admin_rrhh, analista_seleccion           |
- * | `en_proceso>cerrado`      | admin_rrhh (quién cierra: RRHH)          |
+ * | `pendiente>aprobado`      | admin_rrhh, superusuario (quién aprueba) |
+ * | `pendiente>rechazado`     | admin_rrhh, superusuario, lider_area (+ regla creador) |
+ * | `aprobado>en_proceso`     | admin_rrhh, superusuario, analista_seleccion |
+ * | `en_proceso>cerrado`      | admin_rrhh, superusuario (quién cierra)  |
+ *
+ * El ORDEN de cada lista es `admin_rrhh` primero y `superusuario` SEGUNDO
+ * (heredero directo, Etapa 8B), seguidos del resto de roles.
  */
 export const PERMISOS_TRANSICION: Readonly<Partial<Record<ClaveTransicion, readonly RoleCode[]>>> =
   {
-    'pendiente>aprobado': ['admin_rrhh'],
-    'pendiente>rechazado': ['admin_rrhh', 'lider_area'],
-    'aprobado>en_proceso': ['admin_rrhh', 'analista_seleccion'],
-    'en_proceso>cerrado': ['admin_rrhh'],
+    'pendiente>aprobado': ['admin_rrhh', 'superusuario'],
+    'pendiente>rechazado': ['admin_rrhh', 'superusuario', 'lider_area'],
+    'aprobado>en_proceso': ['admin_rrhh', 'superusuario', 'analista_seleccion'],
+    'en_proceso>cerrado': ['admin_rrhh', 'superusuario'],
   };
 
 /**
  * REGLA EXTRA — "cada quien retira lo suyo": el rol `lider_area` solo puede
  * ejecutar `pendiente → rechazado` sobre un requerimiento QUE ÉL CREÓ
  * (`created_by === user.sub`), es decir, puede RETIRAR SU SOLICITUD pero no
- * vetar la de otro líder. `admin_rrhh` no está sujeta a esta regla: RRHH
- * rechaza cualquier solicitud.
+ * vetar la de otro líder. `admin_rrhh` y `superusuario` no están sujetos a
+ * esta regla: RRHH/IT rechazan cualquier solicitud (solo `lider_area` está
+ * en la lista).
  *
  * La lista contiene los roles de `clave` a los que se les exige ser creador;
  * si el rol no está en la lista, la transición no exige autoría.

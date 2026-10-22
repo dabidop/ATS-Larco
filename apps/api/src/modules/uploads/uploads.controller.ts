@@ -10,7 +10,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
  */
 @Controller('uploads')
 export class UploadsController {
-  @Roles('admin_rrhh', 'analista_seleccion')
+  @Roles('admin_rrhh', 'analista_seleccion', 'superusuario')
   @Get('ping')
   ping() {
     return { modulo: 'uploads', status: 'placeholder' } as const;

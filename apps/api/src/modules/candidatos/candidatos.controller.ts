@@ -68,17 +68,21 @@ function requireUser(request: AuthenticatedRequest): AuthenticatedUser {
  * así que aquí solo se declaran los roles permitidos con `@Roles(...)`.
  *
  * Matriz RBAC de este controlador:
- * | Ruta                                       | Acceso                                     |
- * |--------------------------------------------|--------------------------------------------|
- * | GET  /api/candidatos/ping                  | autenticado (cualquier rol)                |
- * | POST /api/candidatos                       | @Roles('analista_seleccion','admin_rrhh')  |
- * | GET  /api/candidatos                       | autenticado (cualquier rol)                |
- * | GET  /api/candidatos/:id                   | autenticado (cualquier rol)                |
- * | GET  /api/candidatos/:id/historial         | autenticado (cualquier rol)                |
- * | PATCH /api/candidatos/:id                  | creador o @Roles('admin_rrhh') (en servicio) |
- * | POST /api/candidatos/:id/archivos          | @Roles('analista_seleccion','admin_rrhh')  |
- * | GET  /api/candidatos/:id/archivos          | autenticado (cualquier rol)                |
- * | GET  /api/candidatos/:id/archivos/:aid/descarga | autenticado (cualquier rol)           |
+ * | Ruta                                       | Acceso                                                     |
+ * |--------------------------------------------|------------------------------------------------------------|
+ * | GET  /api/candidatos/ping                  | autenticado (cualquier rol)                                |
+ * | POST /api/candidatos                       | @Roles('analista_seleccion','admin_rrhh','superusuario')   |
+ * | GET  /api/candidatos                       | autenticado (cualquier rol)                                |
+ * | GET  /api/candidatos/:id                   | autenticado (cualquier rol)                                |
+ * | GET  /api/candidatos/:id/historial         | autenticado (cualquier rol)                                |
+ * | PATCH /api/candidatos/:id                  | creador o @Roles('admin_rrhh','superusuario') (en servicio) |
+ * | POST /api/candidatos/:id/archivos          | @Roles('analista_seleccion','admin_rrhh','superusuario')   |
+ * | GET  /api/candidatos/:id/archivos          | autenticado (cualquier rol)                                |
+ * | GET  /api/candidatos/:id/archivos/:aid/descarga | autenticado (cualquier rol)                           |
+ *
+ * `superusuario` (IT, migración 008) hereda TODO el poder de `admin_rrhh`
+ * sobre los candidatos (Etapa 8B): los crea, los edita aunque no los haya
+ * creado y les adjunta CVs.
  *
  * ARCHIVOS DE CV (Fase 4, parte 2): la lógica vive en `ArchivosCvService`
  * (módulo `uploads`); aquí solo se declara la puerta HTTP: multipart con
@@ -113,10 +117,10 @@ export class CandidatosController {
     return { modulo: 'candidatos', status: 'placeholder' } as const;
   }
 
-  /** Crea un candidato (201) con la PII cifrada. Solo selección y admin RRHH. */
+  /** Crea un candidato (201) con la PII cifrada. Solo selección, admin RRHH y superusuario. */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles('analista_seleccion', 'admin_rrhh')
+  @Roles('analista_seleccion', 'admin_rrhh', 'superusuario')
   async create(
     @Body() body: CreateCandidatoDto,
     @Req() request: AuthenticatedRequest,
@@ -157,7 +161,7 @@ export class CandidatosController {
     return this.candidatos.historial(id);
   }
 
-  /** Actualización parcial: solo creador o `admin_rrhh` (decisión en el servicio). */
+  /** Actualización parcial: solo creador, `admin_rrhh` o `superusuario` (decisión en el servicio). */
   @Patch(':id')
   async update(
     @Param('id', UUID_PARAM) id: string,
@@ -187,7 +191,7 @@ export class CandidatosController {
    */
   @Post(':id/archivos')
   @HttpCode(HttpStatus.CREATED)
-  @Roles('analista_seleccion', 'admin_rrhh')
+  @Roles('analista_seleccion', 'admin_rrhh', 'superusuario')
   @UseInterceptors(
     LimiteTamanoInterceptor,
     FileInterceptor('file', {
