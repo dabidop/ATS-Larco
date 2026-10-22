@@ -41,13 +41,25 @@ Aplicación web de gestión de talento (ATS) para LARCO. Permite:
      trazabilidad (qué cambió, antes → después, quién y cuándo) visible en
      el "Historial" de cada ficha y en la auditoría de la base de datos.
 
+  e) GESTIONAR LOS USUARIOS DEL SISTEMA (solo IT): el superusuario (IT) da
+     de alta a los analistas, líderes y a la administración de RRHH, les
+     asigna su rol, les restablece contraseñas y activa o desactiva sus
+     cuentas. RRHH NO administra el software: eso es de IT.
+
 ================================================================================
 2. QUIÉN HACE QUÉ (ROLES)
 ================================================================================
 
   Administración RRHH (admin@larco.co)
     Aprueba e inicia requerimientos, cierra los procesos, ve todo y también
-    puede crear candidatos y mover el embudo.
+    puede crear candidatos y mover el embudo. NO gestiona usuarios (eso es
+    de IT).
+
+  Superusuario — IT (it@larco.co)
+    El administrador del SOFTWARE: da de alta y desactiva usuarios, les
+    asigna roles y restablece contraseñas (módulo "Usuarios"). Además puede
+    TODO lo que hace administración de RRHH (aprobar, cerrar, embudo y
+    candidatos) por herencia de poder.
 
   Líder de Área (e2e-lider@larco.co)
     Crea y edita sus propios requerimientos (solo mientras están Pendientes).
@@ -135,6 +147,26 @@ PANTALLA 8 — Cierre y trazabilidad
   ficha. El historial de cada candidato/postulación conserva la historia
   completa del proceso.
 
+PANTALLA 9 — Usuarios (solo el superusuario IT)
+  El menú superior muestra "Usuarios" Únicamente cuando entra it@larco.co
+  (los demás roles no ven el enlace). Al entrar:
+  • Tabla paginada: NOMBRE, CORREO, ROL (nombre en español), ESTADO
+    (Activo/Inactivo) y CREADO (fecha).
+  • Acciones en cada fila:
+      - Selector "Nuevo rol de X" + "Guardar rol": cambia el rol al
+        instante (mensaje «Rol de X actualizado»).
+      - "Desactivar a X" (o "Activar a X" si está inactivo): la baja es
+        LÓGICA, la cuenta no se borra nunca.
+      - Campo "Nueva contraseña de X" + "Restablecer contraseña":
+        rota la clave (la anterior deja de valer).
+  • En la fila PROPIA el selector de rol sale deshabilitado con la
+    etiqueta «Eres tú (autoprotección)»: nadie se cambia su propio rol
+    ni se desactiva a sí mismo (la API responde 409 igualmente).
+  • "Nuevo usuario" abre el formulario: nombre*, correo* (único),
+    contraseña* (mínimo 8 caracteres) y rol*. Al guardar vuelve a la
+    lista con el mensaje «Usuario «X» creado correctamente» y la nueva
+    fila ya visible. Arriba, "← Volver" regresa a la lista.
+
 ================================================================================
 4. REGRAS QUE VERÁ EN PANTALLA
 ================================================================================
@@ -151,6 +183,11 @@ PANTALLA 8 — Cierre y trazabilidad
     (la API responde 409 y la interfaz lo muestra tal cual).
   • Solo se puede postular a requerimientos "En proceso".
   • Un candidato no puede tener dos cédulas distintas (la cédula es única).
+  • Usuarios: solo el superusuario (IT) gestiona cuentas — los demás roles
+    reciben 403. La contraseña mínima es de 8 caracteres y el correo es
+    único (409 «Ya existe un usuario con ese correo»). Nadie puede
+    desactivarse a sí mismo ni cambiarse su propio rol, y SIEMPRE debe
+    quedar al menos un superusuario activo (409).
   • El login admite 5 intentos por minuto; después responde "Demasiadas
     peticiones" durante 1 minuto.
 
@@ -162,6 +199,7 @@ CUENTAS (ya creadas en la base de datos de prueba):
 
   Rol                    Correo                   Contraseña
   ---------------------  -----------------------  ------------
+  Superusuario — IT      it@larco.co              DevSuper2026!
   Administración RRHH    admin@larco.co           DevAdmin2026!
   Líder de Área          e2e-lider@larco.co       DevE2e2026!
   Analista de Selección  e2e-analista@larco.co    DevE2e2026!
@@ -225,6 +263,41 @@ PRUEBA 3 — Auditoría y privacidad (≈2 minutos)
      "— → valor"; cédula y teléfono aparecen como "***".
   2. Cada movimiento del embudo queda en la auditoría de la base de datos
      (tabla audit_log) con usuario, fecha y JSON de antes/después.
+
+--------------------------------------------------------------------------------
+PRUEBA 4 — Usuarios (módulo IT, ≈4 minutos)
+--------------------------------------------------------------------------------
+  1. Entre con it@larco.co. ESPERADO: el menú superior muestra "Usuarios"
+     (además de Requerimientos y Candidatos) y el chip dice
+     «it@larco.co · Superusuario (IT)».
+  2. "Usuarios" → "Nuevo usuario": cree "Prueba Usuario Manual"
+     (correo prueba.usuario@larco.co, contraseña Manual2026!, rol
+     Analista de Selección). ESPERADO: vuelve a la lista con «Usuario
+     «Prueba Usuario Manual» creado correctamente» y la fila nueva ya
+     visible (el listado se recarga solo, sin quedarse vacío).
+  3. En la fila del usuario nuevo: cambie el selector de rol a "Líder de
+     Área" → "Guardar rol". ESPERADO: «Rol de Prueba Usuario Manual
+     actualizado» y la celda ROL actualizada.
+  4. Restablecimiento: escriba NuevaClave2026! en "Nueva contraseña" →
+     "Restablecer contraseña". ESPERADO: mensaje de éxito. Salga
+     («Salir») y entre con prueba.usuario@larco.co / NuevaClave2026!.
+     ESPERADO: entra correctamente (la clave anterior ya no sirve).
+     Vuelva a entrar con it@larco.co.
+  5. Desactive la cuenta: "Desactivar a Prueba Usuario Manual".
+     ESPERADO: estado "Inactivo" y el botón cambia a "Activar".
+  6. Autoprotección: en la fila de IT propio el selector de rol sale
+     deshabilitado con «Eres tú (autoprotección)».
+     ESPERADO: nadie puede cambiarse su propio rol ni desactivarse.
+  7. Último superusuario: si creara otro usuario IT y desactivara el
+     primero... (regla del sistema: SIEMPRE debe quedar al menos un
+     superusuario activo; la API responde 409 en caso contrario).
+  8. Regla negativa con admin: cierre sesión, entre con admin@larco.co.
+     ESPERADO: el menú NO muestra "Usuarios"; si escribe a mano
+     http://localhost:5173/usuarios lo devuelve a /requerimientos.
+
+  Al terminar puede dejar la cuenta "Prueba Usuario Manual" desactivada
+  (es un usuario de prueba; las cuentas no se borran, solo se
+  desactivan).
 
 ================================================================================
 6. DATOS YA CARGADOS PARA SU PRUEBA

@@ -110,7 +110,9 @@
 
   users                id, role_id → roles, email UNIQUE, password_hash,
                        full_name, active, timestamps + triggers de auditoría
-  roles                3 filas: admin_rrhh, analista_seleccion, lider_area
+  roles                4 filas: admin_rrhh, analista_seleccion, lider_area,
+                       superusuario (rol IT con TODO el poder de admin_rrhh
+                       más la gestión exclusiva de usuarios)
   requerimientos       codigo UNIQUE + code_check (REQ-YYYY-NNN); checks:
                        numero_plazas, salario_min, salario_max,
                        salario_rango (min <= max) y rechazo (motivo
@@ -146,7 +148,9 @@
   se guardan como texto en requerimientos.
 
   Aplicar migraciones: pnpm --filter @ats/api db:migrate
-  (las 7 están aplicadas en la BD dev; registro en la tabla pgmigrations).
+  (las 8 están aplicadas en la BD dev; registro en la tabla pgmigrations;
+  la 008 crea el rol superusuario y siembra it@larco.co con la contraseña
+  de SUPER_INITIAL_PASSWORD).
 
 ================================================================================
 4. MÁQUINAS DE ESTADOS
@@ -155,13 +159,15 @@
   Requerimiento — POST /api/requerimientos/:id/transiciones
   body {destino, motivo?}; destino ∈ {aprobado, rechazado, en_proceso,
   cerrado} (pendiente nunca es destino). La puerta @Roles deja pasar a los
-  3 roles; la MATRIZ de permisos vive en requerimientos-flujo.ts:
+  4 roles; la MATRIZ de permisos vive en requerimientos-flujo.ts (en cada
+  transición de admin_rrhh participa también superusuario, que hereda su
+  poder):
 
-    pendiente → aprobado    : solo admin_rrhh
+    pendiente → aprobado    : solo admin_rrhh (y superusuario)
     pendiente → rechazado   : admin_rrhh (cualquiera) y lider_area SOLO si
                               es el creador
-    aprobado  → en_proceso  : admin_rrhh y analista_seleccion
-    en_proceso → cerrado    : solo admin_rrhh
+    aprobado  → en_proceso  : admin_rrhh, superusuario y analista_seleccion
+    en_proceso → cerrado    : solo admin_rrhh (y superusuario)
     combinación inválida    : 409 · motivo obligatorio solo en rechazado
                               (400 en la API + CHECK requerimientos_rechazo_check)
 
@@ -230,10 +236,32 @@
   POST /postulaciones/:id/descarte          {motivo} · @Roles(analista, admin)
   GET  /postulaciones/:id/historial         desde audit_log (máx. 200)
 
+  Usuarios — gestión exclusiva del superusuario (@Roles(superusuario)):
+  GET  /usuarios                            listado paginado · filtros: q
+       (nombre/correo ILIKE), rol, activo, page, limit (1-100)
+  POST /usuarios                            alta {nombre, email, contrasena
+       (≥8), rol} · 409 «Ya existe un usuario con ese correo» · SIEMPRE
+       nace activo · sin borrado físico en toda la API
+  PATCH /usuarios/:id/rol                   {rol} · 409 «No puede cambiar su
+       propio rol»
+  PATCH /usuarios/:id/contrasena            {contrasena} (≥8) · rota la clave
+       (la anterior deja de valer)
+  PATCH /usuarios/:id/activo                {activo} · 409 «No puede
+       desactivar su propia cuenta» · 409 «Debe permanecer al menos un
+       superusuario activo»
+  Reglas del servicio (verificado por e2e): nadie se auto-desactiva ni se
+  auto-cambia el rol; el último superusuario activo es intocable; todas las
+  operaciones quedan en audit_log con actor IT.
+
   GET  /embudo/ping · /uploads/ping · /antecedentes/ping · /entrevistas/ping ·
   /proveedor/ping · /historial/ping · /importacion/ping   (Fase 6: marcadores)
 
   NO existen endpoints de reportes ni de PDF en esta versión.
+
+  Caché: la API responde SIEMPRE con Cache-Control: no-store y con la
+  emisión de ETag APAGADA (app.set('etag', false)). Sin este fix el
+  navegador recibía 304 sin cuerpo tras el redirect del alta y la lista de
+  usuarios se pintaba vacía.
 
   Errores: 400 validación (mensajes en español) · 401 auth · 403 rol («Su rol
   no le permite acceder a este recurso») · 404 recurso · 409 transición o
@@ -254,9 +282,10 @@
     La web guarda {token, usuario} en localStorage (decisión MVP documentada
     en store/sesion.ts).
   • RBAC: AuthGuard global + RolesGuard (@Roles) + comprobaciones de
-    servicio (creador-o-admin, matriz de transiciones). La web
-    (lib/rbac.ts) solo decide QUÉ BOTONES se muestran: el 403 del servidor
-    es la verdad.
+    servicio (creador-o-admin, matriz de transiciones). 4 roles;
+    superusuario hereda TODO lo de admin_rrhh y es el único que pasa el
+    guard de /usuarios. La web (lib/rbac.ts) solo decide QUÉ BOTONES se
+    muestran: el 403 del servidor es la verdad.
   • PII: AES-256-CBC con IV aleatorio por registro (prefijo v1:) para cédula
     y teléfono; HMAC-SHA256 (hash hex de 64 caracteres) para búsqueda exacta
     de cédula SIN descifrar; historiales enmascarados (***); nunca PII en
@@ -281,8 +310,19 @@
     /requerimientos/:id/embudo             tablero Kanban (solo lectura si el
                                            requerimiento no está en proceso)
     /candidatos · /candidatos/nuevo · /candidatos/:id
+    /usuarios · /usuarios/nuevo               (RutaProtegida
+                                              rolPermitido="superusuario";
+                                              el enlace del menú "Usuarios"
+                                              solo se muestra a IT y cualquier
+                                              otro rol que entre a mano es
+                                              redirigido a /requerimientos)
     *  →  404
     NO existe /reportes.
+
+  Navegación: TODOS los enlaces de vuelta y los formularios muestran
+  «← Volver» (flecha ← en toda la navegación: detalle de requerimiento,
+  tablero, ficha de candidato, formularios y módulo de usuarios). El menú
+  vive en components/layout/Header.tsx.
 
   Estado:
     store/sesion.ts   sesión Zustand persistida en localStorage {token, usuario}
@@ -324,8 +364,8 @@
   Migraciones:          pnpm --filter @ats/api db:migrate
   Gates:                pnpm typecheck · pnpm lint · pnpm build ·
                         pnpm format:check        (NO hay Turborepo instalado)
-  Pruebas:              pnpm --filter @ats/api test   (334)
-                        pnpm --filter @ats/web test   (89)
+  Pruebas:              pnpm --filter @ats/api test   (368)
+                        pnpm --filter @ats/web test   (108)
   E2E HTTP (22 checks): pwsh $env:TEMP\e2e_flujo_a.ps1
                         (esperar 65 s entre corridas: login 5/min)
   URLs:                  web http://localhost:5173
@@ -365,10 +405,18 @@
   apps/api/src/common/guards/auth.guard.ts + roles.guard.ts      RBAC
   apps/api/src/common/crypto/password.util.ts + crypto.service.ts
       scrypt y AES-256-CBC
-  apps/api/db/migrations/001…007_postulaciones.ts               esquema +
-      CHECKs + triggers de auditoría
+  apps/api/db/migrations/001…008_superusuario.ts                esquema +
+      CHECKs + triggers de auditoría + rol superusuario/it@larco.co
+  apps/api/src/modules/usuarios/                                 CRUD de
+      usuarios (alta, rol, contrasena, activo) con reglas anti auto-daño
+      y ≥1 superusuario activo · test e2e apps/api/test/usuarios.e2e.test.ts
   apps/web/src/lib/rbac.ts + lib/flujo.ts                        predicados
-      de UI espejo de la matriz del servidor
+      de UI espejo de la matriz del servidor (incluye superusuario y
+      puedeGestionarUsuarios exclusivo de IT)
+  apps/web/src/pages/usuarios/ListaUsuarios.tsx + NuevoUsuario.tsx
+      módulo de usuarios (tabla con acciones por fila + alta)
+  apps/web/src/components/layout/Header.tsx                       menú con
+      "Usuarios" solo para IT · RutaProtegida.tsx (rolPermitido)
   apps/web/src/store/tablero.ts                                  store
       optimista/rollback del Kanban (LIMITE_LISTADO=100)
   apps/web/src/pages/embudo/TableroEmbudo.tsx                    tablero

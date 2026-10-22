@@ -11,13 +11,13 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 
 **Stack objetivo (confirmado por el requerimiento):**
 
-| Capa         | Tecnología                                                                                                                                         |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Frontend     | React 19 + Vite + Tailwind CSS + TypeScript estricto · Zustand · DnD Kit                                                                           |
-| Backend      | NestJS 11 + Node.js 20+ · módulos: auth, candidatos, embudo, antecedentes, entrevistas, proveedor, historial, uploads, requerimientos, importacion |
-| Persistencia | PostgreSQL 16 · pool `pg` para alta concurrencia + TypeORM en _requerimientos_ (esquema híbrido)                                                   |
-| Seguridad    | JWT 24 h · RBAC (admin_rrhh, analista_seleccion, lider_area) · AES-256-CBC con IV aleatorio por registro para PII · auditoría por triggers         |
-| Async        | Scrapers Playwright (antecedentes) · trabajos en cola                                                                                              |
+| Capa         | Tecnología                                                                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Frontend     | React 19 + Vite + Tailwind CSS + TypeScript estricto · Zustand · DnD Kit                                                                                     |
+| Backend      | NestJS 11 + Node.js 20+ · módulos: auth, candidatos, embudo, antecedentes, entrevistas, proveedor, historial, uploads, requerimientos, importacion, usuarios |
+| Persistencia | PostgreSQL 16 · pool `pg` para alta concurrencia + TypeORM en _requerimientos_ (esquema híbrido)                                                             |
+| Seguridad    | JWT 24 h · RBAC (admin_rrhh, analista_seleccion, lider_area, superusuario) · AES-256-CBC con IV aleatorio por registro para PII · auditoría por triggers     |
+| Async        | Scrapers Playwright (antecedentes) · trabajos en cola                                                                                                        |
 
 **Stack de herramientas de ingeniería:**
 
@@ -33,13 +33,14 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 
 ### 🔴 Must — MVP productivo (fases 0–5)
 
-1. **Auth + RBAC**: login JWT 24 h, 3 roles, guards por endpoint y por ruta del frontend.
+1. **Auth + RBAC**: login JWT 24 h, 4 roles (`admin_rrhh`, `analista_seleccion`, `lider_area`, `superusuario`), guards por endpoint y por ruta del frontend.
 2. **Requerimientos de personal**: formulario en 5 secciones (identificación/jefatura, perfil profesional, conocimientos/habilidades, condiciones salariales/contractuales, justificación); máquina de estados `pendiente → aprobado → en_proceso → cerrado | rechazado`; código atómico anual `REQ-YYYY-NNN`.
 3. **Candidatos**: CRUD con PII cifrada (cédula, teléfono), carga **unitaria** de CV (PDF), almacenamiento con dedup por SHA-256.
 4. **Embudo Kanban**: 5 fases (Preselección, Antecedentes, Entrevistas, Proveedor externo, Contratación), drag-and-drop, validación server-side de transiciones.
 5. **Historial y rechazos**: trazabilidad completa de movimientos; motivo de rechazo **obligatorio garantizado en BD** (trigger), no solo en UI.
 6. **Auditoría**: triggers que registran acciones críticas en tabla inmutable.
 7. **Despliegue local**: Docker Compose, backups automáticos, runbook de operación.
+8. **Gestión de usuarios (superusuario/IT)** — _añadido 22/10/2026_: alta, baja lógica, cambio de rol y restablecimiento de contraseña. Módulo **exclusivo** del rol `superusuario`: IT administra el software, RRHH solo opera el negocio (separación de funciones). El superusuario hereda además todo el poder de `admin_rrhh` sobre el negocio.
 
 ### 🟡 Should — V1 completa (fases 6–8)
 
@@ -96,7 +97,7 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 
 ### Fase 2 · Seguridad transversal (3–4 días)
 
-- [ ] Auth real: login/logout, JWT 24 h, refresh simple, guards de roles (`admin_rrhh`, `analista_seleccion`, `lider_area`).
+- [ ] Auth real: login/logout, JWT 24 h, refresh simple, guards de roles (`admin_rrhh`, `analista_seleccion`, `lider_area`; + `superusuario` desde la migración 008).
 - [ ] Servicio crypto: AES-256-CBC con IV aleatorio de 16 bytes por registro; helpers `encrypt/decrypt` para columnas PII; llave por variable de entorno con rotación planificada.
 - [ ] Auditoría por triggers: quién, qué, cuándo, antes/después (JSONB); revista de que la tabla sea efectivamente inmutable.
 - [ ] Rate limiting en login, helmet/CORS acotados, validación de payloads con class-validator.
@@ -191,6 +192,16 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 5. **Cada decisión no trivial se documenta** en un ADR de una página.
 6. **El backup solo existe si el restore está probado.**
 7. **Cumplimiento**: Ley 1581 de protección de datos (finalidad, minimización, retención, supresión bajo solicitud).
+
+---
+
+## Estado actual del proyecto (22/10/2026)
+
+- **Fases 0–5 (MVP) COMPLETADAS y verificadas**: auth + RBAC de 4 roles, requerimientos con máquina de estados y código atómico, candidatos con PII cifrada, uploads de CV, embudo Kanban con trazabilidad e auditoría inmutable por triggers.
+- **Etapa 8 — Gestión de usuarios (superusuario/IT) COMPLETADA**: migración `008_superusuario` (rol + `it@larco.co`), API de usuarios (alta, baja lógica, cambio de rol, restablecer contraseña; sin borrado físico; ≥1 superusuario activo; correo único; nadie se auto-desactiva ni se auto-cambia el rol) y frontend (`/usuarios`, menú solo IT, «← Volver» en toda la navegación).
+- **Bug corregido en el humo**: la API emitía ETag por defecto y el navegador recibía 304 sin cuerpo tras el redirect del alta → listados vacíos sin error. Solución: `etag: false` + `Cache-Control: no-store`.
+- **Baselines verificados hoy**: API 368/368 pruebas (×3 corridas), web 108/108, `typecheck`/`lint`/`build`/`format:check` en verde, humo de navegador end-to-end con los 4 roles.
+- **Pendiente antes de producción**: (1) prueba manual del usuario —incluye el arrastre real del Kanban— con las cuentas de `docs/PRUEBA-MANUAL-ATS.txt`; (2) `docker-compose.prod.yml` + runbook (Fase 10); (3) push al repo de GitHub de la empresa cuando se cree.
 
 ---
 
