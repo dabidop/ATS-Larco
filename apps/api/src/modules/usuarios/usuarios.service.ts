@@ -225,11 +225,7 @@ export class UsuariosService {
    * concurrentes que pudieran dejar el sistema sin superusuario se serializan
    * entre sí y la segunda re-cuenta sobre el estado ya confirmado de la primera.
    */
-  async actualizar(
-    id: string,
-    dto: UpdateUsuarioDto,
-    actor: string,
-  ): Promise<UsuarioResponseDto> {
+  async actualizar(id: string, dto: UpdateUsuarioDto, actor: string): Promise<UsuarioResponseDto> {
     if (dto.activo === undefined && dto.rol === undefined && dto.password === undefined) {
       throw new BadRequestException(MENSAJE_SIN_CAMBIOS);
     }

@@ -135,12 +135,24 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
     );
     liderId = await seedUsuario('e2e-usuarios-lider@larco.co', 'lider_area', 'E2E Usuarios Lider');
 
-    tokenSuper = await jwt.signAsync({ sub: superusuarioId, email: EMAIL_SUPERUSUARIO, role: 'superusuario' });
+    tokenSuper = await jwt.signAsync({
+      sub: superusuarioId,
+      email: EMAIL_SUPERUSUARIO,
+      role: 'superusuario',
+    });
     // Actor AJENO al superusuario bajo prueba: el guard solo lee el claim, y
     // el servicio compara `sub` — así se ejercitan las reglas de "propio".
-    tokenSuperAjeno = await jwt.signAsync({ sub: adminId, email: EMAIL_ADMIN, role: 'superusuario' });
+    tokenSuperAjeno = await jwt.signAsync({
+      sub: adminId,
+      email: EMAIL_ADMIN,
+      role: 'superusuario',
+    });
     tokenAdmin = await jwt.signAsync({ sub: adminId, email: EMAIL_ADMIN, role: 'admin_rrhh' });
-    tokenLider = await jwt.signAsync({ sub: liderId, email: 'e2e-usuarios-lider@larco.co', role: 'lider_area' });
+    tokenLider = await jwt.signAsync({
+      sub: liderId,
+      email: 'e2e-usuarios-lider@larco.co',
+      role: 'lider_area',
+    });
     tokenAnalista = await jwt.signAsync({
       sub: analistaId,
       email: 'e2e-usuarios-analista@larco.co',
@@ -310,7 +322,11 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
       const response = await request(app.getHttpServer())
         .post('/api/usuarios')
         .set('Authorization', `Bearer ${tokenSuper}`)
-        .send({ nombre: 'Sin Password', email: 'e2e-usuarios-sinpassword@larco.co', rol: 'lider_area' })
+        .send({
+          nombre: 'Sin Password',
+          email: 'e2e-usuarios-sinpassword@larco.co',
+          rol: 'lider_area',
+        })
         .expect(400);
 
       expect(response.body.message).toContain('password debe tener al menos 8 caracteres');
@@ -412,7 +428,10 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
     });
 
     it('403 para admin_rrhh y 401 sin token', async () => {
-      await request(app.getHttpServer()).get('/api/usuarios').set('Authorization', `Bearer ${tokenAdmin}`).expect(403);
+      await request(app.getHttpServer())
+        .get('/api/usuarios')
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .expect(403);
       await request(app.getHttpServer()).get('/api/usuarios').expect(401);
     });
   });
@@ -468,7 +487,9 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
         .expect(200);
       expect(desactivado.body.activo).toBe(false);
 
-      const enBd = await query<{ active: boolean }>('SELECT active FROM users WHERE id = $1', [analistaId]);
+      const enBd = await query<{ active: boolean }>('SELECT active FROM users WHERE id = $1', [
+        analistaId,
+      ]);
       expect(enBd.rows[0]?.active).toBe(false);
 
       const reactivado = await request(app.getHttpServer())
@@ -507,7 +528,10 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
       expect(response.body).not.toHaveProperty('passwordHash');
       expect(response.body).not.toHaveProperty('password_hash');
 
-      const enBd = await query<{ password_hash: string }>('SELECT password_hash FROM users WHERE id = $1', [liderId]);
+      const enBd = await query<{ password_hash: string }>(
+        'SELECT password_hash FROM users WHERE id = $1',
+        [liderId],
+      );
       const hash = enBd.rows[0]?.password_hash ?? '';
       expect(hash).toMatch(/^scrypt\$\d+\$\d+\$\d+\$/);
       expect(await verifyPassword('NuevaClave1', hash)).toBe(true);
@@ -521,7 +545,9 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
         .send({})
         .expect(400);
 
-      expect(response.body.message).toContain('Debe indicar al menos un cambio (activo, rol o password)');
+      expect(response.body.message).toContain(
+        'Debe indicar al menos un cambio (activo, rol o password)',
+      );
     });
 
     it('409 «No puede desactivar su propia cuenta» si el superusuario se desactiva a sí mismo', async () => {
@@ -558,7 +584,9 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
       expect(response.body.message).toBe('Debe permanecer al menos un superusuario activo');
 
       // La regla se verifica ANTES de escribir: la cuenta sigue intacta.
-      const enBd = await query<{ active: boolean }>('SELECT active FROM users WHERE id = $1', [superusuarioId]);
+      const enBd = await query<{ active: boolean }>('SELECT active FROM users WHERE id = $1', [
+        superusuarioId,
+      ]);
       expect(enBd.rows[0]?.active).toBe(true);
     });
 

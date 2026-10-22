@@ -46,7 +46,7 @@ class ConAnioFijo extends CodigoGeneratorService {
  */
 function crearStoreDoble(ultimoDevuelto: number | null) {
   const emFalso = {
-    query: vi.fn(async (sql: string, params?: unknown[]) => {
+    query: vi.fn(async (sql: string) => {
       if (sql.includes('FROM requerimientos')) {
         return []; // código libre por defecto
       }
@@ -167,7 +167,7 @@ describe('CodigoGeneratorService — auto-sanación de contadores desfasados', (
           const numero = Number(codigo.split('-')[2]);
           return ocupados.includes(numero) ? [{ existe: 1 }] : [];
         }
-        return [{ ultimo: numeros[indice++] ?? (numeros[numeros.length - 1] ?? 1) }];
+        return [{ ultimo: numeros[indice++] ?? numeros[numeros.length - 1] ?? 1 }];
       }),
     };
     const withTransaction = vi.fn(
