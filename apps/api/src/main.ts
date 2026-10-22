@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
+import type { NextFunction, Request, Response } from 'express';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
@@ -16,6 +17,19 @@ async function bootstrap(): Promise<void> {
   // X-Content-Type-Options, Referrer-Policy, COOP/CORP… y elimina X-Powered-By.
   // Se aplica lo antes posible en el bootstrap, antes del prefix y de CORS.
   app.use(helmet());
+
+  // Caché HTTP desactivada en la API: las respuestas son por-USUARIO (JWT) y
+  // Express emite ETag por defecto, lo que provoca `304 Not Modified` SIN
+  // cuerpo cuando un navegador revalida una GET repetida (p. ej. reconsultar
+  // el listado tras crear un registro): `fetch` recibe un cuerpo vacío y la
+  // UI pinta «sin datos» sin ningún error visible. Una API autenticada no
+  // debe ser cacheable por navegadores ni por proxies intermedios (bug
+  // hallado y corregido en la Etapa 8C, verificado con If-None-Match).
+  app.getHttpAdapter().getInstance().set('etag', false);
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  });
 
   app.setGlobalPrefix('api');
 
