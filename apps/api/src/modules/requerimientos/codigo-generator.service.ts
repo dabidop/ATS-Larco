@@ -37,6 +37,21 @@ const SQL_RESERVAR_ULTIMO = `
 `;
 
 /**
+ * Comprobación de que un código reservado sigue LIBRE en la tabla. La BD es
+ * quien manda: `requerimientos.code` es UNIQUE, así que si el número que
+ * acabamos de reservar ya está en uso (fila insertada a mano, backup
+ * restaurado, contador desfasado), lo comprobamos aquí y seguimos.
+ */
+const SQL_CODIGO_LIBRE = 'SELECT 1 FROM requerimientos WHERE code = $1';
+
+/**
+ * Techo de números que UNA sola llamada puede saltar antes de rendirse: un
+ * contador caóticamente desfasado produce un error claro (y recuperable con
+ * SQL) en lugar de un bucle infinito o un 500 opaco.
+ */
+const MAX_SALTOS = 1000;
+
+/**
  * Generador atómico de códigos correlativos `REQ-YYYY-NNN` (Fase 3, parte 2).
  *
  * El contador vive en la tabla `codigo_sequences` (migración 003:
@@ -54,30 +69,49 @@ export class CodigoGeneratorService {
   constructor(private readonly store: RequerimientosStoreService) {}
 
   /**
-   * Reserva y devuelve el siguiente código `REQ-YYYY-NNN`.
+   * Reserva y devuelve el siguiente código `REQ-YYYY-NNN` LIBRE.
    *
-   * Cada llamada consume UN número de la secuencia anual. Si la transacción
-   * falla, el error se PROPAGA sin envolver y el roll-back revierte el
-   * incremento: no se pierde ningún código (el siguiente intento lo reutiliza).
+   * Cada intento consume UN número de la secuencia anual dentro de la MISMA
+   * transacción. Si el número reservado ya existe en `requerimientos` (fila
+   * insertada a mano, backup restaurado o contador desfasado — la unicidad
+   * real la garantiza la BD vía `requerimientos.code` UNIQUE), el generador
+   * LO SALTA y reserva el siguiente, en vez de propagar un 500 permanente.
+   * Con la fila del contador bloqueada (`FOR UPDATE` implícito del upsert),
+   * los saltos también quedan serializados ante generadores concurrentes.
+   *
+   * Si la transacción falla, el error se PROPAGA sin envolver y el roll-back
+   * revierte el incremento: no se pierde ningún código (el siguiente intento
+   * lo reutiliza).
    */
   async siguienteCodigo(): Promise<string> {
     const anio = this.anioEnZonaDeLaEmpresa();
 
-    const ultimo = await this.store.withTransaction(async (em) => {
-      const filas = (await em.query(SQL_RESERVAR_ULTIMO, [anio])) as Array<{
-        ultimo: number | string;
-      }>;
-      const fila = filas[0];
-      if (!fila) {
-        // Inalcanzable con ON CONFLICT ... RETURNING (siempre devuelve la fila
-        // insertada o la actualizada); defensa ante cambios futuros en el SQL.
-        throw new Error('codigo_sequences: el upsert no devolvió ninguna fila');
-      }
-      // pg devuelve int4 como number; Number() cubre drivers que lo devuelven texto.
-      return Number(fila.ultimo);
-    });
+    return this.store.withTransaction(async (em) => {
+      for (let intento = 0; intento <= MAX_SALTOS; intento++) {
+        const filas = (await em.query(SQL_RESERVAR_ULTIMO, [anio])) as Array<{
+          ultimo: number | string;
+        }>;
+        const fila = filas[0];
+        if (!fila) {
+          // Inalcanzable con ON CONFLICT ... RETURNING (siempre devuelve la fila
+          // insertada o la actualizada); defensa ante cambios futuros en el SQL.
+          throw new Error('codigo_sequences: el upsert no devolvió ninguna fila');
+        }
+        // pg devuelve int4 como number; Number() cubre drivers que lo devuelven texto.
+        const numero = Number(fila.ultimo);
+        const codigo = `REQ-${anio}-${String(numero).padStart(3, '0')}`;
 
-    return `REQ-${anio}-${String(ultimo).padStart(3, '0')}`;
+        const ocupadas = (await em.query(SQL_CODIGO_LIBRE, [codigo])) as unknown[];
+        if (ocupadas.length === 0) {
+          return codigo;
+        }
+        // Ocupado: el número ya se consumió en el contador; el siguiente
+        // intento reserva el posterior (sin huecos innecesarios).
+      }
+      throw new Error(
+        `codigo_sequences: ${MAX_SALTOS} números seguidos de ${anio} ya existen en requerimientos; revisa el contador con SQL`,
+      );
+    });
   }
 
   /**

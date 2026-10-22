@@ -37,15 +37,21 @@ class ConAnioFijo extends CodigoGeneratorService {
 
 /**
  * Doble de `RequerimientosStoreService`: `withTransaction` entrega un
- * `EntityManager` falso cuyo `query` devuelve `[[{ ultimo }]]` (la forma que
- * devuelve el upsert real). Con `ultimoDevuelto = null` fingimos el caso
- * (inalcanzable) de una consulta sin filas.
+ * `EntityManager` falso. Su `query` DISTINGUE las dos consultas reales del
+ * generador: el upsert del contador devuelve `[[{ ultimo }]]` (la forma que
+ * devuelve el upsert real) y la comprobación `SELECT 1 FROM requerimientos`
+ * devuelve [] (código libre) salvo que se indique lo contrario. Con
+ * `ultimoDevuelto = null` fingimos el caso (inalcanzable) de un upsert sin
+ * filas.
  */
 function crearStoreDoble(ultimoDevuelto: number | null) {
   const emFalso = {
-    query: vi.fn(async (_sql: string, _params?: unknown[]) =>
-      ultimoDevuelto === null ? [] : [{ ultimo: ultimoDevuelto }],
-    ),
+    query: vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('FROM requerimientos')) {
+        return []; // código libre por defecto
+      }
+      return ultimoDevuelto === null ? [] : [{ ultimo: ultimoDevuelto }];
+    }),
   };
   const withTransaction = vi.fn(
     async (fn: (em: EntityManager) => Promise<unknown>): Promise<unknown> =>
@@ -99,24 +105,28 @@ describe('CodigoGeneratorService — año en zona horaria de la empresa', () => 
     const generador = new ConAnioFijo(store, 2031);
 
     await expect(generador.siguienteCodigo()).resolves.toBe('REQ-2031-001');
-    expect(emFalso.query).toHaveBeenCalledTimes(1);
+    expect(emFalso.query).toHaveBeenCalledTimes(2); // upsert + comprobación de libre
     expect(emFalso.query.mock.calls[0]?.[1]).toEqual([2031]);
   });
 });
 
 describe('CodigoGeneratorService — atomicidad y errores', () => {
-  it('reserva el número con un ÚNICO upsert dentro de withTransaction', async () => {
+  it('reserva con un único upsert y comprueba que el código está libre en la BD', async () => {
     const { store, emFalso, withTransaction } = crearStoreDoble(13);
     const generador = new ConAnioFijo(store, 2031);
 
     await expect(generador.siguienteCodigo()).resolves.toBe('REQ-2031-013');
 
     // El upsert va DENTRO de la transacción (EntityManager transaccional),
-    // con la cláusula atómica ON CONFLICT ... RETURNING.
+    // con la cláusula atómica ON CONFLICT ... RETURNING, y DESPUÉS consulta
+    // `requerimientos` para confirmar que el código reservado sigue libre.
     expect(withTransaction).toHaveBeenCalledTimes(1);
-    const [sql] = emFalso.query.mock.calls[0] ?? [];
-    expect(sql).toContain('ON CONFLICT (anio) DO UPDATE');
-    expect(sql).toContain('RETURNING ultimo');
+    const [sqlUpset] = emFalso.query.mock.calls[0] ?? [];
+    expect(sqlUpset).toContain('ON CONFLICT (anio) DO UPDATE');
+    expect(sqlUpset).toContain('RETURNING ultimo');
+    const [sqlLibre, paramsLibre] = emFalso.query.mock.calls[1] ?? [];
+    expect(sqlLibre).toContain('SELECT 1 FROM requerimientos');
+    expect(paramsLibre).toEqual(['REQ-2031-013']);
   });
 
   it('propaga el error de la transacción (el roll-back revierte el incremento)', async () => {
@@ -138,6 +148,61 @@ describe('CodigoGeneratorService — atomicidad y errores', () => {
 
     await expect(generador.siguienteCodigo()).rejects.toThrow(
       'codigo_sequences: el upsert no devolvió ninguna fila',
+    );
+  });
+});
+
+describe('CodigoGeneratorService — auto-sanación de contadores desfasados', () => {
+  /**
+   * Doble que SABE qué códigos existen en `requerimientos` (p. ej. 004 y
+   * 005) y devuelve números de contador crecientes (4, 5, 6, …) como el
+   * upsert real, para fingir un contador desfasado tras la realidad.
+   */
+  function crearDobleConOcupados(numeros: number[], ocupados: number[]) {
+    let indice = 0;
+    const emFalso = {
+      query: vi.fn(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('FROM requerimientos')) {
+          const codigo = String(params?.[0] ?? '');
+          const numero = Number(codigo.split('-')[2]);
+          return ocupados.includes(numero) ? [{ existe: 1 }] : [];
+        }
+        return [{ ultimo: numeros[indice++] ?? (numeros[numeros.length - 1] ?? 1) }];
+      }),
+    };
+    const withTransaction = vi.fn(
+      async (fn: (em: EntityManager) => Promise<unknown>): Promise<unknown> =>
+        fn(emFalso as unknown as EntityManager),
+    );
+    const store = { withTransaction } as unknown as RequerimientosStoreService;
+    return { store, emFalso };
+  }
+
+  it('salta los números que ya existen en requerimientos y devuelve el primero libre', async () => {
+    // Contador desfasado: 004 y 005 ya están en la tabla (fila manual o
+    // backup restaurado); el generador los consume y emite 006, no un 500.
+    const { store, emFalso } = crearDobleConOcupados([4, 5, 6], [4, 5]);
+    const generador = new ConAnioFijo(store, 2031);
+
+    await expect(generador.siguienteCodigo()).resolves.toBe('REQ-2031-006');
+
+    // Tres reservas + tres comprobaciones = 6 consultas, y la última
+    // comprobación fue exactamente sobre el código devuelto.
+    expect(emFalso.query).toHaveBeenCalledTimes(6);
+    const [sqlUltima, paramsUltima] = emFalso.query.mock.calls[5] ?? [];
+    expect(sqlUltima).toContain('SELECT 1 FROM requerimientos');
+    expect(paramsUltima).toEqual(['REQ-2031-006']);
+  });
+
+  it('rinde con un error claro tras agotar el techo de saltos', async () => {
+    // Contador caótico: TODOS los números aparecen ocupados. Con el techo
+    // de 1000 saltos, la llamada falla de forma explícita (recuperable con
+    // SQL) en vez de quedar en bucle infinito o emitir un código tomado.
+    const { store } = crearDobleConOcupados([1], [1]);
+    const generador = new ConAnioFijo(store, 2031);
+
+    await expect(generador.siguienteCodigo()).rejects.toThrow(
+      '1000 números seguidos de 2031 ya existen en requerimientos',
     );
   });
 });
