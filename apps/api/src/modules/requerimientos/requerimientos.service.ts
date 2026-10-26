@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { EntityManager, FindOptionsWhere } from 'typeorm';
+import type { EntityManager, FindOptionsWhere, Repository } from 'typeorm';
 
 import type { AuthenticatedUser } from '../../common/guards/auth.guard';
 import { CodigoGeneratorService } from './codigo-generator.service';
@@ -63,6 +63,26 @@ export class RequerimientosService {
   ) {}
 
   /**
+   * 404 si `departamentoId` viene informado y NO existe (Etapa 9): el cuerpo
+   * nunca debe provocar un 500 de FK violada. Ausente o `null` no comprueban
+   * (desasociar el requerimiento de su área siempre es válido).
+   */
+  private async assertDepartamentoExiste(
+    repo: Repository<Requerimiento>,
+    departamentoId: string | null | undefined,
+  ): Promise<void> {
+    if (departamentoId === undefined || departamentoId === null) {
+      return;
+    }
+    const filas = await repo.manager.query<unknown[]>('SELECT 1 FROM departamentos WHERE id = $1', [
+      departamentoId,
+    ]);
+    if (filas.length === 0) {
+      throw new NotFoundException(`No existe un departamento con id ${departamentoId}`);
+    }
+  }
+
+  /**
    * Crea un requerimiento con las 5 secciones del formulario.
    *
    * El código `REQ-YYYY-NNN` lo genera el servicio de códigos y el estado
@@ -71,6 +91,8 @@ export class RequerimientosService {
   async create(dto: CreateRequerimientoDto, createdBy: string): Promise<RequerimientoResponseDto> {
     const code = await this.codigoGenerator.siguienteCodigo();
     const repo = await this.store.repo();
+
+    await this.assertDepartamentoExiste(repo, dto.identificacion.departamentoId);
 
     const entidad = repo.create({
       code,
@@ -85,8 +107,9 @@ export class RequerimientosService {
 
   /**
    * Listado paginado ordenado por `created_at DESC`, con filtros opcionales
-   * por `estado` y `jefatura`. Devuelve el total de filas filtradas para que
-   * el cliente calcule el número de páginas.
+   * por `estado`, `jefatura`, `urgencia`, `modalidad` y `departamentoId`
+   * (los dos últimos los añadió la Etapa 9). Devuelve el total de filas
+   * filtradas para que el cliente calcule el número de páginas.
    */
   async list(query: ListRequerimientosQueryDto): Promise<RequerimientosPageDto> {
     const repo = await this.store.repo();
@@ -97,6 +120,15 @@ export class RequerimientosService {
     }
     if (query.jefatura !== undefined) {
       where.jefatura = query.jefatura;
+    }
+    if (query.urgencia !== undefined) {
+      where.urgencia = query.urgencia;
+    }
+    if (query.modalidad !== undefined) {
+      where.modalidad = query.modalidad;
+    }
+    if (query.departamentoId !== undefined) {
+      where.departamentoId = query.departamentoId;
     }
 
     const [entidades, total] = await repo.findAndCount({
@@ -165,6 +197,9 @@ export class RequerimientosService {
     }
 
     const cambios = buildUpdateData(dto);
+    if (dto.identificacion?.departamentoId !== undefined) {
+      await this.assertDepartamentoExiste(repo, dto.identificacion.departamentoId);
+    }
     const resultado: Requerimiento = { ...entidad, ...cambios };
     this.assertCamposObligatorios(resultado);
     this.assertRangoSalarial(resultado);
@@ -269,12 +304,11 @@ export class RequerimientosService {
       // el valor muere con la transacción y no se filtra al resto del pool.
       await this.fijarActorDeAuditoria(em, user.sub);
 
-      const cambios =
-        esRechazo
-          ? { estado: destino, motivoRechazo: motivo }
-          : esCierre
-            ? { estado: destino, motivoCierre: motivo, resultadoCierre: dto.resultado }
-            : { estado: destino };
+      const cambios = esRechazo
+        ? { estado: destino, motivoRechazo: motivo }
+        : esCierre
+          ? { estado: destino, motivoCierre: motivo, resultadoCierre: dto.resultado }
+          : { estado: destino };
       const resultado = await em.update(Requerimiento, { id, estado: origen }, cambios);
       if (resultado.affected === 0) {
         throw new ConflictException(

@@ -173,13 +173,18 @@ describe('Guards de autenticación y autorización (e2e)', () => {
     expect(response.body).toEqual({ modulo: 'requerimientos', status: 'placeholder' });
   });
 
-  it('GET /api/importacion/ping con token role=analista_seleccion → 200', async () => {
-    const response = await get(
-      '/api/importacion/ping',
-      jwt.sign(payload('analista_seleccion')),
-    ).expect(200);
+  it('POST /api/importacion/hvs con token role=analista_seleccion → 400 (pasa el RBAC y llega a la validación)', async () => {
+    // El ping placeholder del módulo se retiró en la Etapa 9: la ruta real es
+    // POST /hvs. Un 400 (sin archivos en el lote) en vez de 403 demuestra que
+    // `analista_seleccion` SÍ está en la matriz de importación.
+    const response = await request(app.getHttpServer())
+      .post('/api/importacion/hvs')
+      .set('Authorization', `Bearer ${jwt.sign(payload('analista_seleccion'))}`)
+      .send({ departamentoId: '11111111-1111-4111-8111-111111111111' })
+      .expect(400);
 
-    expect(response.body).toEqual({ modulo: 'importacion', status: 'placeholder' });
+    expect(response.body).toMatchObject({ statusCode: 400 });
+    expect(String(response.body.message)).toContain('Adjunta al menos un archivo PDF');
   });
 
   it('GET /api/uploads/ping con token role=analista_seleccion → 200 (misma matriz que importacion)', async () => {

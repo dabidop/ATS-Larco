@@ -1,7 +1,11 @@
 import { Transform, Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 
-import { EstadoRequerimiento } from '../requerimiento.entity';
+import {
+  EstadoRequerimiento,
+  ModalidadRequerimiento,
+  UrgenciaRequerimiento,
+} from '../requerimiento.entity';
 
 /** Tamaño de página por defecto de `GET /api/requerimientos`. */
 export const DEFAULT_LIMIT = 20;
@@ -48,4 +52,24 @@ export class ListRequerimientosQueryDto {
   @Transform(cadenaOVacia)
   @IsString({ message: 'jefatura debe ser una cadena de texto' })
   jefatura?: string;
+
+  /** Filtro exacto por prioridad (badges del listado, Etapa 9). */
+  @IsOptional()
+  @IsEnum(UrgenciaRequerimiento, {
+    message: `urgencia debe ser una de: ${Object.values(UrgenciaRequerimiento).join(', ')}`,
+  })
+  urgencia?: UrgenciaRequerimiento;
+
+  /** Filtro exacto por modalidad de contratación (Etapa 9). */
+  @IsOptional()
+  @IsEnum(ModalidadRequerimiento, {
+    message: `modalidad debe ser una de: ${Object.values(ModalidadRequerimiento).join(', ')}`,
+  })
+  modalidad?: ModalidadRequerimiento;
+
+  /** Filtro exacto por área LARCO (Etapa 9). */
+  @IsOptional()
+  @Transform(cadenaOVacia)
+  @IsUUID('4', { message: 'departamentoId debe ser un UUID válido' })
+  departamentoId?: string;
 }

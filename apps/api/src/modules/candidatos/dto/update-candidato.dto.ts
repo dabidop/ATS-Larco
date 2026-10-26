@@ -3,17 +3,14 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Matches,
   Min,
   MinLength,
 } from 'class-validator';
 
-import {
-  CEDULA_MENSAJE,
-  CEDULA_PATTERN,
-  LIMITES_CANDIDATO,
-} from './create-candidato.dto';
+import { CEDULA_MENSAJE, CEDULA_PATTERN, LIMITES_CANDIDATO } from './create-candidato.dto';
 
 /**
  * Cuerpo de `PATCH /api/candidatos/:id`.
@@ -77,6 +74,11 @@ export class UpdateCandidatoDto {
     message: `ciudad no puede superar ${LIMITES_CANDIDATO.ciudad} caracteres`,
   })
   ciudad?: string;
+
+  /** `null` desasocia al candidato de su área LARCO. */
+  @IsOptional()
+  @IsUUID('4', { message: 'departamentoId debe ser un UUID válido' })
+  departamentoId?: string;
 
   @IsOptional()
   @IsString({ message: 'cargoActual debe ser una cadena de texto' })

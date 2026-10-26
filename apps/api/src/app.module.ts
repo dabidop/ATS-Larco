@@ -15,6 +15,8 @@ import { AppLoggerModule } from './logging/logger.module';
 import { AntecedentesModule } from './modules/antecedentes/antecedentes.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CandidatosModule } from './modules/candidatos/candidatos.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { DepartamentosModule } from './modules/departamentos/departamentos.module';
 import { EmbudoModule } from './modules/embudo/embudo.module';
 import { EntrevistasModule } from './modules/entrevistas/entrevistas.module';
 import { HistorialModule } from './modules/historial/historial.module';
@@ -45,10 +47,15 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
  * | POST /api/auth/logout                 | autenticado (cualquier rol)           |
  * | POST /api/auth/refresh                | autenticado (cualquier rol)           |
  * | GET /api/auth/me                      | autenticado (cualquier rol)           |
- * | GET /api/auth|candidatos|embudo|antecedentes|entrevistas|proveedor|historial/ping | autenticado (sin @Roles) |
+ * | GET /api/auth|candidatos|embudo|antecedentes|proveedor/ping | autenticado (sin @Roles) |
  * | GET /api/requerimientos/ping          | @Roles('admin_rrhh', 'superusuario', 'lider_area') |
- * | GET /api/importacion/ping             | @Roles('admin_rrhh', 'superusuario', 'analista_seleccion') |
  * | GET /api/uploads/ping                 | @Roles('admin_rrhh', 'analista_seleccion', 'superusuario') |
+ * | GET|POST|PATCH /api/entrevistas...    | @Roles('analista_seleccion', 'admin_rrhh', 'superusuario') |
+ * | GET /api/historial/auditoria          | @Roles('superusuario') (bitácora, Etapa 9) |
+ * | POST /api/importacion/hvs             | @Roles('admin_rrhh', 'superusuario', 'analista_seleccion') |
+ * | GET /api/dashboard                    | @Roles('analista_seleccion', 'admin_rrhh', 'superusuario', 'lider_area') |
+ * | GET /api/departamentos                | autenticado (catálogo para selects, Etapa 9) |
+ * | PATCH /api/departamentos/:id          | @Roles('admin_rrhh', 'superusuario') (solo coordinador) |
  * | GET|POST /api/usuarios, /:id          | @Roles('superusuario') (gestión de usuarios) |
  *
  * `superusuario` (IT, migración 008) hereda TODO el poder de `admin_rrhh`
@@ -94,7 +101,7 @@ const THROTTLE_LIMIT = 100;
     }),
     // Salud
     HealthModule,
-    // Módulos de negocio (andamiaje Fase 1)
+    // Módulos de negocio (andamiaje Fase 1, ampliados en Etapa 9)
     AuthModule,
     CandidatosModule,
     EmbudoModule,
@@ -105,6 +112,9 @@ const THROTTLE_LIMIT = 100;
     UploadsModule,
     RequerimientosModule,
     ImportacionModule,
+    // Etapa 9: departamentos (catálogo LARCO) y dashboard (resumen operativo)
+    DepartamentosModule,
+    DashboardModule,
     // Gestión de cuentas: EXCLUSIVA del `superusuario` (IT, Etapa 8B).
     UsuariosModule,
   ],

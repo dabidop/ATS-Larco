@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUUID, Matches, Max, Min } from 'class-validator';
 
 import { CEDULA_MENSAJE, CEDULA_PATTERN } from './create-candidato.dto';
 
@@ -53,4 +53,10 @@ export class ListCandidatosQueryDto {
   @IsString({ message: 'cedula debe ser una cadena de texto' })
   @Matches(CEDULA_PATTERN, { message: CEDULA_MENSAJE })
   cedula?: string;
+
+  /** Filtro exacto por área LARCO (tag de «Base de Talentos», Etapa 9). */
+  @IsOptional()
+  @Transform(cadenaOVacia)
+  @IsUUID('4', { message: 'departamentoId debe ser un UUID válido' })
+  departamentoId?: string;
 }

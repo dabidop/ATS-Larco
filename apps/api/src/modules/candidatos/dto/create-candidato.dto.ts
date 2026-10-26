@@ -1,4 +1,15 @@
-import { IsEmail, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, Matches, Min, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Matches,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 /**
  * Cuerpo de `POST /api/candidatos`.
@@ -82,6 +93,11 @@ export class CreateCandidatoDto {
     message: `ciudad no puede superar ${LIMITES_CANDIDATO.ciudad} caracteres`,
   })
   ciudad?: string;
+
+  /** Área LARCO del candidato (Etapa 9; FK a `departamentos`; opcional). */
+  @IsOptional()
+  @IsUUID('4', { message: 'departamentoId debe ser un UUID válido' })
+  departamentoId?: string;
 
   @IsOptional()
   @IsString({ message: 'cargoActual debe ser una cadena de texto' })

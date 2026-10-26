@@ -625,23 +625,35 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
   // ─────────────────── herencia de poderes de admin_rrhh ───────────────────
 
   describe('Herencia: superusuario = admin_rrhh + gestión de usuarios', () => {
-    it('pasa el RBAC de los pings restringidos a admin_rrhh (requerimientos e importación)', async () => {
+    it('pasa el RBAC de las rutas restringidas a admin_rrhh (requerimientos e importación)', async () => {
       const requerimientos = await request(app.getHttpServer())
         .get('/api/requerimientos/ping')
         .set('Authorization', `Bearer ${tokenSuper}`)
         .expect(200);
       expect(requerimientos.body).toEqual({ modulo: 'requerimientos', status: 'placeholder' });
 
+      // El ping placeholder de importación se retiró en la Etapa 9: la ruta
+      // real es POST /hvs. Un 400 (lote vacío) en vez de 403 demuestra que el
+      // `superusuario` hereda el acceso de `admin_rrhh` a importación.
       const importacion = await request(app.getHttpServer())
-        .get('/api/importacion/ping')
+        .post('/api/importacion/hvs')
         .set('Authorization', `Bearer ${tokenSuper}`)
-        .expect(200);
-      expect(importacion.body).toEqual({ modulo: 'importacion', status: 'placeholder' });
+        .send({ departamentoId: '11111111-1111-4111-8111-111111111111' })
+        .expect(400);
+      expect(importacion.body).toMatchObject({ statusCode: 400 });
+      expect(String(importacion.body.message)).toContain('Adjunta al menos un archivo PDF');
 
-      // Mismos pings, un rol de negocio: 403 (la herencia NO es de todos).
+      // Mismas rutas, roles de negocio sin acceso: 403 (la herencia NO es de
+      // todos). `analista_seleccion` SÍ entra en importación, así que el 403
+      // se demuestra con `lider_area` (solo tiene acceso a requerimientos).
       await request(app.getHttpServer())
         .get('/api/requerimientos/ping')
         .set('Authorization', `Bearer ${tokenAnalista}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .post('/api/importacion/hvs')
+        .set('Authorization', `Bearer ${tokenLider}`)
+        .send({ departamentoId: '11111111-1111-4111-8111-111111111111' })
         .expect(403);
     });
 

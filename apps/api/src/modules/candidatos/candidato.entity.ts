@@ -60,9 +60,13 @@ export class Candidato {
   // PII protegida (cifrada con AES-256-CBC, formato v1:...)
   // ---------------------------------------------------------------------------
 
-  /** Cédula CIFRADA (nunca en claro). CHECK `candidatos_cedula_cifrada_check`. */
-  @Column({ name: 'cedula_cifrada', type: 'text' })
-  cedulaCifrada!: string;
+  /**
+   * Cédula CIFRADA (nunca en claro). `NULL` solo en candidatos creados por la
+   * IMPORTACIÓN MASIVA de HVs (Etapa 9C) sin cédula en el CV: el analista la
+   * completa luego desde la ficha. CHECK `candidatos_cedula_cifrada_check`.
+   */
+  @Column({ name: 'cedula_cifrada', type: 'text', nullable: true })
+  cedulaCifrada!: string | null;
 
   /** Teléfono CIFRADO (opcional; `null` si el candidato no tiene teléfono). */
   @Column({ name: 'telefono_cifrada', type: 'text', nullable: true })
@@ -70,10 +74,12 @@ export class Candidato {
 
   /**
    * Hash de búsqueda HMAC-SHA-256 (hex, 64 chars) de la cédula normalizada.
-   * ÚNICO en BD: sostiene la búsqueda exacta y la detección de duplicados.
+   * ÚNICO en BD (índice PARCIAL `WHERE cedula_hash IS NOT NULL`, migración
+   * 010): sostiene la búsqueda exacta y la detección de duplicados; los
+   * candidatos importados sin cédula quedan en `NULL` y no colisionan.
    */
-  @Column({ name: 'cedula_hash', type: 'text', unique: true })
-  cedulaHash!: string;
+  @Column({ name: 'cedula_hash', type: 'text', nullable: true })
+  cedulaHash!: string | null;
 
   // ---------------------------------------------------------------------------
   // Datos NO cifrados (no son PII sensible)
@@ -81,6 +87,10 @@ export class Candidato {
 
   @Column({ type: 'text', nullable: true })
   ciudad!: string | null;
+
+  /** Área LARCO del candidato (FK `departamentos(id)`, Etapa 9; nullable). */
+  @Column({ name: 'departamento_id', type: 'uuid', nullable: true })
+  departamentoId!: string | null;
 
   @Column({ name: 'cargo_actual', type: 'text', nullable: true })
   cargoActual!: string | null;

@@ -107,7 +107,9 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     ({ nombre, coordinador }) =>
       `  ('${nombre.replace(/'/g, "''")}', '${coordinador.replace(/'/g, "''")}')`,
   ).join(',\n');
-  pgm.sql(`INSERT INTO departamentos (nombre, coordinador) VALUES\n${valores}\nON CONFLICT (nombre) DO NOTHING`);
+  pgm.sql(
+    `INSERT INTO departamentos (nombre, coordinador) VALUES\n${valores}\nON CONFLICT (nombre) DO NOTHING`,
+  );
 
   // ---------------------------------------------------------------------------
   // 4) Tabla entrevistas (agendamiento sobre una postulación)

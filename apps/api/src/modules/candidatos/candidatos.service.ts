@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { EntityManager } from 'typeorm';
+import type { EntityManager, Repository } from 'typeorm';
 
 import { CryptoService } from '../../common/crypto/crypto.service';
 import type { AuthenticatedUser } from '../../common/guards/auth.guard';
@@ -168,6 +168,7 @@ const COLUMNAS_HISTORIAL: Readonly<Record<string, string>> = {
   cedula_cifrada: 'cedula',
   telefono_cifrada: 'telefono',
   ciudad: 'ciudad',
+  departamento_id: 'departamentoId',
   cargo_actual: 'cargoActual',
   expectativa_salarial: 'expectativaSalarial',
   disponibilidad: 'disponibilidad',
@@ -310,6 +311,26 @@ export class CandidatosService {
   ) {}
 
   /**
+   * 404 si `departamentoId` viene informado y NO existe (Etapa 9): el cuerpo
+   * nunca debe provocar un 500 de FK violada. Ausente o `null` no comprueban
+   * (desasociar el departamento siempre es válido).
+   */
+  private async assertDepartamentoExiste(
+    repo: Repository<Candidato>,
+    departamentoId: string | null | undefined,
+  ): Promise<void> {
+    if (departamentoId === undefined || departamentoId === null) {
+      return;
+    }
+    const filas = await repo.manager.query<unknown[]>('SELECT 1 FROM departamentos WHERE id = $1', [
+      departamentoId,
+    ]);
+    if (filas.length === 0) {
+      throw new NotFoundException(`No existe un departamento con id ${departamentoId}`);
+    }
+  }
+
+  /**
    * Crea un candidato cifrando su PII y registrando su hash de búsqueda.
    *
    * `createdBy` llega del JWT y no del cuerpo. El INSERT es una sola operación
@@ -328,6 +349,8 @@ export class CandidatosService {
     if (existente !== null) {
       throw new ConflictException('Ya existe un candidato con esa cédula');
     }
+
+    await this.assertDepartamentoExiste(repo, dto.departamentoId);
 
     const cedulaCifrada = this.crypto.encrypt(dto.cedula);
     const telefonoCifrada = cifrarTelefono(this.crypto, dto.telefono);
@@ -367,6 +390,11 @@ export class CandidatosService {
     }
     if (query.cedula !== undefined) {
       qb.andWhere('c.cedulaHash = :hash', { hash: this.searchHash.hashCedula(query.cedula) });
+    }
+    if (query.departamentoId !== undefined) {
+      qb.andWhere('c.departamentoId = :departamentoId', {
+        departamentoId: query.departamentoId,
+      });
     }
 
     qb.orderBy('c.createdAt', 'DESC');
@@ -429,6 +457,9 @@ export class CandidatosService {
     }
 
     const cambios = buildUpdateData(dto);
+    if (dto.departamentoId !== undefined) {
+      await this.assertDepartamentoExiste(repo, dto.departamentoId);
+    }
 
     // Re-cifrado de la cédula + recalculo del hash de búsqueda (si cambia).
     if (dto.cedula !== undefined) {

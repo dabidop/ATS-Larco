@@ -39,3 +39,7 @@ blob-report/
 data/uploads/
 # Directorio de subidas de los tests e2e (UPLOAD_DIR=data/uploads-test).
 data/uploads-test/
+# Sin barra inicial la regla anterior queda anclada a la raíz del repo y NO
+# cubre apps/api/data/ (los tests corren con CWD=apps/api); se ignora el
+# directorio de datos completo de la app.
+apps/api/data/

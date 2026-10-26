@@ -16,11 +16,13 @@ export interface CandidatoResponseDto {
   nombres: string;
   apellidos: string;
   email: string | null;
-  /** Cédula DESCIFRADA (en claro) para el cliente autenticado. */
+  /** Cédula DESCIFRADA (en claro); `''` si el candidato fue IMPORTADO sin cédula. */
   cedula: string;
   /** Teléfono DESCIFRADO (en claro); `null` si el candidato no tiene. */
   telefono: string | null;
   ciudad: string | null;
+  /** FK al área LARCO (`departamentos`); `null` si no está asociado. */
+  departamentoId: string | null;
   cargoActual: string | null;
   expectativaSalarial: number | null;
   disponibilidad: string | null;

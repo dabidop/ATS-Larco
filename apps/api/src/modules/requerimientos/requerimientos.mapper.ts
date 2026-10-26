@@ -1,7 +1,4 @@
-import {
-  ModalidadRequerimiento,
-  UrgenciaRequerimiento,
-} from './requerimiento.entity';
+import { ModalidadRequerimiento, UrgenciaRequerimiento } from './requerimiento.entity';
 import type { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
 import type { RequerimientoResponseDto } from './dto/requerimiento.response';
 import type { UpdateRequerimientoDto } from './dto/update-requerimiento.dto';

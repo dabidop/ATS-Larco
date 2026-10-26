@@ -144,9 +144,10 @@ export class PostulacionesService {
     }
 
     const mensajeDuplicado = MENSAJE_DUPLICADO(dto.candidatoId);
-    const existente = await this.database.query('SELECT 1 FROM postulaciones WHERE candidato_id = $1', [
-      dto.candidatoId,
-    ]);
+    const existente = await this.database.query(
+      'SELECT 1 FROM postulaciones WHERE candidato_id = $1',
+      [dto.candidatoId],
+    );
     if ((existente.rowCount ?? 0) > 0) {
       throw new ConflictException(mensajeDuplicado);
     }

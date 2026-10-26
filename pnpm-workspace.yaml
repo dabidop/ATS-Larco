@@ -9,3 +9,10 @@ packages:
 allowBuilds:
   '@swc/core': true
   'esbuild': true
+  # `canvas` llega como dependencia OPCIONAL de `pdfjs-dist` (Etapa 9C,
+  # extracción de texto de los HVs importados). Compilarlo requiere toolchain
+  # nativa del sistema (Python + C++) que no todos los entornos tienen, y SOLO
+  # se necesita para RENDERIZAR páginas a imagen — la extracción de texto NO lo
+  # usa. Explícitamente desaprobado para que pnpm no lo compile ni falle la
+  # instalación con ERR_PNPM_IGNORED_BUILDS.
+  canvas: false

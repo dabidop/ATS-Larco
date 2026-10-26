@@ -9,18 +9,19 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { DatabaseService } from '../src/database/database.service';
 
-/** Prefijos de los 10 módulos de negocio andamiajados en la Fase 1. */
+/**
+ * Prefijos de los módulos que AÚN exponen el `ping` de andamiaje de la Fase 1.
+ * `entrevistas`, `historial` e `importacion` dejaron de tenerlo en la Etapa 9:
+ * ya son módulos reales y sus rutas las cubren sus propias suites e2e.
+ */
 const MODULE_PREFIXES = [
   'auth',
   'candidatos',
   'embudo',
   'antecedentes',
-  'entrevistas',
   'proveedor',
-  'historial',
   'uploads',
   'requerimientos',
-  'importacion',
 ] as const;
 
 /**

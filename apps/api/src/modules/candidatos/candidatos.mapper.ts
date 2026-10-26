@@ -51,6 +51,7 @@ export function buildCreateData(dto: CreateCandidatoDto, pii: PiiPreparada): Can
     telefonoCifrada: pii.telefonoCifrada,
     cedulaHash: pii.cedulaHash,
     ciudad: normalizarCadena(dto.ciudad),
+    departamentoId: dto.departamentoId ?? null,
     cargoActual: normalizarCadena(dto.cargoActual),
     expectativaSalarial: dto.expectativaSalarial ?? null,
     disponibilidad: normalizarCadena(dto.disponibilidad),
@@ -75,6 +76,8 @@ export function buildUpdateData(dto: UpdateCandidatoDto): Partial<CandidatoEdita
   if (dto.apellidos !== undefined) cambios.apellidos = dto.apellidos.trim();
   if (dto.email !== undefined) cambios.email = normalizarCadena(dto.email);
   if (dto.ciudad !== undefined) cambios.ciudad = normalizarCadena(dto.ciudad);
+  // `null` explícito desasocia al candidato de su departamento.
+  if (dto.departamentoId !== undefined) cambios.departamentoId = dto.departamentoId ?? null;
   if (dto.cargoActual !== undefined) cambios.cargoActual = normalizarCadena(dto.cargoActual);
   if (dto.expectativaSalarial !== undefined) {
     cambios.expectativaSalarial = dto.expectativaSalarial;
@@ -106,6 +109,7 @@ export function toResponse(entidad: Candidato, descifrador: Descifrador): Candid
     cedula: cedulaDescifrada,
     telefono: telefonoDescifrado,
     ciudad: entidad.ciudad,
+    departamentoId: entidad.departamentoId,
     cargoActual: entidad.cargoActual,
     expectativaSalarial: entidad.expectativaSalarial,
     disponibilidad: entidad.disponibilidad,

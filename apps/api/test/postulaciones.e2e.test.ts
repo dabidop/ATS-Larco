@@ -982,9 +982,7 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       await mover(postulacionSalto.id, 'antecedentes', tokenAnalista).expect(200);
 
       // …y ahora intenta DEVOLVERLO: 409 con el mensaje específico.
-      const respuesta = await mover(postulacionSalto.id, 'preseleccion', tokenAnalista).expect(
-        409,
-      );
+      const respuesta = await mover(postulacionSalto.id, 'preseleccion', tokenAnalista).expect(409);
       expect(respuesta.body.message).toContain('solo avanza');
       expect(respuesta.body.message).toContain('no se puede devolver');
       expect(respuesta.body.message).toContain("'antecedentes'");
@@ -1236,12 +1234,7 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       );
       const filas = resultado.rows as Array<{ action: string; changed_by: string | null }>;
 
-      expect(filas.map((fila) => fila.action)).toEqual([
-        'INSERT',
-        'UPDATE',
-        'UPDATE',
-        'UPDATE',
-      ]);
+      expect(filas.map((fila) => fila.action)).toEqual(['INSERT', 'UPDATE', 'UPDATE', 'UPDATE']);
       // El INSERT es del analista (sin GUC en el alta manda `created_by`).
       expect(filas[0]).toMatchObject({ action: 'INSERT', changed_by: analistaId });
 
@@ -1250,11 +1243,7 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       // migración 004 las UPDATE habrían quedado con el creador de la fila:
       // el test lo detectaría.
       const cambios = filas.filter((fila) => fila.action === 'UPDATE');
-      expect(cambios.map((fila) => fila.changed_by)).toEqual([
-        analistaId,
-        analistaId,
-        adminId,
-      ]);
+      expect(cambios.map((fila) => fila.changed_by)).toEqual([analistaId, analistaId, adminId]);
       expect(cambios.map((fila) => fila.changed_by)).not.toContain(candidatoG.id);
     });
 
