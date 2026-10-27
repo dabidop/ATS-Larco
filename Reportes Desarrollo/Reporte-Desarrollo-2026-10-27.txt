@@ -1,0 +1,726 @@
+================================================================================
+REPORTE DE DESARROLLO — ATS LARCO (Applicant Tracking System)
+================================================================================
+Fecha del reporte : 27 de octubre de 2026
+Proyecto          : ATS LARCO — Sistema de seguimiento de postulantes para el
+                    área de Gestión Humana de LARCO
+Repositorio       : C:\AI APP\SistemaGestionHumana (rama main)
+Estado general    : Fase de retroalimentación (Etapa 9) completada en código;
+                    pendiente de prueba manual del usuario y puesta en producción.
+Audiencia         : Equipo de desarrollo completo (backend, frontend, QA, DevOps)
+================================================================================
+
+CONTENIDO
+--------------------------------------------------------------------------------
+  1. Resumen ejecutivo
+  2. Arquitectura general (monorepo)
+  3. Stack tecnológico y versiones
+  4. Motor de base de datos y esquema
+  5. Migraciones (historial versionado)
+  6. API REST — módulos y endpoints
+  7. Frontend — páginas, componentes y navegación
+  8. Nivel de seguridad (detallado)
+  9. Sistema de auditoría (bitácora)
+ 10. Reglas de negocio (embudo de selección)
+ 11. Diseño de interfaz (UI/UX)
+ 12. Calidad: tests, gates y herramientas
+ 13. Historial de etapas (0 → 9)
+ 14. Etapa 9 — retroalimentación del usuario (11 mejoras)
+ 15. Estado actual, decisiones y deuda conocida
+ 16. Cómo ejecutar el proyecto (guía rápida)
+ 17. Credenciales de desarrollo
+ 18. Convenciones del equipo
+
+
+================================================================================
+1. RESUMEN EJECUTIVO
+================================================================================
+Aplicación web completa para gestionar el proceso de selección de personal de
+LARCO: desde la creación de un requerimiento de personal hasta la contratación,
+pasando por un embudo Kanban de 5 fases, verificación de antecedentes,
+entrevistas, pruebas de proveedor externo y cierre trazable.
+
+Características principales:
+  - 4 roles con permisos diferenciados (RBAC) y 13 módulos API.
+  - PII (datos personales) cifrada en reposo con AES-256-CBC.
+  - Auditoría inmutable hecha con TRIGGERS en la base de datos (no en la app).
+  - Embudo de selección que SOLO AVANZA, con control de cupo de plazas.
+  - Dashboard operativo, agenda de entrevistas, importación masiva de HVs
+    (hasta 50 PDFs por lote) y bitácora visible para el superusuario.
+  - 507 tests automatizados en verde (395 API + 110 web + 2 shared).
+  - 4 gates de calidad: typecheck, lint, format y build.
+
+Commit actual de la rama main: cb37b03 (Etapa 9D — frontend completo).
+Los commits son LOCALES: el push lo realiza el usuario cuando lo indique.
+
+
+================================================================================
+2. ARQUITECTURA GENERAL (MONOREPO)
+================================================================================
+Estructura de carpetas:
+
+  SistemaGestionHumana/
+  ├── apps/
+  │   ├── api/                  Backend NestJS (puerto 3000)
+  │   │   ├── db/migrations/    Migraciones versionadas (node-pg-migrate)
+  │   │   ├── src/
+  │   │   │   ├── common/       crypto, decorators, filters, guards
+  │   │   │   ├── config/       configuración + validación de .env (zod)
+  │   │   │   ├── database/     conexión TypeORM/pg
+  │   │   │   ├── health/       /api/health
+  │   │   │   ├── logging/      pino + nestjs-pino
+  │   │   │   ├── modules/      13 módulos de negocio (ver sección 6)
+  │   │   │   └── app.module.ts
+  │   │   └── test/             suites e2e (BD real Docker)
+  │   └── web/                  Frontend React + Vite (puerto 5173)
+  │       └── src/
+  │           ├── components/   UI reutilizable (embudo, layout, formularios)
+  │           ├── lib/          helpers puros (embudo, flujo, rbac, api)
+  │           ├── pages/        16 páginas (ver sección 7)
+  │           ├── store/        estado global (zustand)
+  │           ├── tipos.ts      fuente de verdad de tipos del cliente
+  │           └── __tests__/    16 ficheros de tests (jsdom)
+  ├── packages/shared/          Tipos/utilidades compartidas API ↔ web
+  ├── docs/                     Documentación (ver sección 15)
+  ├── Reportes Desarrollo/      Este reporte (y futuros, con fecha nueva)
+  ├── docker-compose.dev.yml    Stack de desarrollo (db + api + web)
+  └── pnpm-workspace.yaml       Workspace pnpm (apps/* + packages/*)
+
+Patrón arquitectónico:
+  - API    : arquitectura en capas por módulo (controller → service → repo).
+  - Web    : SPA con router declarativo, estado global en zustand y helpers
+             puros separados de React para poder testearlos sin DOM.
+  - Reglas  : la lógica de negocio vive en el SERVIDOR (autoridad); el cliente
+             replica reglas solo como ATALLO de UX (evitar viajes de red
+             obviamente inválidos), nunca como autorización.
+
+
+================================================================================
+3. STACK TECNOLÓGICO Y VERSIONES
+================================================================================
+  Lenguaje         : TypeScript 5.9.3 (strict en todo el repo)
+  Gestor de paquetes: pnpm 12.14.0 (workspace), Node >= 20
+  Runtime          : Node.js 20+
+
+  BACKEND (apps/api)
+    Framework      : NestJS 11 (@nestjs/common/core ^11.2.7)
+    ORM / BD driver: TypeORM ^0.3.31 (solo en requerimientos) + pg ^8.23.1
+    Migraciones    : node-pg-migrate ^9.0.0 (archivos .ts numerados)
+    Validación     : class-validator ^0.15.1 + class-transformer + zod ^4.6.7
+                     (zod se usa para validar el .env al arrancar)
+    Auth           : @nestjs/jwt ^11.0.2 + guards globales
+    Rate limit     : @nestjs/throttler ^6.7.1 (100 req/min por IP)
+    Seguridad HTTP : helmet ^8.3.0
+    Logging        : nestjs-pino + pino (logs estructurados JSON)
+    PDF (Etapa 9)  : pdfjs-dist 3.11.174 (build legacy CJS)
+                     ⚠ pdf-parse fue RECHAZADO: dependía de canvas nativo.
+
+  FRONTEND (apps/web)
+    Framework      : React 19.3.1 + react-router-dom ^7.18.4
+    Bundler        : Vite ^8.3.4 (+ @vitejs/plugin-react)
+    Estilos        : Tailwind CSS ^4.3.3 (via @tailwindcss/vite)
+    Estado         : zustand ^5.0.15
+    Arrastre Kanban: @dnd-kit/core ^6.3.1 (+ modifiers, sortable, utilities)
+
+  TESTING
+    Motor          : Vitest ^5.0.5 (API y web)
+    Web DOM        : jsdom ^30 + @testing-library/react ^16
+    API e2e        : supertest ^7.1.1 contra BD PostgreSQL real (Docker)
+
+  CALIDAD / HERRAMIENTAS
+    Lint           : ESLint ^10.13 + typescript-eslint ^8 (flat config)
+    Formato        : Prettier ^3.9.10
+    Tipos          : tsc --noEmit en ambos apps
+
+  INFRAESTRUCTURA
+    Contenedores   : Docker + docker-compose.dev.yml
+    Imagen BD      : postgres:16-alpine (volumen nombrado pgdata)
+
+
+================================================================================
+4. MOTOR DE BASE DE DATOS Y ESQUEMA
+================================================================================
+MOTOR: PostgreSQL 16 (imagen oficial postgres:16-alpine, corriendo en Docker).
+
+  - Acceso desde la app con la variable DATABASE_URL.
+  - En desarrollo: usuario/clave/base `ats_dev`, puerto 5432 expuesto.
+  - Persistencia en volumen Docker `pgdata`.
+  - El esquema se gestiona EXCLUSIVAMENTE con migraciones versionadas
+    (nunca con synchronize en producción).
+
+TABLAS PRINCIPALES:
+
+  users / roles          Usuarios, contraseñas (scrypt) y catálogo de roles.
+                         Semilla: 4 roles (ver sección 8).
+  audit_log              Auditoría INMUTABLE (solo INSERT desde triggers;
+                         un trigger rechaza UPDATE y DELETE).
+  requerimientos         Solicitudes de personal. ENUM `estado_requerimiento`
+                         con 6 estados: pendiente, aprobado, en_proceso,
+                         cerrado, rechazado, exitoso (Etapa 9).
+                         Campos Etapa 9: urgencia, modalidad, departamento_id,
+                         motivo_cierre, resultado_cierre.
+                         CHECK: cerrado ⇒ motivo + resultado obligatorios.
+  candidatos             Fichas de candidatos con PII cifrada (AES-256-CBC)
+                         + hash de búsqueda para cédula (search_hash).
+                         UNIQUE por requerimiento: 1 candidato = 1 requerimiento
+                         (Etapa 9, migración 009).
+                         Cédula opcional SOLO vía importación (migración 010).
+  archivos_cv            Metadatos de CVs subidos (sha256, tamaño, MIME);
+                         los ficheros viven en UPLOAD_DIR.
+  postulaciones          Embudo: FK candidato + FK requerimiento + fase +
+                         estado. ENUM `fase_postulacion` (5 valores, EN ORDEN):
+                           preseleccion, antecedentes, entrevistas,
+                           proveedor_externo, contratacion
+                         ENUM `estado_postulacion`: activa, contratado,
+                           descartado.
+                         CHECKs: descartado ⇒ motivo; (estado='contratado')
+                           EXACTAMENTE SI fase='contratacion'.
+  departamentos          Catálogo de áreas LARCO (migración 009): 8 filas
+                         sembradas (ABASTECIMIENTO, CONTABILIDAD, GESTION
+                         HUMANA, OFERTAS, PREVENCION SST, PROYECTOS,
+                         SERVICIOS, SISTEMAS) + coordinador.
+  entrevistas            Agenda de entrevistas (migración 009): ENUM
+                         `estado_entrevista` = agendada, realizada, cancelada.
+  historial / audit_log  Ver sección 9.
+
+TRIGGERS EN BD (la auditoría NUNCA se escribe desde la aplicación):
+  - *_set_updated_at     : mantiene updated_at en cada UPDATE.
+  - *_audit_log          : INSERT en audit_log con old_data/new_data y
+                           changed_by (autor real de la solicitud).
+  - audit_log_no_mutation: bloquea UPDATE/DELETE sobre audit_log
+                           (tabla inmutable; es un REPOSITORIO, no un log
+                           editable).
+
+
+================================================================================
+5. MIGRACIONES (HISTORIAL VERSIONADO)
+================================================================================
+Directorio: apps/api/db/migrations/  (comando: pnpm -C apps/api db:migrate)
+
+  001_initial_schema.ts                 Esquema base: users, roles, audit_log,
+                                        triggers y función genérica de auditoría.
+  002_seed_roles_and_admin.ts           Semilla de roles + admin inicial.
+  003_requerimientos.ts                 Requerimientos + ENUM de estados +
+                                        CHECK de rechazo con motivo.
+  004_auditoria_actor.ts                Auditoría con actor real (changed_by);
+                                        función genérica para todas las tablas.
+  005_candidatos.ts                     Candidatos + PII cifrada + hash de
+                                        búsqueda de cédula.
+  006_archivos_cv.ts                    Archivos de CV (metadatos + dedup).
+  007_postulaciones.ts                  Embudo Kanban: fases y estados con
+                                        CHECKs de coherencia.
+  008_superusuario.ts                   Rol superusuario (IT) + usuario
+                                        it@larco.co + herencia de permisos.
+  009_etapa9_departamentos_entrevistas.ts  (Etapa 9) Tablas departamentos y
+                                        entrevistas; ENUM urgencia/modalidad;
+                                        estado_requerimiento += 'exitoso';
+                                        CHECK cierre trazable; UNIQUE
+                                        candidato por requerimiento.
+  010_candidatos_cedula_opcional.ts     Cédula opcional SOLO en importación
+                                        masiva (el DTO manual sigue
+                                        exigiéndola).
+
+REGLA: toda migración tiene `down` para poder retroceder; nunca se edita una
+migración ya aplicada — se crea una nueva.
+
+
+================================================================================
+6. API REST — MÓDULOS Y ENDPOINTS
+================================================================================
+14 controllers, 42 endpoints, prefijo global /api.
+
+MÓDULOS:
+  auth             Login, refresh, me, logout (JWT).
+  requerimientos   CRUD + máquina de estados (transiciones).
+  candidatos       CRUD + historial + descarga de CVs.
+  uploads          Subida de archivos (multipart, validación MIME/magic bytes).
+  embudo           Consulta del tablero.
+  postulaciones    Cambio de fase, descarte, alta, historial.
+  antecedentes     Verificación asíncrona de antecedentes.
+  proveedor        Pruebas de proveedor externo.
+  historial        Historial de entidades + bitácora de auditoría.
+  dashboard        Resumen operativo (Etapa 9).
+  departamentos    Catálogo de áreas (Etapa 9).
+  entrevistas      Agenda de entrevistas (Etapa 9).
+  importacion      Importación masiva de HVs en PDF (Etapa 9).
+  usuarios         Gestión de cuentas — EXCLUSIVO superusuario (Etapa 8).
+
+ENDPOINTS NUEVOS DE LA ETAPA 9 (todos verificados con tests e2e):
+  GET    /api/dashboard              4 roles. Devuelve SIEMPRE las 5 fases
+                                      en orden (aunque cantidades sean 0).
+  GET    /api/departamentos          Cualquier rol autenticado.
+  PATCH  /api/departamentos/:id      Solo admin_rrhh / superusuario (coordinador).
+  GET    /api/entrevistas            Filtros: estado, desde, hasta,
+                                      postulacionId, candidatoId (lista plana).
+  POST   /api/entrevistas            analista / admin / superusuario.
+  PATCH  /api/entrevistas/:id        Mismos roles.
+  POST   /api/importacion/hvs        multipart, campo `archivos` (≤50 PDFs,
+                                      ≤5 MB c/u) + campo `departamentoId`.
+  GET    /api/historial/auditoria    EXCLUSIVO superusuario. Paginado
+                                      (pagina/limite/tabla/...) →
+                                      { entradas, total, pagina, paginas }.
+
+CONVENCIONES DE LA API:
+  - Respuestas paginadas con forma { items, total, page, limit }.
+  - DTOs importados como VALUE desde @Body() / @Query() (requisito del
+    compilador de decoradores de Nest).
+  - ENUM en SQL siempre con cast explícito dentro de COALESCE.
+  - INSERT ... RETURNING devuelve id y el servicio RELEE con leer(id)
+    (sin alias de JOIN en RETURNING).
+
+
+================================================================================
+7. FRONTEND — PÁGINAS, COMPONENTES Y NAVEGACIÓN
+================================================================================
+16 páginas, 15 componentes.
+
+PÁGINAS:
+  Login, NoEncontrada (404)
+  requerimientos/  Lista, Detalle, Nuevo
+  candidatos/      Lista, Detalle, Nuevo
+  embudo/          TableroEmbudo (Kanban de 5 columnas)
+  dashboard/       PaginaDashboard            (Etapa 9)
+  departamentos/   PaginaDepartamentos        (Etapa 9)
+  entrevistas/     PaginaEntrevistas          (Etapa 9)
+  importacion/     PaginaImportarHVs          (Etapa 9)
+  bitacora/        PaginaBitacora             (Etapa 9, solo superusuario)
+  usuarios/        Lista, Nuevo               (Etapa 8, solo superusuario)
+
+RUTAS:
+  /login                        pública
+  /            → REDIRIGE A /dashboard   (antes iba a /requerimientos)
+  /dashboard                     operativo
+  /requerimientos[...]           listado / detalle / nuevo
+  /requerimientos/:id/embudo     tablero Kanban
+  /candidatos[...]               listado / detalle / nuevo
+  /importar                      importación masiva (Etapa 9)
+  /departamentos                 áreas (Etapa 9)
+  /entrevistas                   agenda (Etapa 9)
+  /bitacora                      bitácora (SOLO superusuario)
+  /usuarios                      cuentas (SOLO superusuario)
+  cualquier otra                 404 dentro del layout
+
+MENÚ (8 secciones, visibilidad por rol vía lib/rbac.ts):
+  Dashboard · Requerimientos · Candidatos · Importar HVs · Departamentos ·
+  Entrevistas · Bitácora (super) · Usuarios (super)
+
+CAPAS DEL CLIENTE:
+  lib/embudo.ts   Reglas del embudo (espejo del servidor): etiquetas de fase,
+                  solo-avanza, cupo lleno, terminales.
+  lib/flujo.ts    Matriz de transiciones de requerimientos (espejo).
+  lib/rbac.ts     Predicados de permisos (solo deciden QUÉ BOTONES SE VUESTRAN;
+                  la autorización real es de la API).
+  lib/api.ts      Cliente HTTP (incluye subirFormulario multipart).
+  store/tablero.ts Estado del Kanban con movimiento OPTIMISTA y rollback.
+  tipos.ts        Fuente de verdad de tipos del cliente (etiquetas de UI aquí,
+                  nunca en la API).
+
+
+================================================================================
+8. NIVEL DE SEGURIDAD (DETALLADO)
+================================================================================
+AUTENTICACIÓN
+  - JWT firmado (HS256), TTL de 24 HORAS (JWT_TTL_HOURS, validado 1–72 h).
+  - JWT_SECRET obligatorio con MÍNIMO 32 caracteres (validado con zod al
+    arrancar: la app NO arranca sin él).
+  - Refresh token + endpoint /me; logout invalida en servidor (best-effort)
+    y SIEMPRE cierra sesión localmente.
+  - Endpoints públicos solo: login, refresh y /api/health (decorador @Public).
+
+CONTRASEÑAS
+  - Hash con scrypt (node:crypto, nativo de Node — sin dependencias nativas
+    externas), parámetros N/r/p, salt aleatorio de 128 bits por usuario.
+  - Formato versionado: scrypt$N$r$p$salt$hash, verificación con
+    timingSafeEqual (comparación en tiempo constante).
+  - Semilla: contraseña inicial del admin por variable de entorno
+    ADMIN_INITIAL_PASSWORD (nunca hardcodeada en el código fuente).
+
+CIFRADO DE PII EN REPOSO
+  - Algoritmo AES-256-CBC (clave de 32 bytes).
+  - IV ALEATORIO de 16 bytes POR REGISTRO (dos cifrados del mismo texto
+    son distintos — cubierto por test).
+  - Formato versionado: "v1:<iv_base64>:<cipher_base64>" (permite rotar
+    el esquema sin romper lecturas).
+  - Rotación de clave soportada: CRYPTO_KEY_PREVIOUS_BASE64 permite
+    descifrar datos escritos con la clave anterior.
+  - CEDULA_SEARCH_KEY: clave DEDICADA para el hash de búsqueda de la cédula
+    (NO se rota junto a la clave principal; no debe rotarse).
+  - Las claves se validan al arrancar: deben decodificar a EXACTAMENTE
+    32 bytes en base64.
+
+AUTORIZACIÓN (RBAC)
+  - Guards globales en este orden: AuthGuard (identidad) → ThrottlerGuard
+    (rate limit). Roles aplicados por decorador @Roles(...) + RolesGuard.
+  - 4 roles (semilla, migración 002/008):
+      admin_rrhh          Gestión completa de RRHH
+      analista_seleccion  Operación diaria del embudo
+      lider_area          Crea/solo sus requerimientos; ve el tablero en
+                          SOLO LECTURA
+      superusuario (IT)   Hereda TODO lo de admin_rrhh + es el ÚNICO que
+                          gestiona usuarios y ve la bitácora
+  - Reglas de servicio adicionales (no solo decoradores): edición solo por
+    creador o admin; transiciones según matriz origen→destino; nadie se
+    auto-desactiva ni se auto-cambia el rol; =1 superusuario activo.
+  - La ocultación de botones en el menú es ERGONOMÍA, nunca autorización:
+    cualquier cliente que llame directo a la API recibirá su 403.
+
+PROTECCIÓN HTTP
+  - helmet@8 (CSP, HSTS, X-Frame-Options, etc.) con defaults.
+  - Rate limiting global: 100 peticiones por minuto por IP (throttler v6).
+    En login hay límite adicional dedicado (fuerza bruta).
+    En tests el rate limiting global se desactiva por completo (skipIf).
+  - CORS restringido a orígenes explícitos (CORS_ORIGIN).
+  - Validación de payload con class-validator en todos los DTOs.
+
+VALIDACIÓN DE ENTORNO
+  - Todo el .env se valida con zod al arrancar (env.validation.ts):
+    JWT_SECRET ≥32, CRYPTO_KEY_* = 32 bytes, JWT_TTL 1–72, etc.
+    Si algo falta o es incorrecto, la aplicación NO arranca.
+
+SEGURIDAD DE ARCHIVOS
+  - Validación de magic bytes (no solo Content-Type declarado) + límite de
+    tamaño + dedup por sha256. 19 tests dedicados.
+
+SEGURIDAD DE LA IMPORTACIÓN (Etapa 9)
+  - pdfjs-dist 3.11.174 (build legacy CJS) en lugar de pdf-parse (rechazado
+    por su dependencia de canvas nativo).
+  - Límites: ≤50 archivos por lote, ≤5 MB por archivo, solo PDF.
+
+
+================================================================================
+9. SISTEMA DE AUDITORÍA (BITÁCORA)
+================================================================================
+Filosofía: la auditoría se escribe desde TRIGGERS en PostgreSQL, nunca desde
+la aplicación. Así, ningún código (ni un bug, ni un endpoint olvidado) puede
+evitar registrar un cambio.
+
+  - Tabla audit_log: tabla_name, record_id, action (INSERT/UPDATE/DELETE),
+    old_data (enmascarado), new_data (enmascarado), changed_by, fecha.
+  - Función genérica + triggers BEFORE UPDATE/DELETE por tabla.
+  - audit_log es INMUTABLE: un trigger propio rechaza UPDATE y DELETE.
+    (La migración 002 lo deshabilita SOLO de forma transitoria dentro de su
+    propia transacción de semilla, y lo vuelve a habilitar.)
+  - changed_by registra al AUTOR REAL de la solicitud (actor), no al usuario
+    de la conexión.
+  - La PII aparece ENMASCARADA en el historial (probado en tests).
+
+CONSULTA (Etapa 9, regla 7):
+  - GET /api/historial/auditoria — EXCLUSIVO del superusuario (el resto,
+    incluido admin_rrhh, recibe 403).
+  - Paginación: pagina, limite, filtro por tabla.
+  - Frontend: /bitacora con diff enmascarado antes → después.
+
+
+================================================================================
+10. REGLAS DE NEGOCIO (EMBUDO DE SELECCIÓN)
+================================================================================
+EL EMBUDO SOLO AVANZA (Etapa 9, regla 11):
+  Desde una fase solo se admite mover a la SIGUIENTE (un paso adelante).
+  No hay retroceso ni saltos. El servidor responde 409 si se intenta; el
+  cliente lo evita con un atajo local (sin viaje de red) y muestra:
+  "El embudo solo avanza: de 'X' solo se admite avanzar a 'Y'".
+
+CONTROL DE CUPO (Etapa 9, reglas 3 y 4):
+  - Al cubrir TODAS las plazas con candidatos en estado `contratado`,
+    el requerimiento pasa AUTOMÁTICAMENTE a estado `exitoso`
+    ("Contrato exitoso") — estado terminal solo automático.
+  - Con el cupo lleno se BLOQUEAN: altas de nuevos candidatos y movimientos
+    hacia la fase Contratación (fila + botón deshabilitados con aviso).
+  - El bloqueo se calcula localmente (sin fetch extra) con el 3.er argumento
+    de mover(id, destino, numeroPlazas).
+
+DESCARTADOS OCULTOS (Etapa 9, regla 2):
+  Las postulaciones en estado `descartado` NO se pintan en el Kanban: siguen
+  siendo datos del embudo (dashboard e historial los cuentan), pero el tablero
+  es la vista del trabajo EN CURSO.
+
+CONTRATADOS VISIBLES Y NO REASIGNABLES (Etapa 9, reglas 6 y 8):
+  Los `contratado` permanecen visibles en la columna Contratación pero son
+  estado terminal: no se mueven ni se descartan.
+
+CIERRE TRAZABLE (Etapa 9, regla 5):
+  Cerrar un requerimiento exige MOTIVO + RESULTADO
+  (resultado ∈ contratacion | cierre_vacante). Aplicado con CHECK en BD.
+
+UN CANDIDATO = UN REQUERIMIENTO (Etapa 9, regla 9):
+  UNIQUE(candidato_id) sobre postulaciones.
+
+MATRÍZ DE TRANSICIONES DE REQUERIMIENTOS:
+  pendiente  → aprobado (admin/super) | rechazado (admin/super/lider, motivo)
+  aprobado   → en_proceso (admin/super/analista)
+  en_proceso → cerrado (admin/super, motivo + resultado)
+  cerrado, rechazado, exitoso → sin salida (estados terminales)
+
+ETIQUETAS DE LA MUESTRA (solo UI; los códigos de BD NO cambian):
+  preseleccion      → "Recepción y Análisis de HV"
+  antecedentes      → "Validación de Antecedentes"
+  entrevistas       → "Entrevistas y Psicotécnicas"
+  proveedor_externo → "Pruebas Proveedor Externo"
+  contratacion      → "Contratación"
+
+
+================================================================================
+11. DISEÑO DE INTERFAZ (UI/UX)
+================================================================================
+TEMA: oscuro (por decisión del usuario — NO se rediseña el tema).
+  - Paleta base: slate (fondos slate-950/900/800, texto slate-100/300/400).
+  - Acentos: emerald (acciones/éxito/avance), amber (advertencias/cupós),
+    rose (errores/descartes), sky (información/enlaces).
+  - Tarjetas: bordes slate-800, bordes redondeados, sin sombras pesadas.
+  - Tipografía: Inter/sistema, escala de utilidades Tailwind (text-xs → 3xl).
+
+LOGO LARCO (Etapa 9):
+  - Componente `LogoLarco.tsx`, wordmark CSS (texto "larco" en minúsculas +
+    dos acentos ámbar/esmeralda sobre la "o") + separador + subtítulo
+    "Gestión Humana / Applicant Tracking System".
+  - Es TEXTO, no imagen: escala con la tipografía, no pide red y se adapta al
+    tema oscuro. Ubicación: header, arriba-izquierda. Enlaza a /dashboard
+    (o /requerimientos si el rol no ve dashboard).
+
+COMPONENTES CLAVE:
+  - Header pegajoso (sticky) con navegación condicionada por rol, email +
+    rol del usuario y botón «Salir».
+  - Tablero Kanban: 5 columnas con contador, tarjetas arrastrables (dnd-kit
+    con sensor de PUNTO y de TECLADO — accesibilidad), botón ▶ de avance
+    como alternativa al arrastre (el DnD nunca es la única vía).
+  - Diálogo de descarte que exige motivo ≥5 caracteres.
+  - Panel de historial lateral (antes → después, valores enmascarados).
+  - Estados de carga (spinner), vacío y error con «Reintentar» en todas las
+    vistas.
+  - Vuelta «← Volver» visible en toda navegación (Etapa 8C).
+  - Formularios con validación en cliente Y servidor (límites idénticos):
+    candidatos, requerimientos, alta de postulación.
+
+DISEÑO RESPONSIVO:
+  - Flexbox/ grid con sm:/md:/lg:, columnas del Kanban con scroll
+    horizontal en pantallas estrechas.
+
+
+================================================================================
+12. CALIDAD: TESTS, GATES Y HERRAMIENTAS
+================================================================================
+ESTADO ACTUAL (verificado ejecutando los comandos, no por reporte de agentes):
+
+  Tests API       : 395 / 395 en verde (32 ficheros)
+                    - unitarios en src (11 ficheros, ~136 tests)
+                    - e2e en test/ (13 ficheros, 230 tests) contra
+                      PostgreSQL real en Docker
+  Tests web       : 110 / 110 en verde (16 ficheros, jsdom)
+  Tests shared    : 2 / 2
+  TOTAL           : 507 tests
+
+GATES (scripts pnpm en la raíz; sin flakiness):
+  pnpm typecheck    → tsc en shared + api + web          [VERDE]
+  pnpm lint         → eslint . (flat config, TS strict)  [VERDE]
+  pnpm format:check → prettier --check .                 [VERDE]
+  pnpm build        → nest build + vite build             [VERDE]
+
+CÓMO EJECUTAR:
+  Gates        : pnpm typecheck && pnpm lint && pnpm format:check && pnpm build
+  Tests API    : pnpm -C apps/api test
+  Tests web    : pnpm -C apps/web test
+  Un e2e puntual: pnpm -C apps/api exec vitest run test/<archivo>
+
+REGLAS DE CALIDAD DEL EQUIPO:
+  - TS estricto: sin `any` implícito; los fixtures de test se ajustan a los
+    tipos (nunca al revés).
+  - Sin flakiness: todo test en verde de forma repetida antes de commit.
+  - Verificación INDEPENDIENTE: cada afirmación se comprueba con git/gates/BD/
+    código — los reportes de los agentes no se dan por válidos sin contrastar.
+  - `no-useless-assignment` tiene un eslint-disable documentado: es un falso
+    positivo con pipes de UN solo uso en el código de auditoría.
+
+FALLOS CONOCIDOS DEL ENTORNO (no del código):
+  - Docker Desktop puede estar caído → los 13 ficheros e2e fallan con
+    "BD dev docker real". Solución: levantar el stack y re-ejecutar.
+  - Tras cambiar API/web: docker compose -f docker-compose.dev.yml up -d
+    --force-recreate api|web
+
+
+================================================================================
+13. HISTORIAL DE ETAPAS (0 → 9)
+================================================================================
+36 commits en main. Cronología resumida:
+
+  Fase 0 — Andamiaje (d481c27)
+    Monorepo pnpm, apps/api + apps/web + packages/shared, Docker dev.
+
+  Fase 1 — Fundación del backend (3a5bd29, ff455a1, ...)
+    Config validada con zod, logging pino, migración 001–003, health.
+
+  Fase 2 — Seguridad transversal (043ea22, dbe8054, 5aa7b28, 8225e78, ...)
+    Login/logout JWT 24 h + refresh + me; guards globales AuthGuard/RolesGuard;
+    AES-256-CBC con IV aleatorio por registro + rotación de clave; helmet,
+    rate limiting en login y CORS endurecido.
+
+  Fase 3 — Módulo Requerimientos
+    CRUD + máquina de estados + matriz de permisos por transición.
+
+  Fase 4 — Candidatos + uploads
+    CRUD con PII cifrada, subida de CVs con validación de magic bytes,
+    historial.
+
+  Fase 5 — Embudo Kanban + frontend
+    Postulaciones por fase, tablero de arrastre, descarte con motivo.
+
+  Fase 6–7 — Importación y antecedentes
+    Parsing de PDFs, verificación asíncrona de antecedentes, proveedor.
+
+  Fase 8 — Usuarios y superusuario (Etapa 8, migración 008)
+    API de usuarios exclusiva del superusuario (alta, baja lógica, cambio
+    de rol, restablecer contraseña; sin borrado físico; =1 superusuario
+    activo; nadie se auto-desactiva), frontend /usuarios, «← Volver» en
+    toda navegación.
+
+  Etapa 9 — Retroalimentación del usuario (ver sección 14)
+    Commits: d370a36 (migración 009/010), 4ec65a0 (reglas API),
+             7ad0c96 (módulos API nuevos), cb37b03 (frontend completo).
+
+
+================================================================================
+14. ETAPA 9 — RETROALIMENTACIÓN DEL USUARIO (11 MEJORAS)
+================================================================================
+Fuente: carpeta retroalimentacion/primera (11 mejoras en cosasamejorar.txt +
+imágenes). Todas IMPLEMENTADAS en código (API + web), con tests:
+
+  1.  Validación front de candidatos       → límites idénticos al DTO
+                                             (mín. 3 caracteres, etc.).
+  2.  Descartados ocultos en kanban        → filtran en TableroEmbudo.
+  3.  «Contrato exitoso» al cubrir plazas  → estado 'exitoso' automático
+                                             (terminal SOLO automático).
+  4.  Bloquear altas/movimientos a         → bloqueo local + 409 servidor
+      Contratación con cupo lleno            (fila, botón y aviso).
+  5.  Cierre con motivo + seguimiento      → CHECK en BD + bloque visible
+                                             motivo/resultado en el detalle.
+  6.  Contratados no reasignables          → estado terminal, sin acciones.
+  7.  Bitácora visible para superusuario   → /bitacora + endpoint exclusivo.
+  8.  Un candidato = un requerimiento      → UNIQUE(candidato_id).
+  9.  Contratados visibles al cierre       → permanecen en el tablero.
+ 10.  (contenida en 4 y 5: cupo y cierre trazables)
+ 11.  Sin retroceso en kanban             → embudo SOLO AVANZA (cliente
+                                             y servidor).
+
+MÓDULOS NUEVOS DE LA ETAPA 9:
+  - Dashboard       (GET /api/dashboard + /dashboard)
+  - Departamentos   (catálogo de 8 áreas, edición de coordinador)
+  - Entrevistas     (agenda con wizard: buscar candidato → postulación → datos)
+  - Importar HVs    (≤50 PDFs ≤5 MB con validación local)
+  - Bitácora        (superusuario, diff enmascarado, paginación)
+  - Logo LARCO      (wordmark CSS arriba-izquierda)
+  - Raíz / → /dashboard
+
+MIGRACIONES DE LA ETAPA 9:
+  009_etapa9_departamentos_entrevistas.ts
+  010_candidatos_cedula_opcional.ts
+
+DECISIONES TÉCNICAS DE LA ETAPA 9:
+  - pdf-parse RECHAZADO → pdfjs-dist@3.11.174 (build legacy CJS), con
+    pnpm-workspace.yaml: allowBuilds.canvas: false (evita toolchain nativa).
+  - Labels de fase NO van en la API: los pinta el web desde ETIQUETA_FASE.
+  - porFase del dashboard SIEMPRE devuelve las 5 fases en orden (incluso 0).
+  - mover(id, destino, numeroPlazas): 3.er argumento para bloqueo de cupo
+    local, sin fetch adicional.
+
+
+================================================================================
+15. ESTADO ACTUAL, DECISIONES Y DEUDA CONOCIDA
+================================================================================
+ESTADO:
+  - Etapa 9 completa en CÓDIGO: API + frontend + tests.
+  - Último commit: cb37b03 "feat(web): modulos nuevos Etapa 9 ..." (LOCAL).
+  - Commits de la Etapa 9 (todos locales, SIN push):
+        d370a36  migración 009/010
+        4ec65a0  reglas de negocio de la retroalimentación
+        7ad0c96  módulos API nuevos (54 ficheros, +3766 líneas)
+        cb37b03  frontend completo (29 ficheros, +2271/−172)
+  - Gates: typecheck, lint, format y build EN VERDE.
+  - Tests: 507 en verde (API 395, web 110, shared 2).
+
+PRÓXIMOS PASOS (protocolo acordado):
+  1. Documentación de la Etapa 9 (docs/PRUEBA-MANUAL-ATS.txt,
+     docs/DOCUMENTACION-TECNICA-ATS.txt, docs/PLAN-PRODUCCION-ATS.md).
+  2. Auditoría completa del asistente sobre el código de la Etapa 9.
+  3. PRUEBAS MANUALES del usuario (checklist en docs/PRUEBA-MANUAL-ATS.txt).
+  4. Retroalimentación del usuario.
+  5. SOLO ENTONCES: push y puesta en producción.
+
+DECISIONES DEL USUARIO (respetadas):
+  - El push lo hace el usuario (commits locales primero).
+  - Sin rediseño de tema (app oscura); el logo SÍ se añade.
+  - SÍ nombres de fase de la muestra (solo etiquetas UI; códigos BD intactos).
+  - Instalar dependencias lo hace el asistente.
+  - Excluidos de commits: retroalimentacion/ y el PDF de prueba.
+  - .gitignore incluye apps/api/data/ (uploads).
+
+DEUDA CONOCIDA / NOTAS:
+  - La carpeta retroalimentacion/ y el PDF de prueba quedan SIN commitear
+    (decisión del usuario; son material de trabajo).
+  - El dashboard usa agregados con mínimos/estructura porque los tests e2e
+    corren en PARALELO (27 workers) y las cifras globales no son
+    deterministas entre workers.
+  - Docker debe estar levantado para la suite e2e completa (13 ficheros).
+
+
+================================================================================
+16. CÓMO EJECUTAR EL PROYECTO (GUÍA RÁPIDA)
+================================================================================
+PRIMERA VEZ:
+  pnpm install                      instala dependencias de todo el workspace
+  docker compose -f docker-compose.dev.yml up -d db
+  pnpm -C apps/api db:migrate       aplica las 10 migraciones
+
+DESARROLLO DIARIO:
+  docker compose -f docker-compose.dev.yml up -d
+      (stack completo: db healthy → api → web; recarga en caliente)
+  o por partes:
+      pnpm -C apps/api dev           API en watch (puerto 3000)
+      pnpm -C apps/web dev           Web en watch (puerto 5173)
+
+PUERTOS:
+  Web  http://localhost:5173
+  API  http://localhost:3000/api
+  BD   localhost:5432 (ats_dev/ats_dev/ats_dev)
+
+TRAS CAMBIAR CÓDIGO DE API/WEB EN DOCKER:
+  docker compose -f docker-compose.dev.yml up -d --force-recreate api
+  docker compose -f docker-compose.dev.yml up -d --force-recreate web
+
+CIERRE:
+  docker compose -f docker-compose.dev.yml down
+  (los datos persisten en el volumen pgdata; -v lo borra)
+
+
+================================================================================
+17. CREDENCIALES DE DESARROLLO
+================================================================================
+  admin@larco.co      / DevAdmin2026!     admin_rrhh (semilla 002)
+  it@larco.co         / DevSuper2026!     superusuario (semilla 008)
+  e2e-lider@larco.co  / DevE2e2026!       (fixtures de test)
+  e2e-analista@larco.co / DevE2e2026!     (fixtures de test)
+
+  ⚠ Son credenciales de DESARROLLO. En producción se usan variables de
+    entorno (ADMIN_INITIAL_PASSWORD) y obligatoriamente se cambian.
+
+
+================================================================================
+18. CONVENCIONES DEL EQUIPO
+================================================================================
+  - Comunicación, reportes y comentarios en ESPAÑOL.
+  - Identificadores de código en INGLÉS.
+  - UI (textos visibles) en ESPAÑOL.
+  - Commits: convención conventional (feat/fix/docs/chore) en inglés técnico.
+  - TS estricto, pnpm (nunca npm/yarn), migraciones versionadas.
+  - Verificación independiente obligatoria: toda afirmación se contrasta con
+    git, gates, BD o código antes de darla por buena.
+  - Protocolo de entrega: agente termina → auditoría del asistente →
+    pruebas manuales del usuario → retroalimentación → SOLO ENTONCES
+    producción.
+  - Cada reporte futuro se guarda en
+    C:\AI APP\SistemaGestionHumana\Reportes Desarrollo\
+    con su FECHA CAMBIADA en el nombre del archivo.
+
+================================================================================
+FIN DEL REPORTE — 27/10/2026
+Próximo reporte: actualizar fecha de archivo y secciones 12 (tests/gates),
+13 (historial), 14 (etapa) y 15 (estado) según lo avanzado.
+================================================================================

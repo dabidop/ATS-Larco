@@ -45,13 +45,16 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 ### 🟡 Should — V1 completa (fases 6–8)
 
 8. **Importación masiva** de CVs con cola de trabajos y reporte por archivo.
+   _Parcial (Etapa 9):_ `POST /api/importacion/hvs` importa hasta 50 PDFs por lote con resumen, sin cola de trabajos.
 9. **Parsing de CVs**: extracción de nombres, correo, teléfono, ciudad y habilidades; presentación como _sugerencia confirmada por humano_ (nunca confiar ciegamente al parser).
 10. **Verificaciones de antecedentes asíncronas** con Playwright, resultados en JSONB, estados `pendiente | exitoso | fallido | no aplica`, evidencia adjunta.
 11. **Reportes e indicadores**: tiempo promedio por fase, tasa de conversión por vacante, antigüedad de requerimientos, exportación CSV.
+    _Parcial (Etapa 9):_ dashboard operativo con embudo, retención por fase y requerimientos por estado.
 
 ### 🟢 Could — Post-lanzamiento (backlog priorizado)
 
-- Entrevistas: agenda, recordatorios, evaluaciones por entrevistador.
+- Entrevistas: recordatorios y evaluaciones por entrevistador.
+  _Hecho (Etapa 9):_ agenda con alta, estados y filtros (sin recordatorios ni evaluaciones).
 - Portal del candidato (autoservicio).
 - Notificaciones por correo (SMTP interno).
 - Tablero de indicadores ejecutivo para Dirección de GH.
@@ -130,9 +133,10 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 
 ### Fase 6 · Importación masiva + parsing (1–1.5 semanas)
 
+- [x] Endpoint de importación masiva (múltiples PDF), progreso y reporte por archivo (éxito/error/motivo) — **Etapa 9**: `POST /api/importacion/hvs`, ≤50 PDFs ≤5 MB, resumen del lote, cédula opcional.
 - [ ] Cola de trabajos simple (tabla `jobs` + worker in-process; escalable a BullMQ/Redis después).
-- [ ] Endpoint de importación masiva (ZIP o múltiples PDF), progreso y reporte por archivo (éxito/error/motivo).
-- [ ] Parser de CV (pdf-parse + extracción por patrones de correo/teléfono/ciudad + catálogo de habilidades); UI de "extraído – confirmar".
+- [ ] Parser de CV (extracción por patrones de correo/teléfono/ciudad + catálogo de habilidades); UI de "extraído – confirmar".
+      _Nota: la extracción de TEXTO de los HVs ya usa `pdfjs-dist` (Etapa 9); falta el parser de campos._
 - **Salida:** 50 CVs en minutos, con datos prellenados y confirmados por una persona.
 
 ### Fase 7 · Verificaciones de antecedentes asíncronas (1 semana)
@@ -144,6 +148,7 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 
 ### Fase 8 · Reportes e indicadores (3–4 días)
 
+- [x] Dashboard operativo: embudo total, retención por fase y requerimientos por estado — **Etapa 9** (`GET /api/dashboard` + `/dashboard`).
 - [ ] Endpoints + vistas: tiempo promedio por fase, conversión por vacante, carga por jefatura, antigüedad de requerimientos.
 - [ ] Exportación CSV; vistas para Directores de GH.
 
@@ -195,13 +200,19 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 
 ---
 
-## Estado actual del proyecto (22/10/2026)
+## Estado actual del proyecto (27/10/2026)
 
 - **Fases 0–5 (MVP) COMPLETADAS y verificadas**: auth + RBAC de 4 roles, requerimientos con máquina de estados y código atómico, candidatos con PII cifrada, uploads de CV, embudo Kanban con trazabilidad e auditoría inmutable por triggers.
 - **Etapa 8 — Gestión de usuarios (superusuario/IT) COMPLETADA**: migración `008_superusuario` (rol + `it@larco.co`), API de usuarios (alta, baja lógica, cambio de rol, restablecer contraseña; sin borrado físico; ≥1 superusuario activo; correo único; nadie se auto-desactiva ni se auto-cambia el rol) y frontend (`/usuarios`, menú solo IT, «← Volver» en toda la navegación).
+- **Etapa 9 — Retroalimentación del usuario COMPLETADA en código** (4 commits locales, sin push):
+  - `d370a36` migraciones 009 (departamentos, entrevistas, urgencia/modalidad, `exitoso`, cierre trazable, UNIQUE candidato) y 010 (cédula opcional solo en importación).
+  - `4ec65a0` reglas de negocio: embudo **SOLO AVANZA**, cupo de plazas bloquea altas y movimientos a Contratación, `exitoso` automático al cubrir plazas, cierre con motivo + resultado, 1 candidato = 1 requerimiento, límites de campos.
+  - `7ad0c96` módulos API nuevos: `GET /api/dashboard`, `GET/PATCH /api/departamentos`, `GET/POST/PATCH /api/entrevistas`, `POST /api/importacion/hvs` (pdfjs-dist), `GET /api/historial/auditoria` (solo superusuario).
+  - `cb37b03` frontend completo: 5 páginas nuevas (Dashboard, Departamentos, Entrevistas, Importar HVs, Bitácora), logo LARCO en el header, menú de 8 secciones por rol, raíz `/` → `/dashboard`, kanban sin retroceso y con descartados ocultos, cierre con motivo + resultado.
 - **Bug corregido en el humo**: la API emitía ETag por defecto y el navegador recibía 304 sin cuerpo tras el redirect del alta → listados vacíos sin error. Solución: `etag: false` + `Cache-Control: no-store`.
-- **Baselines verificados hoy**: API 368/368 pruebas (×3 corridas), web 108/108, `typecheck`/`lint`/`build`/`format:check` en verde, humo de navegador end-to-end con los 4 roles.
-- **Pendiente antes de producción**: (1) prueba manual del usuario —incluye el arrastre real del Kanban— con las cuentas de `docs/PRUEBA-MANUAL-ATS.txt`; (2) `docker-compose.prod.yml` + runbook (Fase 10); (3) push al repo de GitHub de la empresa cuando se cree.
+- **Baselines verificados hoy (27/10/2026)**: API **395/395** (32 ficheros, incluye 230 e2e contra BD real), web **110/110** (16 ficheros), shared 2/2; `typecheck`/`lint`/`build`/`format:check` en verde. Gates ejecutados tras el commit `cb37b03`.
+- **Documentación actualizada a la Etapa 9**: `docs/PRUEBA-MANUAL-ATS.txt` (guion con las 5 pruebas, incluye Dashboard/Departamentos/Entrevistas/Importar/Bitácora y los 11 casos de la retroalimentación), `docs/DOCUMENTACION-TECNICA-ATS.txt` y este plan. Además `Reportes Desarrollo/Reporte-Desarrollo-2026-10-27.txt` (reporte general para el equipo; los futuros se guardan en esa carpeta con fecha nueva).
+- **Pendiente antes de producción**: (1) auditoría completa del asistente sobre el código de la Etapa 9; (2) **prueba manual del usuario** con el guion de `docs/PRUEBA-MANUAL-ATS.txt` —incluye el arrastre real del Kanban y el intento de retroceder, que debe fallar—; (3) retroalimentación del usuario; (4) SOLO ENTONCES push + `docker-compose.prod.yml` + runbook (Fase 10) cuando se cree el repo de GitHub de la empresa.
 
 ---
 

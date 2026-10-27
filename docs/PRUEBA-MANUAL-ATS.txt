@@ -1,7 +1,7 @@
 ================================================================================
  ATS LARCO — SISTEMA DE GESTIÓN HUMANA
- Documento 1 de 2: EL SOFTWARE Y SU FLUJO (para prueba manual)
- Versión: MVP Fases 0–5 (21/10/2026) · Estado: completo y verificado
+ Documento 1 de 3: EL SOFTWARE Y SU FLUJO (para prueba manual)
+ Versión: Etapa 9 — Retroalimentación (27/10/2026) · Estado: completo y verificado
 ================================================================================
 
 ÍNDICE
@@ -10,8 +10,9 @@
   3. El flujo completo "hasta la contratación" (pantalla por pantalla)
   4. Reglas que verá en pantalla
   5. Guion de prueba manual paso a paso
-  6. Datos ya cargados para su prueba
-  7. Cómo abrir el sistema
+  6. Los 4 módulos nuevos (Etapa 9)
+  7. Datos ya cargados para su prueba
+  8. Cómo abrir el sistema
 
 ================================================================================
 1. QUÉ HACE EL SISTEMA
@@ -23,28 +24,54 @@ Aplicación web de gestión de talento (ATS) para LARCO. Permite:
      puesto con un formulario completo; la administración de RRHH lo aprueba
      e inicia. Cada requerimiento recibe un código único (REQ-2026-0XX) y
      pasa por estados: Pendiente → Aprobado → En proceso → Cerrado
-     (o Rechazado, con motivo obligatorio).
+     (o Rechazado, con motivo obligatorio). Al cubrir todas las plazas con
+     contrataciones pasa solo a CONTRATO EXITOSO.
 
-  b) GESTIONAR CANDIDATOS con su CV: nombre, cédula, contacto y expectativa
-     salarial. Los CV (PDF, DOC, DOCX o RTF, hasta 5 MB) se adjuntan y se
-     descargan desde la ficha del candidato. Los datos sensibles (cédula y
-     teléfono) se GUARDAN CIFRADOS y se muestran enmascarados (***).
+  b) GESTIONAR CANDIDATOS con su CV: nombre, cédula, contacto, área o
+     departamento y expectativa salarial. Los CV (PDF, DOC, DOCX o RTF,
+     hasta 5 MB) se adjuntan y se descargan desde la ficha del candidato.
+     Los datos sensibles (cédula y teléfono) se GUARDAN CIFRADOS y se
+     muestran enmascarados (***). El formulario valida en cliente antes de
+     enviar (mismos límites que el servidor).
 
-  c) LLEVAR EL EMBUDO DE SELECCIÓN en un TABLERO KANBAN de 5 columnas:
-     Preselección → Antecedentes → Entrevistas → Proveedor externo →
-     Contratación. Las tarjetas son candidatos; se arrastran con el ratón o
-     se mueven con botones; cada candidato puede avanzar, retroceder o ser
-     descartado (con motivo obligatorio). Al llegar a "Contratación" el
-     candidato queda CONTRATADO.
+  c) LLEVAR EL EMBUDO DE SELECCIÓN en un TABLERO KANBAN de 5 columnas con
+     los nombres de la muestra:
+       1. Recepción y Análisis de HV
+       2. Validación de Antecedentes
+       3. Entrevistas y Psicotécnicas
+       4. Pruebas Proveedor Externo
+       5. Contratación
+     Las tarjetas son candidatos; se arrastran con el ratón o se mueven con
+     el botón ▶. EL EMBUDO SOLO AVANZA: no hay retroceso. Los DESCARTADOS
+     no se pintan en el tablero (siguen en el dashboard y en el historial).
+     Al llegar a "Contratación" el candidato queda CONTRATADO (visible pero
+     no reasignable). Con las plazas cubiertas se bloquean nuevas altas y
+     movimientos a Contratación.
 
   d) TODO QUEDA REGISTRADO: cada alta, cambio, movimiento y descarte deja
      trazabilidad (qué cambió, antes → después, quién y cuándo) visible en
-     el "Historial" de cada ficha y en la auditoría de la base de datos.
+     el "Historial" de cada ficha y en la BITÁCORA de auditoría que solo el
+     superusuario puede consultar en el menú.
 
   e) GESTIONAR LOS USUARIOS DEL SISTEMA (solo IT): el superusuario (IT) da
      de alta a los analistas, líderes y a la administración de RRHH, les
      asigna su rol, les restablece contraseñas y activa o desactiva sus
      cuentas. RRHH NO administra el software: eso es de IT.
+
+  f) VER EL DASHBOARD: al entrar se abre el resumen operativo (totales del
+     embudo, las 5 fases con su tasa de retención y los requerimientos por
+     estado).
+
+  g) AGENDAR ENTREVISTAS: buscar candidato → elegir su postulación →
+     registrar fecha, tipo y notas; cambiar su estado (agendada / realizada
+     / cancelada) y filtrar por estado o rango de fechas.
+
+  h) IMPORTAR HVs EN LOTE: subir hasta 50 PDFs de una vez (máx. 5 MB
+     c/u), eligiendo el departamento de destino; el sistema crea los
+     candidatos y reporta un resumen del lote.
+
+  i) CONSULTAR DEPARTAMENTOS: las 8 áreas de LARCO con su coordinador y
+     contadores; RRHH/admin editan el coordinador.
 
 ================================================================================
 2. QUIÉN HACE QUÉ (ROLES)
@@ -52,24 +79,31 @@ Aplicación web de gestión de talento (ATS) para LARCO. Permite:
 
   Administración RRHH (admin@larco.co)
     Aprueba e inicia requerimientos, cierra los procesos, ve todo y también
-    puede crear candidatos y mover el embudo. NO gestiona usuarios (eso es
-    de IT).
+    puede crear candidatos y mover el embudo. Ve el menú: Dashboard,
+    Requerimientos, Candidatos, Importar HVs, Departamentos y Entrevistas.
+    NO gestiona usuarios ni ve la Bitácora (eso es de IT).
+    SÍ puede editar el coordinador de un departamento.
 
   Superusuario — IT (it@larco.co)
     El administrador del SOFTWARE: da de alta y desactiva usuarios, les
-    asigna roles y restablece contraseñas (módulo "Usuarios"). Además puede
-    TODO lo que hace administración de RRHH (aprobar, cerrar, embudo y
-    candidatos) por herencia de poder.
+    asigna roles y restablece contraseñas (módulo "Usuarios"). Además hereda
+    TODOS los poderes de administración de RRHH (aprobar, cerrar, embudo,
+    candidatos, importar, entrevistas, departamentos). Es el ÚNICO rol que
+    ve la BITÁCORA de auditoría y el módulo Usuarios.
 
   Líder de Área (e2e-lider@larco.co)
     Crea y edita sus propios requerimientos (solo mientras están Pendientes).
     NO aprueba (quien pide, no autoriza): únicamente puede rechazar los suyos,
-    con motivo. Consulta requerimientos, candidatos (con PII enmascarada) y el
-    tablero en SOLO LECTURA, pero no crea candidatos ni mueve tarjetas.
+    con motivo. Ve Dashboard, Requerimientos, Candidatos, Departamentos y el
+    tablero en SOLO LECTURA (sin botones de movimiento). NO ve Importar HVs
+    ni Entrevistas (recibiría 403).
 
   Analista de Selección (e2e-analista@larco.co)
-    El dueño del día a día: crea candidatos, sube CV, postula candidatos al
-    tablero, mueve tarjetas y descarta con motivo. No cierra requerimientos.
+    El dueño del día a día: crea candidatos, sube CV, importa HVs en lote,
+    postula candidatos al tablero, mueve tarjetas (SOLO HACIA ADELANTE) y
+    descarta con motivo. Ve Dashboard, Requerimientos, Candidatos, Importar
+    HVs, Departamentos y Entrevistas. No cierra requerimientos ni ve la
+    Bitácora.
 
 La API valida el rol en cada operación (responde 403), aunque la interfaz
 oculte los botones que no le corresponden al rol.
@@ -79,17 +113,26 @@ oculte los botones que no le corresponden al rol.
 ================================================================================
 
 PANTALLA 1 — Inicio de sesión (http://localhost:5173)
-  Correo + contraseña → "Ingresar". Los tres roles entran en la lista de
-  requerimientos; las acciones disponibles en cada pantalla varían por rol.
+  Correo + contraseña → "Ingresar". Al entrar se abre el DASHBOARD (la raíz
+  "/" redirige a /dashboard). El menú superior muestra el logotipo LARCO
+  arriba-izquierda y las secciones que su rol puede ver.
 
-PANTALLA 2 — Requerimientos (lista)
+PANTALLA 2 — Dashboard (página inicial)
+  Cuatro cifras del embudo (Total candidatos, En proceso, Descartados,
+  Contratados), el gráfico "Estado del Embudo de Contratación" con las
+  5 fases en orden y su tasa de retención, y las cifras de requerimientos
+  (total, aprobados, pendientes, en proceso, críticos).
+
+PANTALLA 3 — Requerimientos (lista)
   Tabla paginada con código, título, jefatura, plazas y estado (con badge de
   color). Filtro por estado. Botón "Nuevo requerimiento" (líder y admin).
 
-PANTALLA 3 — Nuevo requerimiento (rol líder o admin)
-  Formulario de 5 secciones:
+PANTALLA 4 — Nuevo requerimiento (rol líder o admin)
+  Formulario con:
     1. Identificación y jefatura: título*, jefatura*, número de plazas*,
-       ubicación y fecha requerida.
+       ubicación, fecha requerida, URGENCIA (normal/media/crítica),
+       MODALIDAD (directa/concurso) y DEPARTAMENTO (catálogo de las 8
+       áreas LARCO).
     2. Perfil profesional: perfil*, experiencia y nivel de educación.
     3. Conocimientos y habilidades*: dos listas separadas por comas.
     4. Condiciones: salario mínimo/máximo (el mínimo no puede superar al
@@ -98,56 +141,81 @@ PANTALLA 3 — Nuevo requerimiento (rol líder o admin)
   Al guardar: la API genera el código REQ-2026-0XX y el estado nace
   "Pendiente". Se abre la ficha del requerimiento.
 
-PANTALLA 4 — Ficha del requerimiento
+PANTALLA 5 — Ficha del requerimiento
   Cabecera con código, título, badge de estado y las acciones que su rol
   puede hacer:
     • Pendiente → "Aprobar" / "Rechazar" (el rechazo exige motivo).
     • Aprobado  → "Iniciar proceso".
-    • En proceso → "Cerrar requerimiento" (solo admin) + enlace
-      "Tablero de selección".
-    • En otros estados el enlace avisa que el tablero se usa durante el
-      proceso y el tablero abre en solo lectura.
-  Debajo: las 5 secciones en modo lectura.
+    • En proceso → "Cerrar requerimiento" (solo admin). AL CERRAR aparece
+      un bloque OBLIGATORIO con:
+        - MOTIVO del cierre (texto), y
+        - RESULTADO: «Se cubrió la plaza con una contratación»
+          o «Se cerró sin contratación (plaza vacante)».
+      Sin ambos campos el botón de confirmar queda deshabilitado.
+      Además, si todas las plazas quedaron contratadas, el estado pasa
+      SOLO a «Contrato exitoso» (terminal; ya no admite acciones).
+    • Cerrado: se muestra el bloque de motivo + resultado en modo lectura
+      y un enlace "Ver tablero de selección" (el tablero abre en solo
+      lectura).
+  Debajo: las secciones del formulario en modo lectura.
 
-PANTALLA 5 — Candidatos
+PANTALLA 6 — Candidatos
   Lista con búsqueda por nombre y cédula exacta, y paginación.
   "Nuevo candidato": nombres*, apellidos*, cédula* (6 a 10 dígitos, única),
-  email, teléfono, ciudad, cargo actual y expectativa salarial.
+  email, teléfono, ciudad, DEPARTAMENTO (opcional, catálogo LARCO), cargo
+  actual y expectativa salarial. El formulario valida en el navegador
+  (longitudes mínimas, formato de correo y cédula) ANTES de enviar.
   En la ficha del candidato: "Editar", la sección "Archivos (CV)" con
   "ADJUNTAR CV" (arrastrando o seleccionando el archivo) y "Descargar", y el
   "Historial de cambios" con cada campo "— → valor" (cédula y teléfono
   aparecen como *** por seguridad).
 
-PANTALLA 6 — Tablero de selección (el embudo Kanban)
-  Cabecera: código + título + estado + "Volver al requerimiento".
+PANTALLA 7 — Tablero de selección (el embudo Kanban)
+  Cabecera: código + título + estado + "← Volver al requerimiento".
   Sección "Agregar candidato al tablero": buscar por nombre → resultados con
-  nombre y cédula → "Agregar". La tarjeta nace en Preselección.
-  5 columnas en orden, cada una con su contador de tarjetas.
-  Cada tarjeta muestra: nombre completo, badge de fase y estado, y acciones:
-    • "◀ / ▶" para mover un paso (hacia atrás o adelante).
+  nombre y cédula → "Agregar". La tarjeta nace en Recepción y Análisis de HV.
+  5 columnas EN ORDEN con sus nombres de la muestra y su contador:
+    1. Recepción y Análisis de HV
+    2. Validación de Antecedentes
+    3. Entrevistas y Psicotécnicas
+    4. Pruebas Proveedor Externo
+    5. Contratación
+  Cada tarjeta muestra: nombre completo, la fase y el badge de estado, y
+  acciones:
+    • "▶" (SIN "◀"): mueve UN PASO HACIA ADELANTE únicamente. El embudo no
+      retrocede (regla nueva).
     • "Descartar" → diálogo "Descartar postulación" con el aviso «Esta
       acción es definitiva» y el campo MOTIVO (obligatorio, mínimo 5
       caracteres: el botón "Aceptar" permanece deshabilitado sin motivo
       válido).
     • "Historial" → panel lateral con cada movimiento: Alta/Cambio, fecha,
       usuario y los campos "antes → después".
+  REGLAS NUEVAS DE ESTA VERSIÓN:
+    • Las tarjetas DESCARTADAS NO aparecen en el tablero (sí en el
+      dashboard, en el historial y en la auditoría).
+    • Las tarjetas CONTRATADAS permanecen visibles en Contratación pero NO
+      se mueven ni se descartan (estado terminal).
+    • Con todas las plazas cubiertas, el botón "Agregar candidato" queda
+      deshabilitado y el "▶" que apuntaría a Contratación también, con el
+      aviso «Las N plazas ya están cubiertas».
   Arrastre: las tarjetas activas se arrastran con el ratón hasta otra
-  columna; las terminales (Contratado/Descartado) no se arrastran ni tienen
-  acciones de movimiento.
-  Al soltar en una columna: la tarjeta se mueve AL INSTANTE y el servidor
+  columna; al soltar la tarjeta se mueve AL INSTANTE y el servidor
   confirma; si el movimiento no está permitido, la tarjeta VUELVE a su
-  lugar y se muestra el motivo del error.
+  lugar y se muestra el motivo («El embudo solo avanza: ...»).
 
-PANTALLA 7 — Contratación
+PANTALLA 8 — Contratación
   Mover una tarjeta hasta la columna "Contratación" la deja con badge
-  CONTRATADO: es el estado final (ya no se mueve ni se descarta).
+  CONTRATADO: es el estado final (ya no se mueve ni se descarta) pero sigue
+  VISIBLE. Si con eso se cubren todas las plazas, el requerimiento pasa a
+  «Contrato exitoso».
 
-PANTALLA 8 — Cierre y trazabilidad
-  Cuando el proceso termina, el admin cierra el requerimiento desde su
-  ficha. El historial de cada candidato/postulación conserva la historia
+PANTALLA 9 — Cierre y trazabilidad
+  Cuando el proceso termina, el admin cierra el requerimiento indicando
+  motivo + resultado (o el sistema lo marca «Contrato exitoso» al cubrir
+  plazas). El historial de cada candidato/postulación conserva la historia
   completa del proceso.
 
-PANTALLA 9 — Usuarios (solo el superusuario IT)
+PANTALLA 10 — Usuarios (solo el superusuario IT)
   El menú superior muestra "Usuarios" Únicamente cuando entra it@larco.co
   (los demás roles no ven el enlace). Al entrar:
   • Tabla paginada: NOMBRE, CORREO, ROL (nombre en español), ESTADO
@@ -164,25 +232,51 @@ PANTALLA 9 — Usuarios (solo el superusuario IT)
     ni se desactiva a sí mismo (la API responde 409 igualmente).
   • "Nuevo usuario" abre el formulario: nombre*, correo* (único),
     contraseña* (mínimo 8 caracteres) y rol*. Al guardar vuelve a la
-    lista con el mensaje «Usuario «X» creado correctamente» y la nueva
-    fila ya visible. Arriba, "← Volver" regresa a la lista.
+    lista con el mensaje «Usuario «X» creado correctamente».
+  • Arriba, "← Volver" regresa a la lista.
+
+PANTALLA 11 — Bitácora de auditoría (solo el superusuario IT)
+  Menú "Bitácora" (solo it@larco.co; los demás roles NO ven el enlace y si
+  escriben la URL a mano son redirigidos). Muestra la tabla `audit_log` de
+  la base de datos en forma paginada:
+    • Filtro por TABLA (usuarios, requerimientos, candidatos, ...).
+    • Paginación (página actual / total de páginas) con límite de filas.
+    • Cada entrada: fecha, usuario, acción (Alta/Cambio/Borrado), la tabla
+      y el detalle CAMPO: antes → después CON LOS VALORES ENMASCARADOS
+      (la PII nunca se muestra en claro).
 
 ================================================================================
 4. REGRAS QUE VERÁ EN PANTALLA
 ================================================================================
 
   • Estados del requerimiento: Pendiente → Aprobado → En proceso → Cerrado;
-    Pendiente → Rechazado (con motivo). Una combinación inválida responde
-    409 con mensaje claro (ej. cerrar algo que no está en proceso).
-  • Fases del embudo: solo se mueve UN PASO por vez, en cualquier dirección.
-    Un salto (p. ej. Preselección → Entrevistas) NO se permite: aparece
-    «Solo se puede mover un paso».
-  • "Contratación" equivale a CONTRATADO (terminal). El descarte funciona
-    desde cualquier fase y exige motivo.
-  • Un candidato no puede postular dos veces al mismo requerimiento
-    (la API responde 409 y la interfaz lo muestra tal cual).
+    Pendiente → Rechazado (con motivo); En proceso → «Contrato exitoso»
+    (solo automático, al cubrir todas las plazas). Una combinación inválida
+    responde 409 con mensaje claro (ej. cerrar algo que no está en proceso).
+  • CERRAR EXIGE MOTIVO + RESULTADO: el diálogo no permite confirmar sin
+    ambos (regla nueva; el CHECK de la base de datos también lo exige).
+  • Fases del embudo con los nombres de la muestra: el embudo SOLO AVANZA
+    un paso. Tanto un retroceso como un salto NO se permiten y aparece
+    «El embudo solo avanza: ...» (antes decía «Solo se puede mover un
+    paso» y también se podía retroceder: YA NO).
+  • Los DESCARTADOS no se pintan en el tablero; sí siguen contando en el
+    dashboard y en el historial.
+  • "Contratación" equivale a CONTRATADO (terminal, visible, NO
+    reasignable). El descarte funciona solo desde fases NO terminales y
+    exige motivo.
+  • CUPO DE PLAZAS: con todas las plazas cubiertas se bloquean las altas de
+    nuevos candidatos y los movimientos hacia Contratación (aviso en el
+    tablero; la API responde 409).
+  • Un candidato no puede postular dos veces al MISMO requerimiento (UNIQUE
+    en la base de datos; la API responde 409 y la interfaz lo muestra).
   • Solo se puede postular a requerimientos "En proceso".
   • Un candidato no puede tener dos cédulas distintas (la cédula es única).
+    Excepción: la cédula queda OPCIONAL en la importación masiva (los HVs
+    importados pueden venir sin ella); el alta manual sigue exigiéndola.
+  • Departamentos: cualquier rol consulta; solo admin/superusuario editan
+    el coordinador.
+  • Entrevistas: solo analista/admin/superusuario (el líder recibiría 403).
+  • Bitácora: EXCLUSIVA del superusuario (admin_rrhh recibe 403).
   • Usuarios: solo el superusuario (IT) gestiona cuentas — los demás roles
     reciben 403. La contraseña mínima es de 8 caracteres y el correo es
     único (409 «Ya existe un usuario con ese correo»). Nadie puede
@@ -205,44 +299,64 @@ CUENTAS (ya creadas en la base de datos de prueba):
   Analista de Selección  e2e-analista@larco.co    DevE2e2026!
 
 --------------------------------------------------------------------------------
-PRUEBA 1 — Flujo completo con los 3 roles (≈10 minutos)
+PRUEBA 1 — Flujo completo con los 3 roles (≈12 minutos)
 --------------------------------------------------------------------------------
-  1. Inicie sesión con e2e-lider → "Nuevo requerimiento" → cree "Analista
-     de Datos – Prueba Manual" (complete las 5 secciones).
+  1. Inicie sesión con e2e-lider. ESPERADO: cae en el DASHBOARD (la raíz ya
+     no abre la lista de requerimientos) y el menú muestra el logotipo
+     LARCO arriba-izquierda. NO debe ver «Importar HVs», «Entrevistas»,
+     «Bitácora» ni «Usuarios».
+  2. Con e2e-lider: "Nuevo requerimiento" → cree "Analista de Datos –
+     Prueba Manual" (complete las secciones; note los campos nuevos:
+     URGENCIA, MODALIDAD y DEPARTAMENTO).
      ESPERADO: ficha con código REQ-2026-0XX y estado "Pendiente".
-  2. Con e2e-lider revise la ficha: NO debe existir el botón "Aprobar"
-     (un líder no autoriza lo que pidió).
-  3. Cierre sesión, entre con admin → "Aprobar" → "Iniciar proceso".
+  3. Revise la ficha: NO debe existir el botón "Aprobar" (un líder no
+     autoriza lo que pidió).
+  4. Cierre sesión, entre con admin → "Aprobar" → "Iniciar proceso".
      ESPERADO: estados "Aprobado" y "En proceso"; aparece "Tablero de
      selección".
-  4. Entre con e2e-analista → "Nuevo candidato": cree "Carla Prueba
-     Manual" (cédula 55009999) y "Diego Prueba Manual" (cédula 55008888).
+  5. Entre con e2e-analista → "Nuevo candidato": cree "Carla Prueba
+     Manual" (cédula 55009999, elija un DEPARTAMENTO) y "Diego Prueba
+     Manual" (cédula 55008888). Antes de enviar, pruebe la VALIDACIÓN:
+     ponga 1 solo carácter en "Nombres" y un correo inválido.
+     ESPERADO: los mensajes de error aparecen SIN llegar a la API.
      En la ficha de Carla: "ADJUNTAR CV" con un PDF pequeño y luego
-     "Descargar".
-     ESPERADO: mensaje «CV adjuntado: archivo.pdf» y descarga exitosa.
-  5. "Tablero de selección" del REQ-2026-0XX → "Agregar candidato" →
+     "Descargar". ESPERADO: descarga exitosa.
+  6. "Tablero de selección" del REQ-2026-0XX → "Agregar candidato" →
      busque "Carla" → "Agregar"; repita con "Diego".
-     ESPERADO: dos tarjetas en Preselección con badge "Activa".
-  6. DRAG & DROP (pruebe con el ratón; no se pudo automatizar):
-     arrastre la tarjeta de Carla de "Preselección" a "Antecedentes".
-     ESPERADO: la tarjeta se mueve al instante y los contadores cambian;
-     si recarga la página, la tarjeta sigue en Antecedentes.
-     Intente además arrastrarla de "Antecedentes" DIRECTAMENTE a
-     "Entrevistas" (2 columnas de más).
-     ESPERADO: no se mueve y aparece «Solo se puede mover un paso».
-     Repita un movimiento con los botones "▶" (equivalente accesible).
-  7. Descarte: "Descartar" en Diego → deje el motivo vacío → ESPERADO:
+     ESPERADO: dos tarjetas en la columna «1. Recepción y Análisis de HV»
+     con badge "Activa".
+  7. DRAG & DROP (pruebe con el ratón; no se pudo automatizar):
+     arrastre la tarjeta de Carla de «Recepción y Análisis de HV» a
+     «Validación de Antecedentes». ESPERADO: la tarjeta se mueve al
+     instante y los contadores cambian; si recarga la página, la tarjeta
+     sigue ahí.
+     INTENTE AHORA RETROCEDER: arrastre la tarjeta de Carla DE
+     «Validación de Antecedentes» DE VUELTA a «Recepción y Análisis de
+     HV». ESPERADO: NO se mueve y aparece «El embudo solo avanza: de
+     'antecedentes' solo se admite avanzar a 'entrevistas'».
+     Repita un movimiento con el botón "▶" (equivalente accesible): note
+     que ya NO existe el botón "◀".
+  8. Descarte: "Descartar" en Diego → deje el motivo vacío → ESPERADO:
      "Aceptar" deshabilitado; escriba 3 caracteres → sigue deshabilitado;
      escriba "No cumple el perfil" → "Aceptar".
-     ESPERADO: tarjeta "Descartada" con «Motivo: No cumple el perfil».
-  8. Historial: "Historial" en la tarjeta de Carla. ESPERADO: entrada
+     ESPERADO: la tarjeta de Diego DESAPARECE del tablero (regla nueva:
+     los descartados no se pintan) y el contador de la columna baja.
+  9. Historial: "Historial" en la tarjeta de Carla. ESPERADO: entrada
      "Alta" y un "Cambio" por movimiento, con fase antes → después,
      usuario y fecha.
-  9. Contratación: mueva a Carla 4 pasos (Antecedentes → Entrevistas →
-     Proveedor externo → Contratación). ESPERADO: badge "Contratado" y
-     tarjeta deshabilitada (sin ▶ ni Descartar).
- 10. Cierre: con admin, en la ficha del requerimiento → "Cerrar
-     requerimiento". ESPERADO: estado "Cerrado".
+ 10. Contratación: mueva a Carla 3 pasos (Validación de Antecedentes →
+     Entrevistas y Psicotécnicas → Pruebas Proveedor Externo →
+     Contratación). ESPERADO: badge "Contratado", la tarjeta permanece
+     VISIBLE y ya no tiene "▶" ni "Descartar".
+ 11. Cierre: con admin, en la ficha del requerimiento → "Cerrar
+     requerimiento". ESPERADO: se exige MOTIVO y RESULTADO (el botón de
+     confirmar está deshabilitado hasta completar ambos); al confirmar,
+     estado "Cerrado" con motivo y resultado visibles.
+ 12. Regla del cupo: repita el paso 10 en un requerimiento de 1 plaza y
+     observe el tablero ANTES de llenarla: con la plaza ya cubierta el
+     botón "Agregar candidato" sale deshabilitado y el "▶" hacia
+     Contratación también, con el aviso «Las 1 plaza ya está cubierta».
+     Al cubrirla, el requerimiento pasa a «Contrato exitoso».
 
 --------------------------------------------------------------------------------
 PRUEBA 2 — Casos negativos (≈3 minutos)
@@ -253,22 +367,77 @@ PRUEBA 2 — Casos negativos (≈3 minutos)
      «Ya existe un candidato con esa cédula».
   3. Abra el tablero de un requerimiento que NO esté en proceso.
      ESPERADO: solo lectura con aviso.
-  4. Fall el login 5 veces seguidas. ESPERADO: bloqueo de 1 minuto.
-  5. Suba un CV de más de 5 MB o un .exe. ESPERADO: rechazo con mensaje.
+  4. Intente retroceder una tarjeta (arrastre o botones).
+     ESPERADO: «El embudo solo avanza: ...» sin llegar a la API.
+  5. Con el cupo completo, intente agregar otro candidato o avanzar a
+     Contratación. ESPERADO: ambos bloqueados con aviso de plazas.
+  6. Cierre un requerimiento sin motivo o sin resultado.
+     ESPERADO: el botón de confirmar permanece deshabilitado.
+  7. Fall el login 5 veces seguidas. ESPERADO: bloqueo de 1 minuto.
+  8. Suba un CV de más de 5 MB o un .exe. ESPERADO: rechazo con mensaje.
 
 --------------------------------------------------------------------------------
-PRUEBA 3 — Auditoría y privacidad (≈2 minutos)
+PRUEBA 3 — Auditoría y privacidad (≈3 minutos)
 --------------------------------------------------------------------------------
   1. Ficha de un candidato → "Historial de cambios": cada campo muestra
      "— → valor"; cédula y teléfono aparecen como "***".
-  2. Cada movimiento del embudo queda en la auditoría de la base de datos
-     (tabla audit_log) con usuario, fecha y JSON de antes/después.
+  2. Entre con it@larco.co → menú "Bitácora". ESPERADO: la tabla muestra
+     entradas con fecha, usuario, acción, tabla y el diff
+     "antes → después" CON LOS VALORES ENMASCARADOS (nunca la cédula o el
+     teléfono en claro). Pruebe el filtro por tabla y la paginación.
+  3. Regla negativa: entre con admin@larco.co → ESPERADO: el menú NO
+     muestra "Bitácora"; si escribe a mano
+     http://localhost:5173/bitacora lo devuelve a /dashboard.
+  4. Cada movimiento del embudo queda en la auditoría de la base de datos
+     (tabla audit_log) con usuario, fecha y JSON de antes/después; la
+     tabla es INMUTABLE (no se puede editar ni borrar desde la aplicación).
 
 --------------------------------------------------------------------------------
-PRUEBA 4 — Usuarios (módulo IT, ≈4 minutos)
+PRUEBA 4 — Módulos nuevos: Dashboard, Departamentos, Entrevistas,
+            Importar HVs (≈8 minutos)
 --------------------------------------------------------------------------------
-  1. Entre con it@larco.co. ESPERADO: el menú superior muestra "Usuarios"
-     (además de Requerimientos y Candidatos) y el chip dice
+  DASHBOARD
+  1. Entre con cualquier rol. ESPERADO: la raíz abre el Dashboard con las
+     4 tarjetas de embudo, las 5 fases SIEMPRE visibles (aunque una tenga
+     0) con su porcentaje de retención, y las cifras de requerimientos.
+     Cambie de rol (admin → analista → líder) y confirme que todos ven el
+     dashboard.
+
+  DEPARTAMENTOS
+  2. Menú "Departamentos". ESPERADO: 8 áreas (ABASTECIMIENTO,
+     CONTABILIDAD, GESTION HUMANA, OFERTAS, PREVENCION SST, PROYECTOS,
+     SERVICIOS, SISTEMAS) con coordinador y contadores.
+     Como admin: edite el coordinador → guardar. ESPERADO: mensaje de
+     éxito y el valor nuevo.
+     Como analista: ESPERADO: NO aparece el control de edición (solo
+     lectura).
+
+  ENTREVISTAS
+  3. Entre con e2e-analista → "Entrevistas" → "+ Agendar entrevista".
+     El asistente tiene 3 pasos: (1) buscar candidato, (2) elegir su
+     postulación, (3) fecha, tipo y notas → guardar.
+     ESPERADO: la entrevista aparece con estado «Agendada».
+     Cambie el estado a «Realizada» desde la fila. ESPERADO: el select se
+     guarda solo (llamada PATCH) y el mensaje de éxito.
+     Filtros: por estado y por rango de fechas (desde/hasta).
+     Como líder: ESPERADO: NO ve "Entrevistas" en el menú y la URL
+     directa lo redirige.
+
+  IMPORTAR HVS
+  4. Menú "Importar HVs" (admin o analista). Seleccione 2-3 PDFs de HVs
+     y elija un DEPARTAMENTO destino (obligatorio) → importar.
+     ESPERADO: resumen del lote (creados / omitidos / errores) y los
+     candidatos ya disponibles en la lista.
+     Pruebe los límites: seleccione 51 archivos o uno de más de 5 MB.
+     ESPERADO: rechazo ANTES de enviar, con mensaje claro.
+     Como líder: ESPERADO: NO ve "Importar HVs" en el menú.
+
+--------------------------------------------------------------------------------
+PRUEBA 5 — Usuarios (módulo IT, ≈4 minutos)
+--------------------------------------------------------------------------------
+  1. Entre con it@larco.co. ESPERADO: el menú superior muestra las 8
+     secciones (Dashboard, Requerimientos, Candidatos, Importar HVs,
+     Departamentos, Entrevistas, Bitácora, Usuarios) y el chip dice
      «it@larco.co · Superusuario (IT)».
   2. "Usuarios" → "Nuevo usuario": cree "Prueba Usuario Manual"
      (correo prueba.usuario@larco.co, contraseña Manual2026!, rol
@@ -292,15 +461,35 @@ PRUEBA 4 — Usuarios (módulo IT, ≈4 minutos)
      primero... (regla del sistema: SIEMPRE debe quedar al menos un
      superusuario activo; la API responde 409 en caso contrario).
   8. Regla negativa con admin: cierre sesión, entre con admin@larco.co.
-     ESPERADO: el menú NO muestra "Usuarios"; si escribe a mano
-     http://localhost:5173/usuarios lo devuelve a /requerimientos.
+     ESPERADO: el menú NO muestra "Usuarios" ni "Bitácora"; si escribe a
+     mano http://localhost:5173/usuarios lo devuelve a /dashboard.
 
   Al terminar puede dejar la cuenta "Prueba Usuario Manual" desactivada
   (es un usuario de prueba; las cuentas no se borran, solo se
   desactivan).
 
 ================================================================================
-6. DATOS YA CARGADOS PARA SU PRUEBA
+6. LOS 4 MÓDULOS NUEVOS (ETAPA 9) — RESUMEN PARA EL REVISOR
+================================================================================
+
+  Dashboard       Resumen operativo con embudo + requerimientos. Lo ve los
+                  4 roles. Es ahora la página inicial (raíz → /dashboard).
+  Departamentos   Las 8 áreas LARCO con coordinador y contadores. Todos
+                  consultan; admin/superusuario editan el coordinador.
+  Entrevistas     Agenda con asistente de 3 pasos (candidato → postulación →
+                  datos), estados agendada/realizada/cancelada y filtros
+                  por estado y fechas. analista/admin/superusuario.
+  Importar HVs    Hasta 50 PDFs de 5 MB c/u en un lote, con departamento
+                  destino obligatorio y validación local de límites.
+                  analista/admin/superusuario.
+  Bitácora        (módulo extra por la regla 7) Auditoría completa con
+                  filtros y paginación, EXCLUSIVA del superusuario.
+
+  Además: logo LARCO en el header, nombres de fase de la muestra en las
+  5 columnas y en el dashboard, y el embudo SIN retroceso.
+
+================================================================================
+7. DATOS YA CARGADOS PARA SU PRUEBA
 ================================================================================
 
   • REQ-2026-005 "Ingeniero de Datos — Flujo E2E": CERRADO. Flujo completo
@@ -308,14 +497,16 @@ PRUEBA 4 — Usuarios (módulo IT, ≈4 minutos)
     subido). Sirve para revisar un proceso terminado con auditoría completa.
 
   • REQ-2026-006 "Desarrollador QA - Flujo Navegador": EN PROCESO, tablero
-    listo para tocar: Laura Manual QA (Antecedentes) y Pedro Manual QA
-    (Entrevistas). Úselo para probar el arrastre, los movimientos ◀ ▶, el
-    descarte y el historial SIN crear nada nuevo.
+    listo para tocar: Laura Manual QA (Validación de Antecedentes) y Pedro
+    Manual QA (Entrevistas y Psicotécnicas). Úselo para probar el arrastre,
+    el botón ▶, el descarte y el historial SIN crear nada nuevo.
 
   • Candidatos: Ana, Bert y Carla Flujo E2E; Laura y Pedro Manual QA.
 
+  • Departamentos: los 8 sembrados por la migración 009.
+
 ================================================================================
-7. CÓMO ABRIR EL SISTEMA
+8. CÓMO ABRIR EL SISTEMA
 ================================================================================
 
   1. Abra Docker Desktop y espere a que esté en ejecución.
@@ -323,15 +514,20 @@ PRUEBA 4 — Usuarios (módulo IT, ≈4 minutos)
          docker compose -f docker-compose.dev.yml up -d
   3. Espere ~30 segundos y abra http://localhost:5173
      (la API responde en http://localhost:3000/api/health).
+     Tras iniciar sesión verá el DASHBOARD.
   4. Si el frontend no muestra una pantalla nueva tras un cambio de código:
          docker compose -f docker-compose.dev.yml up -d --force-recreate web
      (y --force-recreate api si cambió el backend: en Windows el modo watch
      no siempre detecta archivos nuevos).
+  5. Si los tests automatizados fallan con "BD dev docker real", significa
+     que el contenedor de la base de datos no está arriba: repita el paso 2.
 
   NOTA: el arrastre de tarjetas (drag & drop) requiere ratón y es la única
   parte del flujo que quedó pendiente de verificación automatizada — el
-  Paso 6 de la Prueba 1 la cubre a mano.
+  Paso 7 de la Prueba 1 la cubre a mano (incluido el intento de
+  RETROCEDER, que debe fallar).
 
 ================================================================================
- Fin — Documento 1 de 2 (el documento 2 es la DOCUMENTACION-TECNICA-ATS.txt)
+ Fin — Documento 1 de 3 (el documento 2 es DOCUMENTACION-TECNICA-ATS.txt
+ y el 3 es PLAN-PRODUCCION-ATS.md)
 ================================================================================
