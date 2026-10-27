@@ -13,7 +13,7 @@ const CLASES_ESTADO: Readonly<Record<Postulacion['estado'], string>> = {
   descartado: 'border-rose-500/40 bg-rose-500/15 text-rose-300',
 };
 
-/** Estilo base de los botones diminutos de la tarjeta (◀ ▶ descartar historial). */
+/** Estilo base de los botones diminutos de la tarjeta (▶ descartar historial). */
 const CLASE_ACCION =
   'rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40';
 
@@ -23,15 +23,18 @@ const CLASE_ACCION =
  * DRAG: solo las postulaciones NO terminales son arrastrables (`useDraggable`
  * con `disabled` en terminales); el teclado también puede arrastrarla
  * (sensor por defecto de dnd-kit: Space para tomar, flechas para mover,
- * Space para soltar).
+ * Space para soltar). Un `contratado` es terminal: queda visible pero NO
+ * reasignable (retroalimentación Etapa 9, reglas 6 y 8).
  *
- * ACCIONES ALTERNATIVAS (accesibilidad y móvil): botones «◀» y «▶» que solo
- * apuntan a la fase ADYACENTE (los extremos los ocultan), «Descartar» y
- * «Historial» — el DnD nunca es la única vía.
+ * ACCIONES ALTERNATIVAS (accesibilidad y móvil): SOLO «▶ avanzar» apunta a la
+ * fase SIGUIENTE (el embudo avanza; NO hay «◀» desde la Etapa 9), «Descartar»
+ * y «Historial» — el DnD nunca es la única vía. Con el cupo completo, «▶» a
+ * Contratación queda deshabilitado.
  */
 export function TarjetaPostulacion({
   postulacion,
   movible,
+  cupoLleno,
   enGuardado,
   onMover,
   onDescartar,
@@ -40,6 +43,8 @@ export function TarjetaPostulacion({
   postulacion: Postulacion;
   /** ¿Puede este rol/estado mover y descartar? (sin permiso → solo lectura). */
   movible: boolean;
+  /** `true` si las plazas ya están cubiertas (bloquea avanzar a Contratación). */
+  cupoLleno: boolean;
   enGuardado: boolean;
   onMover: (destino: Postulacion['fase']) => void;
   onDescartar: () => void;
@@ -53,9 +58,13 @@ export function TarjetaPostulacion({
   });
 
   const indice = FASES_POSTULACION.indexOf(postulacion.fase);
-  const anterior = indice > 0 ? FASES_POSTULACION[indice - 1] : undefined;
   const posterior =
-    indice < FASES_POSTULACION.length - 1 ? FASES_POSTULACION[indice + 1] : undefined;
+    indice >= 0 && indice < FASES_POSTULACION.length - 1
+      ? FASES_POSTULACION[indice + 1]
+      : undefined;
+  // El avance a `contratación` queda bloqueado si el cupo ya se cubrió.
+  const avanceBloqueadoPorCupo =
+    cupoLleno && posterior === 'contratacion' && postulacion.fase !== 'contratacion';
 
   const estilo = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
@@ -92,24 +101,16 @@ export function TarjetaPostulacion({
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        {movible && !terminal && anterior !== undefined && (
-          <button
-            type="button"
-            title={`Mover a ${ETIQUETA_FASE[anterior]}`}
-            aria-label={`Mover a ${ETIQUETA_FASE[anterior]}`}
-            disabled={enGuardado}
-            onClick={() => onMover(anterior)}
-            className={CLASE_ACCION}
-          >
-            ◀
-          </button>
-        )}
         {movible && !terminal && posterior !== undefined && (
           <button
             type="button"
-            title={`Mover a ${ETIQUETA_FASE[posterior]}`}
+            title={
+              avanceBloqueadoPorCupo
+                ? 'Plazas cubiertas: no se puede avanzar a Contratación'
+                : `Mover a ${ETIQUETA_FASE[posterior]}`
+            }
             aria-label={`Mover a ${ETIQUETA_FASE[posterior]}`}
-            disabled={enGuardado}
+            disabled={enGuardado || avanceBloqueadoPorCupo}
             onClick={() => onMover(posterior)}
             className={CLASE_ACCION}
           >

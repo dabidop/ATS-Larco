@@ -3,11 +3,12 @@ import { create } from 'zustand';
 import { mensajeDeError, solicitud } from '../lib/api';
 import {
   ETIQUETA_FASE,
-  esAdyacente,
+  esSiguienteFase,
   esTerminal,
   estadoTrasMover,
+  mensajeCupoLleno,
   mensajeFaseActual,
-  mensajeNoAdyacente,
+  mensajeSoloAvanza,
   mensajeTerminal,
 } from '../lib/embudo';
 import type { FasePostulacion, Pagina, Postulacion } from '../tipos';
@@ -31,10 +32,11 @@ import type { FasePostulacion, Pagina, Postulacion } from '../tipos';
  *    el servidor aplicó efectivamente `contratacion` ⇒ `contratado`).
  *
  * ATAJO LOCAL DE UX (documentado en `lib/embudo.ts`): si el usuario suelta la
- * tarjeta en una columna NO adyacente, NI siquiera se llama al servidor (que
- * respondería 409): no se mueve nada y se muestra «Solo se puede mover un
- * paso». Es un atajo; si algún día la regla cambiara, el servidor seguiría
- * siendo quien decide.
+ * tarjeta en una fase que NO es la siguiente (atrás o saltando), NI siquiera
+ * se llama al servidor (que respondería 409): no se mueve nada y se muestra
+ * «El embudo solo avanza». Lo mismo con el cupo lleno hacia `contratacion`.
+ * Son atajos; si algún día la regla cambiara, el servidor seguiría siendo
+ * quien decide.
  */
 
 /**
@@ -63,10 +65,12 @@ export interface EstadoTablero {
   /** Carga (o recarga) el tablero del requerimiento dado. */
   cargar: (requerimientoId: string) => Promise<void>;
   /**
-   * Mueve la postulación a otra fase con actualización OPTIMISTA y rollback
-   * en fallo. Devuelve `true` si el movimiento se confirmó en el servidor.
+   * Mueve la postulación a la fase SIGUIENTE con actualización OPTIMISTA y
+   * rollback en fallo (el embudo SOLO AVANZA: un paso adelante). Si el
+   * destino es `contratacion`, `numeroPlazas` permite anticipar el 409 de cupo
+   * lleno sin viaje de red. Devuelve `true` si el servidor confirmó.
    */
-  mover: (id: string, destino: FasePostulacion) => Promise<boolean>;
+  mover: (id: string, destino: FasePostulacion, numeroPlazas: number | null) => Promise<boolean>;
   /** Descarta con motivo obligatorio (POST; éxito → estado `descartado`). */
   descartar: (id: string, motivo: string) => Promise<boolean>;
   /** Da de alta una postulación del candidato dado en ESTE requerimiento. */
@@ -109,7 +113,7 @@ export const useTableroStore = create<EstadoTablero>()((set, get) => ({
     }
   },
 
-  mover: async (id, destino) => {
+  mover: async (id, destino, numeroPlazas) => {
     const { postulaciones } = get();
     const actual = postulaciones.find((postulacion) => postulacion.id === id);
     if (actual === undefined) return false;
@@ -124,9 +128,22 @@ export const useTableroStore = create<EstadoTablero>()((set, get) => ({
       set({ error: mensajeFaseActual(destino) });
       return false;
     }
-    if (!esAdyacente(actual.fase, destino)) {
-      set({ error: mensajeNoAdyacente(actual.fase, destino) });
+    // SOLO AVANZA (retroalimentación Etapa 9): sin retroceso ni saltos.
+    if (!esSiguienteFase(actual.fase, destino)) {
+      set({ error: mensajeSoloAvanza(actual.fase, destino) });
       return false;
+    }
+    // Cupo lleno (retroalimentación Etapa 9): si todas las plazas ya están
+    // cubiertas, el servidor rechaza con 409 cualquier movimiento a
+    // `contratacion`; el atajo local evita la llamada y el rollback.
+    if (destino === 'contratacion' && numeroPlazas !== null) {
+      const contratados = postulaciones.filter(
+        (postulacion) => postulacion.estado === 'contratado',
+      ).length;
+      if (contratados >= numeroPlazas) {
+        set({ error: mensajeCupoLleno(numeroPlazas) });
+        return false;
+      }
     }
 
     // COPIA previa para el posible rollback (referencia inmutable: `set`
@@ -216,7 +233,9 @@ export const useTableroStore = create<EstadoTablero>()((set, get) => ({
       });
       set({
         postulaciones: [...get().postulaciones, creada],
-        exito: `${creada.candidato.nombres} ${creada.candidato.apellidos} añadida a Preselección`,
+        exito:
+          `${creada.candidato.nombres} ${creada.candidato.apellidos} añadida a ` +
+          `${ETIQUETA_FASE[creada.fase]}`,
       });
       return creada;
     } catch (capturado) {

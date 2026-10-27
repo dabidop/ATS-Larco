@@ -31,11 +31,12 @@ describe('flujo de requerimientos — matriz de transiciones (espejo del backend
     ]);
   });
 
-  it('rechazar exige motivo; el resto de destinos no', () => {
+  it('rechazar y cerrar exigen motivo; aprobar y procesar no', () => {
     expect(requiereMotivo('rechazado')).toBe(true);
+    // Etapa 9: cerrar responde POR QUÉ (motivo + resultado del cierre).
+    expect(requiereMotivo('cerrado')).toBe(true);
     expect(requiereMotivo('aprobado')).toBe(false);
     expect(requiereMotivo('en_proceso')).toBe(false);
-    expect(requiereMotivo('cerrado')).toBe(false);
   });
 
   it('rechaza transiciones estructuralmente imposibles', () => {

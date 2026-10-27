@@ -1,4 +1,4 @@
-import type { DestinoTransicion, EstadoRequerimiento } from '../tipos';
+import type { DestinoTransicion, EstadoRequerimiento, ResultadoCierre } from '../tipos';
 
 /**
  * Espejo CLIENTE de la máquina de estados de requerimientos.
@@ -35,6 +35,9 @@ export const TRANSICIONES_VALIDAS: Readonly<
   en_proceso: ['cerrado'],
   cerrado: [],
   rechazado: [],
+  // `exitoso` es terminal y SOLO automático (el servidor lo pone al cubrir
+  // las plazas): el cliente no puede pedirlo como destino de una transición.
+  exitoso: [],
 };
 
 /**
@@ -83,10 +86,28 @@ export function transicionesPermitidas(
   });
 }
 
-/** El rechazo exige `motivo` (lo exige el servicio y la propia BD). */
+/**
+ * ¿El destino exige `motivo`? El rechazo lo exige el servicio y la propia BD;
+ * el CIERRE también desde la Etapa 9 («cerrar» responde POR QUÉ se cierra:
+ * CHECK `requerimientos_cierre_check`).
+ */
 export function requiereMotivo(destino: DestinoTransicion): boolean {
-  return destino === 'rechazado';
+  return destino === 'rechazado' || destino === 'cerrado';
 }
+
+/**
+ * ¿El destino exige `resultado`? SOLO `cerrado` (Etapa 9): ¿se cerró con
+ * ALGUIEN CONTRATADO (`contratacion`) o se vació la plaza (`cierre_vacante`)?
+ */
+export function requiereResultado(destino: DestinoTransicion): boolean {
+  return destino === 'cerrado';
+}
+
+/** Etiqueta legible de cada resultado del cierre (select del diálogo). */
+export const ETIQUETA_RESULTADO_CIERRE: Readonly<Record<ResultadoCierre, string>> = {
+  contratacion: 'Se cubrió la plaza con una contratación',
+  cierre_vacante: 'Se cerró sin contratación (plaza vacante)',
+};
 
 /** Etiqueta legible de cada estado (badges y mensajes). */
 export const ETIQUETA_ESTADO: Readonly<Record<EstadoRequerimiento, string>> = {
@@ -95,6 +116,7 @@ export const ETIQUETA_ESTADO: Readonly<Record<EstadoRequerimiento, string>> = {
   en_proceso: 'En proceso',
   cerrado: 'Cerrado',
   rechazado: 'Rechazado',
+  exitoso: 'Contrato exitoso',
 };
 
 /** Texto del botón de cada transición. */

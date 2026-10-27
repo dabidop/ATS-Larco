@@ -123,6 +123,54 @@ export function puedeAgregarPostulaciones(rol: string | null | undefined): boole
   return puedeMoverPostulaciones(rol);
 }
 
+// ──────────────────────── Etapa 9 — módulos nuevos ────────────────────────
+
+/**
+ * Dashboard (`GET /api/dashboard`): los 4 roles de la matriz (`@Roles(
+ * 'analista_seleccion','admin_rrhh','superusuario','lider_area')`).
+ */
+export function puedeVerDashboard(rol: string | null | undefined): boolean {
+  return esRolDeLaMatriz(rol);
+}
+
+/** Consultar departamentos (`GET /api/departamentos`): cualquier rol autenticado. */
+export function puedeConsultarDepartamentos(rol: string | null | undefined): boolean {
+  return esRolDeLaMatriz(rol);
+}
+
+/**
+ * Editar coordinador (`PATCH /api/departamentos/:id`): EXCLUSIVO de
+ * `admin_rrhh` y `superusuario` (`@Roles(...)` en el controlador).
+ */
+export function puedeEditarDepartamento(rol: string | null | undefined): boolean {
+  return esAdministradorRRHH(rol);
+}
+
+/**
+ * Agenda de entrevistas (`GET/POST/PATCH /api/entrevistas`): `analista_seleccion`,
+ * `admin_rrhh` y `superusuario` (el `lider_area` recibiría 403).
+ */
+export function puedeGestionarEntrevistas(rol: string | null | undefined): boolean {
+  return rol === 'analista_seleccion' || esAdministradorRRHH(rol);
+}
+
+/**
+ * Importar HVs (`POST /api/importacion/hvs`): `analista_seleccion`,
+ * `admin_rrhh` y `superusuario` (mismos roles que gestionar candidatos).
+ */
+export function puedeImportarHVs(rol: string | null | undefined): boolean {
+  return puedeGestionarCandidatos(rol);
+}
+
+/**
+ * Bitácora de auditoría (`GET /api/historial/auditoria`): EXCLUSIVO de
+ * `superusuario` (regla 7 de la retroalimentación: la bitácora es visible
+ * para el superusuario; el resto recibiría 403).
+ */
+export function puedeVerBitacoraAuditoria(rol: string | null | undefined): boolean {
+  return rol === 'superusuario';
+}
+
 // ─────────────────────────────── Gestión de usuarios ───────────────────────────────
 
 /**
@@ -149,6 +197,34 @@ export function puedeVerSeccionRequerimientos(rol: string | null | undefined): b
 /** Ver sección «Candidatos» en el menú (mismo criterio defensivo). */
 export function puedeVerSeccionCandidatos(rol: string | null | undefined): boolean {
   return puedeConsultarCandidatos(rol);
+}
+
+/** Ver sección «Dashboard» en el menú (los 4 roles de la matriz). */
+export function puedeVerSeccionDashboard(rol: string | null | undefined): boolean {
+  return puedeVerDashboard(rol);
+}
+
+/** Ver sección «Importar HVs» en el menú (mismos roles que gestionar candidatos). */
+export function puedeVerSeccionImportar(rol: string | null | undefined): boolean {
+  return puedeImportarHVs(rol);
+}
+
+/** Ver sección «Departamentos» en el menú (cualquier rol autenticado). */
+export function puedeVerSeccionDepartamentos(rol: string | null | undefined): boolean {
+  return puedeConsultarDepartamentos(rol);
+}
+
+/** Ver sección «Entrevistas» en el menú (analista/admin/super). */
+export function puedeVerSeccionEntrevistas(rol: string | null | undefined): boolean {
+  return puedeGestionarEntrevistas(rol);
+}
+
+/**
+ * Ver sección «Bitácora» en el menú: SOLO `superusuario` (la API devuelve 403
+ * al resto, incluido `admin_rrhh`).
+ */
+export function puedeVerSeccionBitacora(rol: string | null | undefined): boolean {
+  return puedeVerBitacoraAuditoria(rol);
 }
 
 /**

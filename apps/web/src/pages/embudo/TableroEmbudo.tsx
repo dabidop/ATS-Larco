@@ -87,23 +87,37 @@ export function TableroEmbudo() {
   const editable = enProceso && puedeMoverPostulaciones(rol);
   const puedeDarDeAlta = enProceso && puedeAgregarPostulaciones(rol);
 
+  // Regla 2 (Etapa 9): los DESCARTADOS NO se pintan en el tablero — siguen
+  // siendo datos del embudo (el dashboard y el historial los cuentan), pero el
+  // kanban es la vista del trabajo EN CURSO. Los CONTRATADOS sí permanecen
+  // visibles (regla 8) y ya no son reasignables (estado terminal).
+  const visibles = postulaciones.filter((postulacion) => postulacion.estado !== 'descartado');
+
+  // Regla 4 (Etapa 9): con el cupo completo (plazas cubiertas) NO se admiten
+  // altas ni movimientos hacia Contratación; el servidor también responde 409.
+  const numeroPlazas = requerimiento?.numeroPlazas ?? null;
+  const contratados = postulaciones.filter(
+    (postulacion) => postulacion.estado === 'contratado',
+  ).length;
+  const cupoLleno = numeroPlazas !== null && contratados >= numeroPlazas;
+
   /**
    * Al soltar una tarjeta: `over.id` es la FASE de la columna destino (el
    * `useDroppable` la usa como id). `interpretarSoltar` decide si hay drop
-   * válido; el store resuelve la adyacencia (mismo destino o salto no
-   * adyacente → mensaje SIN viaje de red).
+   * válido; el store resuelve «solo avanza» y el cupo (mensajes SIN viaje de
+   * red).
    */
   const alSoltar = (evento: DragEndEvent) => {
     const decision = interpretarSoltar(editable, evento.active.id, evento.over?.id);
     if (!decision.procede || decision.id === undefined || decision.fase === undefined) return;
-    void mover(decision.id, decision.fase);
+    void mover(decision.id, decision.fase, numeroPlazas);
   };
 
   // Agrupación por fase para pintar cada columna (la fase de la tarjeta manda,
   // no la columna en la que se renderiza).
   const porFase = new Map<FasePostulacion, Postulacion[]>();
   for (const fase of FASES_POSTULACION) porFase.set(fase, []);
-  for (const postulacion of postulaciones) {
+  for (const postulacion of visibles) {
     const lista = porFase.get(postulacion.fase);
     if (lista !== undefined) lista.push(postulacion);
   }
@@ -162,12 +176,24 @@ export function TableroEmbudo() {
             <button
               type="button"
               onClick={() => setMostrarAlta((anterior) => !anterior)}
+              disabled={cupoLleno}
+              title={
+                cupoLleno
+                  ? `Las ${numeroPlazas} plazas ya están cubiertas: no se admiten más postulaciones`
+                  : undefined
+              }
               className={CLASE_BOTON_SECUNDARIO}
             >
               {mostrarAlta ? 'Ocultar' : 'Agregar candidato'}
             </button>
           </div>
-          {mostrarAlta && (
+          {cupoLleno && (
+            <p className="mt-2 text-xs text-amber-300">
+              Las {numeroPlazas} plazas de este requerimiento ya están cubiertas: se bloquean nuevas
+              altas y movimientos hacia Contratación.
+            </p>
+          )}
+          {mostrarAlta && !cupoLleno && (
             <div className="mt-3">
               <FormularioAgregarPostulacion
                 onAgregar={async (candidatoId) => (await agregar(candidatoId)) !== null}
@@ -177,15 +203,15 @@ export function TableroEmbudo() {
         </section>
       )}
 
-      {cargando && postulaciones.length === 0 && <Spinner texto="Cargando tablero…" />}
-      {!cargando && error !== null && postulaciones.length === 0 && (
+      {cargando && visibles.length === 0 && <Spinner texto="Cargando tablero…" />}
+      {!cargando && error !== null && visibles.length === 0 && (
         <MensajeError mensaje={error} onReintentar={() => void cargar(id)} />
       )}
-      {!cargando && error === null && postulaciones.length === 0 && (
-        <EstadoVacio mensaje="Sin postulaciones en este requerimiento" />
+      {!cargando && error === null && visibles.length === 0 && (
+        <EstadoVacio mensaje="Sin postulaciones activas en este requerimiento" />
       )}
 
-      {postulaciones.length > 0 && (
+      {visibles.length > 0 && (
         <DndContext sensors={sensores} onDragEnd={alSoltar}>
           <div className="flex gap-4 overflow-x-auto pb-2">
             {FASES_POSTULACION.map((fase) => (
@@ -194,8 +220,11 @@ export function TableroEmbudo() {
                 fase={fase}
                 postulaciones={porFase.get(fase) ?? []}
                 movible={editable}
+                cupoLleno={cupoLleno}
                 guardando={guardando}
-                onMover={(idPostulacion, destino) => void mover(idPostulacion, destino)}
+                onMover={(idPostulacion, destino) =>
+                  void mover(idPostulacion, destino, numeroPlazas)
+                }
                 onDescartar={setPostulacionDescarte}
                 onHistorial={setPostulacionHistorial}
               />

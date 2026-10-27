@@ -4,15 +4,23 @@ import { Link, useParams } from 'react-router-dom';
 import { mensajeDeError, solicitud } from '../../lib/api';
 import {
   ETIQUETA_ESTADO,
+  ETIQUETA_RESULTADO_CIERRE,
   ETIQUETA_TRANSICION,
   requiereMotivo,
+  requiereResultado,
   transicionesPermitidas,
 } from '../../lib/flujo';
 import { fechaCorta, fechaHora, listaATexto, dinero } from '../../lib/formato';
 import { puedeEditarRequerimiento } from '../../lib/rbac';
 import { useRecurso } from '../../lib/useRecurso';
 import { useSesionStore } from '../../store/sesion';
-import type { DestinoTransicion, Requerimiento, RequerimientoNuevo } from '../../tipos';
+import {
+  RESULTADOS_CIERRE,
+  type DestinoTransicion,
+  type Requerimiento,
+  type RequerimientoNuevo,
+  type ResultadoCierre,
+} from '../../tipos';
 import { FormularioRequerimiento } from '../../components/requerimientos/FormularioRequerimiento';
 import { BadgeEstado, FilaDato, Tarjeta } from '../../components/ui/datos';
 import { AvisoExito, EstadoVacio, MensajeError, Spinner } from '../../components/ui/feedback';
@@ -31,6 +39,9 @@ import {
  * Las transiciones disponibles se calculan en `lib/flujo.ts`, que replica la
  * matriz del backend (`requerimientos-flujo.ts`): la API no expone un GET de
  * transiciones. La autoridad sigue en el servidor (409/403).
+ *
+ * Etapa 9: CERRAR exige motivo + resultado (¿se contrató a alguien?); el
+ * estado `exitoso` es SOLO automático (lo pone el servidor al cubrir plazas).
  */
 export function PaginaDetalleRequerimiento() {
   const parametros = useParams();
@@ -41,7 +52,11 @@ export function PaginaDetalleRequerimiento() {
   const [errorOperacion, setErrorOperacion] = useState<string | null>(null);
   const [exito, setExito] = useState<string | null>(null);
   const [mostrarMotivo, setMostrarMotivo] = useState(false);
+  /** Destino que abrió el formulario de motivo/resultado (rechazo o cierre). */
+  const [destinoMotivo, setDestinoMotivo] = useState<DestinoTransicion | null>(null);
   const [motivo, setMotivo] = useState('');
+  /** Resultado del cierre (obligatorio desde la Etapa 9 cuando se cierra). */
+  const [resultado, setResultado] = useState<ResultadoCierre | ''>('');
 
   const usuario = useSesionStore((sesion) => sesion.usuario);
 
@@ -56,19 +71,27 @@ export function PaginaDetalleRequerimiento() {
     setRecarga((anterior) => anterior + 1);
   };
 
-  const transicionar = async (destino: DestinoTransicion, motivoRechazo?: string) => {
+  const transicionar = async (
+    destino: DestinoTransicion,
+    motivoTransicion?: string,
+    resultadoCierre?: ResultadoCierre,
+  ) => {
     setTransicionando(true);
     setErrorOperacion(null);
     setExito(null);
     try {
-      const cuerpo = motivoRechazo === undefined ? { destino } : { destino, motivo: motivoRechazo };
+      const cuerpo: Record<string, unknown> = { destino };
+      if (motivoTransicion !== undefined) cuerpo.motivo = motivoTransicion;
+      if (resultadoCierre !== undefined) cuerpo.resultado = resultadoCierre;
       const actualizado = await solicitud<Requerimiento>(`/requerimientos/${id}/transiciones`, {
         metodo: 'POST',
         cuerpo,
       });
       setExito(`Requerimiento ${actualizado.code}: ${ETIQUETA_ESTADO[actualizado.estado]}`);
       setMostrarMotivo(false);
+      setDestinoMotivo(null);
       setMotivo('');
+      setResultado('');
       recargar();
     } catch (capturado) {
       setErrorOperacion(mensajeDeError(capturado, 'No se pudo completar la transición'));
@@ -114,13 +137,16 @@ export function PaginaDetalleRequerimiento() {
         </div>
         <div className="flex items-center gap-3">
           <BadgeEstado estado={requerimiento.estado} />
-          {requerimiento.estado === 'en_proceso' ? (
+          {requerimiento.estado === 'en_proceso' ||
+          requerimiento.estado === 'cerrado' ||
+          requerimiento.estado === 'exitoso' ? (
             <Link to={`/requerimientos/${id}/embudo`} className={CLASE_BOTON_SECUNDARIO}>
               Tablero de selección
             </Link>
           ) : (
             <p className="max-w-56 text-xs text-slate-500">
-              El tablero de selección se usa cuando el requerimiento está «En proceso».
+              El tablero de selección se usa durante el proceso («En proceso») y queda consultable
+              al cerrar, con los contratados visibles.
             </p>
           )}
           {editable && !editando && (
@@ -149,6 +175,18 @@ export function PaginaDetalleRequerimiento() {
         </div>
       )}
 
+      {requerimiento.estado === 'cerrado' && requerimiento.motivoCierre !== null && (
+        <div className="rounded-lg border border-amber-600/50 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
+          <span className={CLASE_ETIQUETA}>Cierre del requerimiento</span>
+          <p className="mt-1">{requerimiento.motivoCierre}</p>
+          {requerimiento.resultadoCierre !== null && (
+            <p className="mt-1 font-semibold">
+              Resultado: {ETIQUETA_RESULTADO_CIERRE[requerimiento.resultadoCierre]}
+            </p>
+          )}
+        </div>
+      )}
+
       {exito && <AvisoExito mensaje={exito} />}
       {errorOperacion && <MensajeError mensaje={errorOperacion} />}
 
@@ -162,6 +200,8 @@ export function PaginaDetalleRequerimiento() {
                 disabled={transicionando}
                 onClick={() => {
                   if (requiereMotivo(destino)) {
+                    setDestinoMotivo(destino);
+                    setResultado('');
                     setMostrarMotivo(true);
                   } else {
                     void transicionar(destino);
@@ -174,32 +214,70 @@ export function PaginaDetalleRequerimiento() {
             ))}
           </div>
 
-          {mostrarMotivo && (
+          {mostrarMotivo && destinoMotivo !== null && (
             <div className="mt-4 rounded-lg border border-rose-700/60 bg-rose-950/40 p-4">
-              <label htmlFor="motivo-rechazo" className={CLASE_ETIQUETA}>
-                Motivo del rechazo (obligatorio)
+              <label htmlFor="motivo-transicion" className={CLASE_ETIQUETA}>
+                {destinoMotivo === 'cerrado'
+                  ? 'Motivo del cierre (obligatorio)'
+                  : 'Motivo del rechazo (obligatorio)'}
               </label>
               <textarea
-                id="motivo-rechazo"
+                id="motivo-transicion"
                 rows={3}
                 className={CLASE_CAMPO}
                 value={motivo}
                 onChange={(evento) => setMotivo(evento.target.value)}
               />
+
+              {/* Etapa 9: cerrar exige decir SI se contrató a alguien. */}
+              {requiereResultado(destinoMotivo) && (
+                <div className="mt-3">
+                  <label htmlFor="resultado-cierre" className={CLASE_ETIQUETA}>
+                    Resultado del cierre (obligatorio)
+                  </label>
+                  <select
+                    id="resultado-cierre"
+                    className={CLASE_CAMPO}
+                    value={resultado}
+                    onChange={(evento) => setResultado(evento.target.value as ResultadoCierre | '')}
+                  >
+                    <option value="">(elige el resultado)</option>
+                    {RESULTADOS_CIERRE.map((opcion) => (
+                      <option key={opcion} value={opcion}>
+                        {ETIQUETA_RESULTADO_CIERRE[opcion]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="mt-3 flex flex-wrap gap-3">
                 <button
                   type="button"
-                  disabled={motivo.trim().length === 0 || transicionando}
-                  onClick={() => void transicionar('rechazado', motivo.trim())}
+                  disabled={
+                    motivo.trim().length === 0 ||
+                    transicionando ||
+                    (requiereResultado(destinoMotivo) && resultado === '')
+                  }
+                  onClick={() => {
+                    if (destinoMotivo === 'cerrado') {
+                      if (resultado === '') return;
+                      void transicionar('cerrado', motivo.trim(), resultado);
+                    } else {
+                      void transicionar(destinoMotivo, motivo.trim());
+                    }
+                  }}
                   className={CLASE_BOTON_PELIGRO}
                 >
-                  Confirmar rechazo
+                  {destinoMotivo === 'cerrado' ? 'Confirmar cierre' : 'Confirmar rechazo'}
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     setMostrarMotivo(false);
+                    setDestinoMotivo(null);
                     setMotivo('');
+                    setResultado('');
                   }}
                   className={CLASE_BOTON_SECUNDARIO}
                 >

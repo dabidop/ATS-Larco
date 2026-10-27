@@ -109,7 +109,7 @@ describe('store del tablero (mover: optimista + rollback)', () => {
     // `mover` ejecuta su `set` optimista de forma SÍNCRONA (antes del primer
     // `await`), así que justo tras lanzarlo —sin esperar— la tarjeta YA está
     // en la fase destino: esa es la esencia del patrón optimista.
-    const promesa = estado().mover('pos-1', 'antecedentes');
+    const promesa = estado().mover('pos-1', 'antecedentes', null);
     expect(buscar('pos-1')?.fase).toBe('antecedentes');
     expect(estado().guardando).toContain('pos-1');
 
@@ -131,7 +131,7 @@ describe('store del tablero (mover: optimista + rollback)', () => {
     });
     useTableroStore.setState({ postulaciones: [original], requerimientoId: 'req-1' });
 
-    await estado().mover('pos-1', 'contratacion');
+    await estado().mover('pos-1', 'contratacion', null);
 
     expect(buscar('pos-1')?.fase).toBe('contratacion');
     expect(buscar('pos-1')?.estado).toBe('contratado');
@@ -150,7 +150,7 @@ describe('store del tablero (mover: optimista + rollback)', () => {
     });
     useTableroStore.setState({ postulaciones: [original], requerimientoId: 'req-1' });
 
-    const resultado = await estado().mover('pos-1', 'entrevistas');
+    const resultado = await estado().mover('pos-1', 'entrevistas', null);
 
     expect(resultado).toBe(false);
     // ROLLBACK: la tarjeta vuelve exactamente a su estado previo.
@@ -160,17 +160,52 @@ describe('store del tablero (mover: optimista + rollback)', () => {
     expect(estado().guardando).toEqual([]);
   });
 
-  it('mover a una fase NO adyacente NO llama al servidor y no mueve nada', async () => {
+  it('mover a una fase NO siguiente NO llama al servidor y no mueve nada', async () => {
     const original = fixturePostulacion({ fase: 'preseleccion' });
     const fetchMock = instalarFetch(() => undefined);
     useTableroStore.setState({ postulaciones: [original], requerimientoId: 'req-1' });
 
-    const resultado = await estado().mover('pos-1', 'entrevistas');
+    const resultado = await estado().mover('pos-1', 'entrevistas', null);
 
     expect(resultado).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(buscar('pos-1')?.fase).toBe('preseleccion');
-    expect(estado().error).toContain('Solo se puede mover un paso');
+    expect(estado().error).toContain('El embudo solo avanza');
+  });
+
+  it('RETROCEDER una fase NO se admite: el embudo solo avanza (sin fetch)', async () => {
+    const original = fixturePostulacion({ fase: 'entrevistas', estado: 'activa' });
+    const fetchMock = instalarFetch(() => undefined);
+    useTableroStore.setState({ postulaciones: [original], requerimientoId: 'req-1' });
+
+    const resultado = await estado().mover('pos-1', 'antecedentes', null);
+
+    expect(resultado).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(buscar('pos-1')?.fase).toBe('entrevistas');
+    expect(estado().error).toContain('El embudo solo avanza');
+  });
+
+  it('con el CUPO lleno, avanzar a contratacion NO llama al servidor (regla 4)', async () => {
+    // 1 plaza; ya hay UN contratado → el cupo está completo.
+    const activa = fixturePostulacion({ id: 'pos-1', fase: 'proveedor_externo' });
+    const contratada = fixturePostulacion({
+      id: 'pos-2',
+      fase: 'contratacion',
+      estado: 'contratado',
+    });
+    const fetchMock = instalarFetch(() => undefined);
+    useTableroStore.setState({
+      postulaciones: [activa, contratada],
+      requerimientoId: 'req-1',
+    });
+
+    const resultado = await estado().mover('pos-1', 'contratacion', 1);
+
+    expect(resultado).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(buscar('pos-1')?.fase).toBe('proveedor_externo');
+    expect(estado().error).toContain('cubiertas');
   });
 
   it('mover un estado terminal ni siquiera consulta el servidor', async () => {
@@ -178,7 +213,7 @@ describe('store del tablero (mover: optimista + rollback)', () => {
     const fetchMock = instalarFetch(() => undefined);
     useTableroStore.setState({ postulaciones: [original], requerimientoId: 'req-1' });
 
-    const resultado = await estado().mover('pos-1', 'antecedentes');
+    const resultado = await estado().mover('pos-1', 'antecedentes', null);
 
     expect(resultado).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();

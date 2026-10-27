@@ -12,17 +12,20 @@ export type Rol = 'admin_rrhh' | 'analista_seleccion' | 'lider_area' | 'superusu
 
 /**
  * Estados del ciclo de vida de un requerimiento.
- * Orden del ENUM `estado_requerimiento` (migración 003 de la API).
+ * Orden del ENUM `estado_requerimiento` (migración 003 de la API + `exitoso`
+ * de la migración 009, Etapa 9: terminal SOLO automático al cubrir plazas).
  */
-export type EstadoRequerimiento = 'pendiente' | 'aprobado' | 'en_proceso' | 'cerrado' | 'rechazado';
+export type EstadoRequerimiento =
+  'pendiente' | 'aprobado' | 'en_proceso' | 'cerrado' | 'rechazado' | 'exitoso';
 
-/** Los 5 estados en el orden del ENUM, para poblar selects y filtros. */
+/** Los 6 estados en el orden del ENUM, para poblar selects y filtros. */
 export const ESTADOS_REQUERIMIENTO: readonly EstadoRequerimiento[] = [
   'pendiente',
   'aprobado',
   'en_proceso',
   'cerrado',
   'rechazado',
+  'exitoso',
 ];
 
 /** Usuario de la sesión tal y como lo entrega `POST /api/auth/login`. */
@@ -63,6 +66,12 @@ export interface Requerimiento {
   titulo: string;
   jefatura: string;
   numeroPlazas: number;
+  /** Prioridad (Etapa 9): `normal` | `alta` | `critica`. */
+  urgencia: UrgenciaRequerimiento;
+  /** Modalidad (Etapa 9): `directa` | `indirecta` | `terceros`. */
+  modalidad: ModalidadRequerimiento;
+  /** FK al área LARCO (`departamentos`); `null` si no está asociado. */
+  departamentoId: string | null;
   ubicacion: string | null;
   fechaRequerida: string | null;
   // 2 — perfil
@@ -80,6 +89,10 @@ export interface Requerimiento {
   // 5 — justificación
   justificacion: string;
   motivoRechazo: string | null;
+  /** Poblado solo con `estado = 'cerrado'` (obligatorio, CHECK en BD). */
+  motivoCierre: string | null;
+  /** `contratacion` | `cierre_vacante`; solo informado al cerrar. */
+  resultadoCierre: ResultadoCierre | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -89,6 +102,12 @@ export interface SeccionIdentificacion {
   titulo: string;
   jefatura: string;
   numeroPlazas: number;
+  /** Prioridad (Etapa 9, opcional; default `normal` en BD). */
+  urgencia?: UrgenciaRequerimiento;
+  /** Modalidad (Etapa 9, opcional; default `directa` en BD). */
+  modalidad?: ModalidadRequerimiento;
+  /** Área LARCO (Etapa 9, opcional; uuid de `departamentos`). */
+  departamentoId?: string;
   ubicacion?: string;
   /** `'YYYY-MM-DD'` exacto (`@IsDateString({ strictSeparator: true })`). */
   fechaRequerida?: string;
@@ -133,8 +152,39 @@ export interface RequerimientoNuevo {
   justificacion: SeccionJustificacion;
 }
 
-/** Destinos alcanzables por `POST /api/requerimientos/:id/transiciones`. */
-export type DestinoTransicion = Exclude<EstadoRequerimiento, 'pendiente'>;
+/**
+ * Destinos alcanzables por `POST /api/requerimientos/:id/transiciones`:
+ * `pendiente` es siempre el punto de partida y `exitoso` es un estado SOLO
+ * AUTOMÁTICO (lo pone el servidor al cubrir las plazas; el cliente no puede
+ * pedirlo), por eso ninguno de los dos aparece aquí.
+ */
+export type DestinoTransicion = 'aprobado' | 'rechazado' | 'en_proceso' | 'cerrado';
+
+/** Resultado del cierre (Etapa 9, `resultado_cierre`): ¿se contrató a alguien? */
+export type ResultadoCierre = 'contratacion' | 'cierre_vacante';
+
+/** Los 2 resultados, en orden, para poblar el select de cierre. */
+export const RESULTADOS_CIERRE: readonly ResultadoCierre[] = ['contratacion', 'cierre_vacante'];
+
+/** Urgencia del requerimiento (`urgencia_requerimiento`, migración 009). */
+export type UrgenciaRequerimiento = 'normal' | 'alta' | 'critica';
+
+/** Las 3 urgencias, en orden, para poblar selects. */
+export const URGENCIAS_REQUERIMIENTO: readonly UrgenciaRequerimiento[] = [
+  'normal',
+  'alta',
+  'critica',
+];
+
+/** Modalidad de contratación (`modalidad_requerimiento`, migración 009). */
+export type ModalidadRequerimiento = 'directa' | 'indirecta' | 'terceros';
+
+/** Las 3 modalidades, en orden, para poblar selects. */
+export const MODALIDADES_REQUERIMIENTO: readonly ModalidadRequerimiento[] = [
+  'directa',
+  'indirecta',
+  'terceros',
+];
 
 // ──────────────────────────────── Candidatos ────────────────────────────────
 
@@ -144,9 +194,12 @@ export interface Candidato {
   nombres: string;
   apellidos: string;
   email: string | null;
+  /** `''` si el candidato fue IMPORTADO sin cédula (migración 010). */
   cedula: string;
   telefono: string | null;
   ciudad: string | null;
+  /** FK al área LARCO (`departamentos`); `null` si no está asociado. */
+  departamentoId: string | null;
   cargoActual: string | null;
   expectativaSalarial: number | null;
   disponibilidad: string | null;
@@ -164,6 +217,8 @@ export interface CandidatoNuevo {
   email?: string;
   telefono?: string;
   ciudad?: string;
+  /** Área LARCO (Etapa 9, opcional). */
+  departamentoId?: string;
   cargoActual?: string;
   expectativaSalarial?: number;
 }
@@ -294,4 +349,156 @@ export interface UsuarioActualizacion {
   activo?: boolean;
   rol?: string;
   password?: string;
+}
+
+// ─────────────── Etapa 9 — Dashboard, Departamentos, Entrevistas, Bitácora ───────────────
+
+/**
+ * Áreas LARCO (`GET /api/departamentos`, sembradas por la migración 009):
+ * tarjeta con coordinador y contadores de embudo.
+ */
+export interface Departamento {
+  id: string;
+  nombre: string;
+  coordinador: string;
+  /** Candidatos etiquetados con este área (`candidatos.departamento_id`). */
+  totalCandidatos: number;
+  /** Requerimientos del área (cualquier estado). */
+  totalRequerimientos: number;
+  /** De ellos, los que están exactamente en `aprobado`. */
+  requerimientosAprobados: number;
+}
+
+/** Cuerpo de `PATCH /api/departamentos/:id` (solo coordinador; admin/super). */
+export interface DepartamentoActualizacion {
+  coordinador: string;
+}
+
+/** Concentración del embudo ACTIVO en una de las 5 fases (`GET /api/dashboard`). */
+export interface DashboardFase {
+  /** Clave de la fase en BD (`preseleccion`, `antecedentes`, …). */
+  fase: FasePostulacion;
+  /** Postulaciones `activas` actualmente en la fase. */
+  cantidad: number;
+  /** Proporción 0–1 (2 decimales) del embudo activo que está en la fase. */
+  tasaRetencion: number;
+}
+
+/** Contadores del embudo (cada candidato tiene a lo sumo UNA postulación). */
+export interface DashboardEmbudo {
+  /** Total de filas en `candidatos` (incluye los que aún sin postulación). */
+  totalCandidatos: number;
+  enProceso: number;
+  descartados: number;
+  contratados: number;
+}
+
+/** Contadores de requerimientos por estado + críticos abiertos. */
+export interface DashboardRequerimientos {
+  total: number;
+  aprobados: number;
+  pendientes: number;
+  enProceso: number;
+  /** Urgencia `critica` y AÚN sin desenlace (ni cerrado, rechazado ni exitoso). */
+  criticos: number;
+}
+
+/** Respuesta de `GET /api/dashboard`. */
+export interface Dashboard {
+  embudo: DashboardEmbudo;
+  /** Las 5 fases SIEMPRE en orden de avance, incluso con cantidad 0. */
+  porFase: DashboardFase[];
+  requerimientos: DashboardRequerimientos;
+}
+
+/** Estados del ENUM `estado_entrevista` (migración 009). */
+export type EstadoEntrevista = 'agendada' | 'realizada' | 'cancelada';
+
+/** Los 3 estados, en orden, para poblar selects y filtros. */
+export const ESTADOS_ENTREVISTA: readonly EstadoEntrevista[] = [
+  'agendada',
+  'realizada',
+  'cancelada',
+];
+
+/** Entrevista agenda (`GET /api/entrevistas`, con JOINs ya resueltos). */
+export interface Entrevista {
+  id: string;
+  postulacionId: string;
+  /** Fecha calendario `YYYY-MM-DD`. */
+  fecha: string;
+  /** Hora `HH:MM`, o `null` si la entrevista solo tiene día. */
+  hora: string | null;
+  tipo: string;
+  entrevistador: string | null;
+  estado: string;
+  notas: string | null;
+  candidato: { id: string; nombre: string };
+  requerimiento: { id: string; codigo: string; titulo: string };
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+/** Cuerpo de `POST /api/entrevistas` (agendar sobre una postulación activa). */
+export interface EntrevistaNueva {
+  postulacionId: string;
+  /** `YYYY-MM-DD` exacto. */
+  fecha: string;
+  /** `HH:MM` (24 h); opcional. */
+  hora?: string;
+  tipo: string;
+  entrevistador?: string;
+  notas?: string;
+}
+
+/** Cuerpo de `PATCH /api/entrevistas/:id` (parcial; `postulacionId` es fijo). */
+export type EntrevistaActualizacion = Partial<
+  Omit<EntrevistaNueva, 'postulacionId'> & { estado: EstadoEntrevista }
+>;
+
+/** Diferencia genérica de UN campo de la bitácora (valores ya enmascarados). */
+export interface CambioAuditoria {
+  campo: string;
+  antes: unknown;
+  despues: unknown;
+}
+
+/** Entrada de `audit_log` en forma pública (`GET /api/historial/auditoria`). */
+export interface EntradaAuditoria {
+  /** `audit_log.id` (bigserial; la API lo devuelve como string). */
+  id: string;
+  tabla: string;
+  registroId: string;
+  accion: 'INSERT' | 'UPDATE' | 'DELETE';
+  /** Quién ejecutó la escritura (resuelto desde `users`; `null` si fue SQL). */
+  actor: { id: string | null; email: string | null };
+  fecha: string;
+  /** Diff campo a campo (vacío en INSERT/DELETE). */
+  cambios: CambioAuditoria[];
+}
+
+/** Página de la bitácora (`{ entradas, total, pagina, paginas }`). */
+export interface PaginaAuditoria {
+  entradas: EntradaAuditoria[];
+  total: number;
+  pagina: number;
+  paginas: number;
+}
+
+/** Desenlace de UN archivo del lote importado (`POST /api/importacion/hvs`). */
+export interface ResultadoImportacion {
+  archivo: string;
+  ok: boolean;
+  /** Id del candidato creado (presente aunque el adjunto del CV falle). */
+  candidatoId?: string;
+  /** Motivo del fallo en español (solo cuando `ok` es falso). */
+  motivo?: string;
+}
+
+/** Resumen de un lote de importación de HVs. */
+export interface ResumenImportacion {
+  procesados: number;
+  creados: number;
+  fallidos: number;
+  resultados: ResultadoImportacion[];
 }

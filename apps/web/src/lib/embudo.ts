@@ -1,18 +1,20 @@
 import { FASES_POSTULACION, type EstadoPostulacion, type FasePostulacion } from '../tipos';
 
 /**
- * Espejo CLIENTE de las reglas del embudo de selección (Fase 5, parte 2).
+ * Espejo CLIENTE de las reglas del embudo de selección (Fase 5, parte 2 +
+ * Etapa 9 de la retroalimentación).
  *
  * Replica `apps/api/src/modules/embudo/postulaciones-fases.ts`: las 5 fases
- * EN ORDEN, la adyacencia (solo UN paso en cualquiera de las dos direcciones)
- * y el estado resultante (`contratacion` ⇒ `contratado`). Fichero de datos
- * PURO (sin React, sin fetch) para poder testearlo en unitarios herméticos.
+ * EN ORDEN con sus NOMBRES DE LA MUESTRA (solo etiquetas de UI; las claves de
+ * BD —`preseleccion`, `antecedentes`…— NO cambian) y el estado resultante
+ * (`contratacion` ⇒ `contratado`). Fichero de datos PURO (sin React, sin
+ * fetch) para poder testearlo en unitarios herméticos.
  *
- * ADVERTENCIA (mismo criterio que `lib/flujo.ts`): la autoridad sigue en el
- * servidor — `PostulacionesService.cambiarFase` responde 409 si el cliente
- * calcula mal—. Estos helpers son un ATALLO DE UX: evitar un viaje de red
- * (y un rollback) cuando el movimiento es obviously inválido, p. ej. soltar
- * una tarjeta dos columnas más allá en el Kanban.
+ * SOLO AVANZA (retroalimentación Etapa 9, regla 11): desde una fase solo se
+ * admite mover a la SIGUIENTE (un paso adelante); NO hay retroceso. El
+ * servidor es la autoridad —`cambiarFase` responde 409 al intentar retroceder—
+ * y estos helpers son un ATALLO DE UX: evitan el viaje de red cuando el
+ * movimiento es obviously inválido.
  */
 
 /** Posición de cada fase en el tablero (0-based), en el orden del ENUM de BD. */
@@ -30,12 +32,16 @@ export const FASE_CONTRATACION: FasePostulacion = 'contratacion';
 /** Estados desde los que NO hay movimiento posible (sin salida). */
 export const ESTADOS_TERMINALES: readonly EstadoPostulacion[] = ['contratado', 'descartado'];
 
-/** Etiqueta legible de cada fase (cabeceras de las columnas del tablero). */
+/**
+ * Etiqueta legible de cada fase (cabeceras de columnas, tarjetas y dashboard):
+ * los NOMBRES DE LA MUESTRA («1. Recepción y Análisis de HV», …). Son SOLO
+ * textos de UI — el ENUM de BD y sus claves quedan intactos.
+ */
 export const ETIQUETA_FASE: Readonly<Record<FasePostulacion, string>> = {
-  preseleccion: 'Preselección',
-  antecedentes: 'Antecedentes',
-  entrevistas: 'Entrevistas',
-  proveedor_externo: 'Proveedor externo',
+  preseleccion: 'Recepción y Análisis de HV',
+  antecedentes: 'Validación de Antecedentes',
+  entrevistas: 'Entrevistas y Psicotécnicas',
+  proveedor_externo: 'Pruebas Proveedor Externo',
   contratacion: 'Contratación',
 };
 
@@ -66,11 +72,11 @@ export function esTerminal(estado: EstadoPostulacion): boolean {
 }
 
 /**
- * ¿`destino` está a UN solo paso de `origen`, en cualquiera de las DOS
- * direcciones? El Kanban permite regresar, pero NUNCA saltar fases.
+ * ¿`destino` es EXACTAMENTE la fase SIGUIENTE de `origen`? El embudo SOLO
+ * AVANZA (sin retroceso y sin saltos de fase).
  */
-export function esAdyacente(origen: FasePostulacion, destino: FasePostulacion): boolean {
-  return Math.abs(INDICE_FASE[origen] - INDICE_FASE[destino]) === 1;
+export function esSiguienteFase(origen: FasePostulacion, destino: FasePostulacion): boolean {
+  return INDICE_FASE[destino] === INDICE_FASE[origen] + 1;
 }
 
 /** ¿La fase destino exige quedarse en `activa` o la vuelve `contratado`? */
@@ -78,36 +84,18 @@ export function estadoTrasMover(destino: FasePostulacion): EstadoPostulacion {
   return destino === FASE_CONTRATACION ? 'contratado' : 'activa';
 }
 
-/** Texto de una lista de fases para los mensajes: `'a', 'b'`. */
-function entrecomillar(fases: readonly FasePostulacion[]): string {
-  return fases.map((fase) => `'${fase}'`).join(', ');
-}
-
-/** Fases a las que SE PUEDE mover desde `fase` (una antes y una después). */
-export function fasesAdyacentes(fase: FasePostulacion): FasePostulacion[] {
-  const indice = INDICE_FASE[fase];
-  const adyacentes: FasePostulacion[] = [];
-  const anterior = FASES_POSTULACION[indice - 1];
-  const posterior = FASES_POSTULACION[indice + 1];
-  if (anterior !== undefined) {
-    adyacentes.push(anterior);
-  }
-  if (posterior !== undefined) {
-    adyacentes.push(posterior);
-  }
-  return adyacentes;
-}
-
 /**
- * Mensaje LOCAL de un movimiento no adyacente — el mismo criterio que el 409
- * del servidor (`mensajeNoAdyacente`), para que el usuario vea un texto
- * consistente aunque el atajo evite la llamada.
+ * Mensaje LOCAL de un movimiento que no avanza UN paso — el mismo criterio que
+ * el 409 del servidor, para que el usuario vea un texto consistente aunque el
+ * atajo evite la llamada. Cubre retrocesos y saltos.
  */
-export function mensajeNoAdyacente(origen: FasePostulacion, destino: FasePostulacion): string {
-  return (
-    `Solo se puede mover un paso: de '${origen}' solo se admite ` +
-    `${entrecomillar(fasesAdyacentes(origen))} (intentaste '${destino}')`
-  );
+export function mensajeSoloAvanza(origen: FasePostulacion, destino: FasePostulacion): string {
+  const siguiente = FASES_POSTULACION[INDICE_FASE[origen] + 1];
+  const destinoTexto =
+    siguiente === undefined
+      ? `'${origen}' es la fase final: no se puede avanzar más`
+      : `de '${origen}' solo se admite avanzar a '${siguiente}'`;
+  return `El embudo solo avanza: ${destinoTexto} (intentaste '${destino}')`;
 }
 
 /** Mensaje LOCAL de un destino igual a la fase actual (sin viaje de red). */
@@ -118,6 +106,18 @@ export function mensajeFaseActual(fase: FasePostulacion): string {
 /** Mensaje LOCAL de un intento de mover un estado terminal. */
 export function mensajeTerminal(estado: EstadoPostulacion, accion: string): string {
   return `Estado terminal: la postulación está en '${estado}' y no admite ${accion}`;
+}
+
+/**
+ * Mensaje LOCAL de un intento de mover a `contratación` con TODAS las plazas
+ * cubiertas (regla 4 de la retroalimentación: el cupo lleno bloquea altas y
+ * movimientos hacia Contratación; el servidor también responde 409).
+ */
+export function mensajeCupoLleno(numeroPlazas: number): string {
+  return (
+    `Las ${numeroPlazas} ${numeroPlazas === 1 ? 'plaza ya está' : 'plazas ya están'} ` +
+    `cubiertas en este requerimiento: no se admiten movimientos a Contratación`
+  );
 }
 
 /** Decisión de un drop del Kanban: mover (con ids ya validados) o ignorarlo. */
@@ -138,8 +138,8 @@ export interface DecisionSoltar {
  *    proceso), o
  *  - el drop no cayó sobre una columna válida (`over` vacío o id desconocido).
  *
- * La validación de ADYACENCIA NO vive aquí (se resuelve luego en el store,
- * que es quien decide si hace fetch o muestra «Solo se puede mover un paso»).
+ * La validación de «SOLO AVANZA» NO vive aquí (se resuelve luego en el store,
+ * que es quien decide si hace fetch o muestra «El embudo solo avanza»).
  */
 export function interpretarSoltar(
   editable: boolean,

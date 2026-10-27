@@ -16,6 +16,7 @@ export function ColumnaEmbudo({
   fase,
   postulaciones,
   movible,
+  cupoLleno,
   guardando,
   onMover,
   onDescartar,
@@ -24,6 +25,8 @@ export function ColumnaEmbudo({
   fase: FasePostulacion;
   postulaciones: Postulacion[];
   movible: boolean;
+  /** `true` si las plazas ya están cubiertas (bloquea avanzar a Contratación). */
+  cupoLleno: boolean;
   /** Ids con una mutación en vuelo (deshabilita sus acciones). */
   guardando: readonly string[];
   onMover: (id: string, destino: FasePostulacion) => void;
@@ -58,6 +61,7 @@ export function ColumnaEmbudo({
               key={postulacion.id}
               postulacion={postulacion}
               movible={movible}
+              cupoLleno={cupoLleno}
               enGuardado={guardando.includes(postulacion.id)}
               onMover={(destino) => onMover(postulacion.id, destino)}
               onDescartar={() => onDescartar(postulacion)}

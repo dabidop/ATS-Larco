@@ -4,6 +4,7 @@ import { CLAVE_SESION, useSesionStore } from '../store/sesion';
 import type {
   ArchivoCv,
   Candidato,
+  Dashboard,
   EntradaHistorial,
   EntradaHistorialPostulacion,
   Pagina,
@@ -102,6 +103,9 @@ export function fixtureRequerimiento(extra: Partial<Requerimiento> = {}): Requer
     titulo: 'Analista de Selección',
     jefatura: 'Gestión Humana',
     numeroPlazas: 1,
+    urgencia: 'normal',
+    modalidad: 'directa',
+    departamentoId: null,
     ubicacion: 'Maracay',
     fechaRequerida: '2026-03-01',
     experienciaRequerida: '2 años',
@@ -115,6 +119,8 @@ export function fixtureRequerimiento(extra: Partial<Requerimiento> = {}): Requer
     jornada: 'Completa',
     justificacion: 'Cobertura de vacante aprobada por la jefatura.',
     motivoRechazo: null,
+    motivoCierre: null,
+    resultadoCierre: null,
     createdAt: '2026-01-15T10:00:00.000Z',
     updatedAt: '2026-01-15T10:00:00.000Z',
     ...extra,
@@ -131,6 +137,7 @@ export function fixtureCandidato(extra: Partial<Candidato> = {}): Candidato {
     cedula: '20123456',
     telefono: '04121234567',
     ciudad: 'Maracay',
+    departamentoId: null,
     cargoActual: 'Reclutadora',
     expectativaSalarial: 1000,
     disponibilidad: 'Inmediata',
@@ -172,6 +179,25 @@ export function fixtureHistorial(extra: Partial<EntradaHistorial> = {}): Entrada
 /** Respuesta paginada de mentira. */
 export function fixturePagina<T>(items: T[], extra: Partial<Pagina<T>> = {}): Pagina<T> {
   return { items, total: items.length, page: 1, limit: 10, ...extra };
+}
+
+/**
+ * Dashboard de mentira con la forma de `GET /api/dashboard` (Etapa 9):
+ * SIEMPRE las 5 fases en orden de avance, como garantiza la API.
+ */
+export function fixtureDashboard(extra: Partial<Dashboard> = {}): Dashboard {
+  return {
+    embudo: { totalCandidatos: 3, enProceso: 2, descartados: 1, contratados: 0 },
+    porFase: [
+      { fase: 'preseleccion', cantidad: 1, tasaRetencion: 0.5 },
+      { fase: 'antecedentes', cantidad: 1, tasaRetencion: 0.5 },
+      { fase: 'entrevistas', cantidad: 0, tasaRetencion: 0 },
+      { fase: 'proveedor_externo', cantidad: 0, tasaRetencion: 0 },
+      { fase: 'contratacion', cantidad: 0, tasaRetencion: 0 },
+    ],
+    requerimientos: { total: 1, aprobados: 1, pendientes: 0, enProceso: 0, criticos: 0 },
+    ...extra,
+  };
 }
 
 /** Usuario de mentira con la forma de `UsuarioResponseDto` (NUNCA trae password). */

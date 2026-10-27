@@ -115,44 +115,61 @@ describe('tablero Kanban (columnas y tarjetas)', () => {
   it('pinta las 5 columnas con sus contadores y agrupa las tarjetas por fase', async () => {
     pintarTablero('analista_seleccion');
 
-    // Las 5 columnas, en orden.
-    expect(await screen.findByRole('region', { name: 'Columna Preselección' })).toBeInTheDocument();
+    // Las 5 columnas, en orden, con los NOMBRES DE LA MUESTRA (Etapa 9).
+    expect(
+      await screen.findByRole('region', { name: 'Columna Recepción y Análisis de HV' }),
+    ).toBeInTheDocument();
     // Vuelta visible con la flecha ← (Etapa 8C), sigue siendo un <Link>.
     expect(screen.getByRole('link', { name: '← Volver al requerimiento' })).toHaveAttribute(
       'href',
       '/requerimientos/req-1',
     );
-    expect(screen.getByRole('region', { name: 'Columna Antecedentes' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Columna Entrevistas' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Columna Proveedor externo' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Columna Contratación' })).toBeInTheDocument();
-
-    // Contadores por columna.
     expect(
-      within(screen.getByRole('region', { name: 'Columna Entrevistas' })).getByText('2'),
+      screen.getByRole('region', { name: 'Columna Validación de Antecedentes' }),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByRole('region', { name: 'Columna Proveedor externo' })).getByText('0'),
+      screen.getByRole('region', { name: 'Columna Entrevistas y Psicotécnicas' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('region', { name: 'Columna Pruebas Proveedor Externo' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Columna Contratación' })).toBeInTheDocument();
+
+    // Contadores por columna (la DESCARTADA ya no cuenta: regla 2).
+    expect(
+      within(screen.getByRole('region', { name: 'Columna Entrevistas y Psicotécnicas' })).getByText(
+        '1',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: 'Columna Pruebas Proveedor Externo' })).getByText(
+        '0',
+      ),
     ).toBeInTheDocument();
 
     // Nombres en su columna.
     expect(
-      within(screen.getByRole('region', { name: 'Columna Preselección' })).getByText('Ana García'),
+      within(screen.getByRole('region', { name: 'Columna Recepción y Análisis de HV' })).getByText(
+        'Ana García',
+      ),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByRole('region', { name: 'Columna Entrevistas' })).getByText('Sofía Rivas'),
+      within(screen.getByRole('region', { name: 'Columna Entrevistas y Psicotécnicas' })).getByText(
+        'Sofía Rivas',
+      ),
     ).toBeInTheDocument();
-    expect(
-      within(screen.getByRole('region', { name: 'Columna Entrevistas' })).getByText('Laura Méndez'),
-    ).toBeInTheDocument();
+    // Regla 2: los DESCARTADOS no se pintan en el tablero.
+    expect(screen.queryByText('Laura Méndez')).not.toBeInTheDocument();
   });
 
-  it('la tarjeta descartada muestra el motivo y su badge', async () => {
+  it('la postulación descartada NO se pinta en el tablero (regla 2 de la Etapa 9)', async () => {
     pintarTablero('analista_seleccion');
 
-    expect(await screen.findByText('Laura Méndez')).toBeInTheDocument();
-    expect(screen.getByText('Descartado')).toBeInTheDocument();
-    expect(screen.getByText(/No aprueba la prueba técnica/)).toBeInTheDocument();
+    // Laura está en entrevistas pero DESCARTADA: queda fuera del kanban.
+    expect(await screen.findByText('Sofía Rivas')).toBeInTheDocument();
+    expect(screen.queryByText('Laura Méndez')).not.toBeInTheDocument();
+    expect(screen.queryByText('Descartado')).not.toBeInTheDocument();
+    expect(screen.queryByText(/No aprueba la prueba técnica/)).not.toBeInTheDocument();
   });
 
   it('las tarjetas TERMINALES (contratada y descartada) no tienen acciones de movimiento', async () => {
@@ -173,18 +190,25 @@ describe('tablero Kanban (acciones de movimiento)', () => {
     reiniciarStore();
   });
 
-  it('los botones ◀ ▶ solo apuntan a fases adyacentes (extremos ocultos)', async () => {
+  it('solo existe «▶ avanzar» a la fase SIGUIENTE (sin ◀: el embudo no retrocede)', async () => {
     pintarTablero('analista_seleccion');
 
-    // Ana en Preselección (índice 0): SOLO ▶ (a Antecedentes); sin ◀.
+    // Ana en Recepción y Análisis de HV (índice 0): SOLO ▶ a Validación de Antecedentes.
     const ana = (await screen.findByText('Ana García')).closest('article') as HTMLElement;
-    expect(within(ana).getByRole('button', { name: 'Mover a Antecedentes' })).toBeInTheDocument();
+    expect(
+      within(ana).getByRole('button', { name: 'Mover a Validación de Antecedentes' }),
+    ).toBeInTheDocument();
     expect(within(ana).queryByRole('button', { name: /◀/ })).not.toBeInTheDocument();
 
-    // Luis en Antecedentes (índice 1): ◀ a Preselección y ▶ a Entrevistas.
+    // Luis en Validación de Antecedentes: ▶ a Entrevistas y Psicotécnicas; SIN ◀.
     const luis = screen.getByText('Luis Martínez').closest('article') as HTMLElement;
-    expect(within(luis).getByRole('button', { name: 'Mover a Preselección' })).toBeInTheDocument();
-    expect(within(luis).getByRole('button', { name: 'Mover a Entrevistas' })).toBeInTheDocument();
+    expect(
+      within(luis).getByRole('button', { name: 'Mover a Entrevistas y Psicotécnicas' }),
+    ).toBeInTheDocument();
+    expect(within(luis).queryByRole('button', { name: /◀/ })).not.toBeInTheDocument();
+    expect(
+      within(luis).queryByRole('button', { name: 'Mover a Recepción y Análisis de HV' }),
+    ).toBeNull();
   });
 
   it('pulsar ▶ llama al store y el servidor recibe el PATCH con la fase destino', async () => {
@@ -199,7 +223,9 @@ describe('tablero Kanban (acciones de movimiento)', () => {
     });
 
     const ana = (await screen.findByText('María Pérez')).closest('article') as HTMLElement;
-    fireEvent.click(within(ana).getByRole('button', { name: 'Mover a Antecedentes' }));
+    fireEvent.click(
+      within(ana).getByRole('button', { name: 'Mover a Validación de Antecedentes' }),
+    );
 
     await waitFor(() => {
       const llamada = fetchMock.mock.calls.find(
@@ -288,9 +314,13 @@ describe('tablero Kanban (permisos por rol y requerimiento)', () => {
   it('lider_area ve el tablero en SOLO LECTURA (sin acciones de movimiento)', async () => {
     pintarTablero('lider_area');
 
-    expect(await screen.findByRole('region', { name: 'Columna Preselección' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('region', { name: 'Columna Recepción y Análisis de HV' }),
+    ).toBeInTheDocument();
     // Ni botones de movimiento/descarte ni «Agregar candidato».
-    expect(screen.queryByRole('button', { name: 'Mover a Antecedentes' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Mover a Validación de Antecedentes' }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Descartar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Agregar candidato' })).not.toBeInTheDocument();
     // El aviso de solo lectura por rol es visible.
@@ -301,7 +331,9 @@ describe('tablero Kanban (permisos por rol y requerimiento)', () => {
     pintarTablero('analista_seleccion', { estadoRequerimiento: 'cerrado' });
 
     expect(await screen.findByText(/no está «En proceso»/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Mover a Antecedentes' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Mover a Validación de Antecedentes' }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Agregar candidato' })).not.toBeInTheDocument();
   });
 });

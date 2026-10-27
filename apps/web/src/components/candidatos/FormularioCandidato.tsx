@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 
-import { mensajeDeError } from '../../lib/api';
-import type { Candidato, CandidatoNuevo } from '../../tipos';
+import { mensajeDeError, solicitud } from '../../lib/api';
+import { useRecurso } from '../../lib/useRecurso';
+import type { Candidato, CandidatoNuevo, Departamento } from '../../tipos';
 import { CampoTexto } from '../ui/campos';
 import { Spinner } from '../ui/feedback';
-import { CLASE_BOTON_PRINCIPAL } from '../ui/estilos';
+import { CLASE_BOTON_PRINCIPAL, CLASE_CAMPO, CLASE_ETIQUETA } from '../ui/estilos';
 
 /**
  * Formulario de datos del candidato, compartido por «Nuevo» (POST) y «Editar»
@@ -27,6 +28,7 @@ export interface EstadoFormularioCandidato {
   email: string;
   telefono: string;
   ciudad: string;
+  departamentoId: string;
   cargoActual: string;
   expectativaSalarial: string;
 }
@@ -41,6 +43,7 @@ export function formularioCandidatoVacio(): EstadoFormularioCandidato {
     email: '',
     telefono: '',
     ciudad: '',
+    departamentoId: '',
     cargoActual: '',
     expectativaSalarial: '',
   };
@@ -55,6 +58,7 @@ export function formularioDesdeCandidato(candidato: Candidato): EstadoFormulario
     email: candidato.email ?? '',
     telefono: candidato.telefono ?? '',
     ciudad: candidato.ciudad ?? '',
+    departamentoId: candidato.departamentoId ?? '',
     cargoActual: candidato.cargoActual ?? '',
     expectativaSalarial:
       candidato.expectativaSalarial === null ? '' : String(candidato.expectativaSalarial),
@@ -63,19 +67,60 @@ export function formularioDesdeCandidato(candidato: Candidato): EstadoFormulario
 
 const PATRON_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * Límites por campo: los MISMOS números que `LIMITES_CANDIDATO` del DTO de la
+ * API (regla 9 de la retroalimentación: «los campos deben validar cantidad de
+ * caracteres»). El servidor sigue siendo la autoridad.
+ */
+const LIMITES = {
+  nombres: 100,
+  apellidos: 100,
+  email: 254,
+  telefono: 20,
+  ciudad: 80,
+  cargoActual: 120,
+} as const;
+
 /** Valida el formulario con los MISMOS mensajes que el DTO del backend. */
 export function validarFormularioCandidato(
   formulario: EstadoFormularioCandidato,
 ): ErroresCandidato {
   const errores: ErroresCandidato = {};
 
-  if (formulario.nombres.trim().length === 0) errores.nombres = 'nombres es obligatorio';
-  if (formulario.apellidos.trim().length === 0) errores.apellidos = 'apellidos es obligatorio';
+  const nombres = formulario.nombres.trim();
+  if (nombres.length === 0) errores.nombres = 'nombres es obligatorio';
+  else if (nombres.length < 3) errores.nombres = 'nombres debe tener al menos 3 caracteres';
+  else if (nombres.length > LIMITES.nombres) {
+    errores.nombres = `nombres no puede superar ${LIMITES.nombres} caracteres`;
+  }
+
+  const apellidos = formulario.apellidos.trim();
+  if (apellidos.length === 0) errores.apellidos = 'apellidos es obligatorio';
+  else if (apellidos.length < 3) errores.apellidos = 'apellidos debe tener al menos 3 caracteres';
+  else if (apellidos.length > LIMITES.apellidos) {
+    errores.apellidos = `apellidos no puede superar ${LIMITES.apellidos} caracteres`;
+  }
+
   if (!PATRON_CEDULA.test(formulario.cedula.trim())) errores.cedula = MENSAJE_CEDULA;
 
   const email = formulario.email.trim();
   if (email.length > 0 && !PATRON_EMAIL.test(email)) {
     errores.email = 'email debe ser un correo electrónico válido';
+  } else if (email.length > LIMITES.email) {
+    errores.email = `email no puede superar ${LIMITES.email} caracteres`;
+  }
+
+  const telefono = formulario.telefono.trim();
+  if (telefono.length > LIMITES.telefono) {
+    errores.telefono = `telefono no puede superar ${LIMITES.telefono} caracteres`;
+  }
+  const ciudad = formulario.ciudad.trim();
+  if (ciudad.length > LIMITES.ciudad) {
+    errores.ciudad = `ciudad no puede superar ${LIMITES.ciudad} caracteres`;
+  }
+  const cargoActual = formulario.cargoActual.trim();
+  if (cargoActual.length > LIMITES.cargoActual) {
+    errores.cargoActual = `cargoActual no puede superar ${LIMITES.cargoActual} caracteres`;
   }
 
   const expectativa = formulario.expectativaSalarial.trim();
@@ -104,6 +149,8 @@ export function aCuerpoCandidato(formulario: EstadoFormularioCandidato): Candida
   if (telefono.length > 0) cuerpo.telefono = telefono;
   const ciudad = formulario.ciudad.trim();
   if (ciudad.length > 0) cuerpo.ciudad = ciudad;
+  const departamentoId = formulario.departamentoId.trim();
+  if (departamentoId.length > 0) cuerpo.departamentoId = departamentoId;
   const cargoActual = formulario.cargoActual.trim();
   if (cargoActual.length > 0) cuerpo.cargoActual = cargoActual;
   const expectativa = formulario.expectativaSalarial.trim();
@@ -130,6 +177,12 @@ export function FormularioCandidato({
   const [errores, setErrores] = useState<ErroresCandidato>({});
   const [enviando, setEnviando] = useState(false);
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
+
+  // Catálogo de áreas LARCO para el select de departamento (best-effort).
+  const departamentos = useRecurso<Departamento[]>(
+    () => solicitud<Departamento[]>('/departamentos'),
+    [],
+  );
 
   const cambiar = (campo: keyof EstadoFormularioCandidato) => (valor: string) => {
     setFormulario((anterior) => ({ ...anterior, [campo]: valor }));
@@ -194,6 +247,24 @@ export function FormularioCandidato({
           onCambio={cambiar('ciudad')}
           error={errores.ciudad}
         />
+        <div>
+          <label htmlFor="candidato-departamento" className={CLASE_ETIQUETA}>
+            Departamento
+          </label>
+          <select
+            id="candidato-departamento"
+            value={formulario.departamentoId}
+            onChange={(evento) => cambiar('departamentoId')(evento.target.value)}
+            className={CLASE_CAMPO}
+          >
+            <option value="">(sin departamento)</option>
+            {(departamentos.datos ?? []).map((departamento) => (
+              <option key={departamento.id} value={departamento.id}>
+                {departamento.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
         <CampoTexto
           etiqueta="Cargo actual"
           valor={formulario.cargoActual}

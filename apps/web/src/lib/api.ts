@@ -148,6 +148,15 @@ export async function solicitud<T>(ruta: string, opciones: OpcionesSolicitud = {
 export async function subirArchivo<T>(ruta: string, archivo: File): Promise<T> {
   const datos = new FormData();
   datos.append('file', archivo);
+  return subirFormulario<T>(ruta, datos);
+}
+
+/**
+ * Sube un `multipart/form-data` YA CONSTRUIDO (Etapa 9: la importación de HVs
+ * lleva varios `archivos` + el campo texto `departamentoId`). Igual que
+ * `subirArchivo`, NO se fija `Content-Type`: el navegador añade el boundary.
+ */
+export async function subirFormulario<T>(ruta: string, datos: FormData): Promise<T> {
   const respuesta = await lanzarFetch(rutaAbsoluta(ruta), {
     method: 'POST',
     headers: cabeceras(false),

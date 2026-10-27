@@ -11,6 +11,7 @@ const CLASES_ESTADO: Readonly<Record<EstadoRequerimiento, string>> = {
   en_proceso: 'border-violet-500/40 bg-violet-500/15 text-violet-300',
   cerrado: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300',
   rechazado: 'border-rose-500/40 bg-rose-500/15 text-rose-300',
+  exitoso: 'border-emerald-400/60 bg-emerald-400/15 text-emerald-200',
 };
 
 export function BadgeEstado({ estado }: { estado: EstadoRequerimiento }) {

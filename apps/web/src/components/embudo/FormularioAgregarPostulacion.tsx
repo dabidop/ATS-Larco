@@ -105,7 +105,9 @@ export function FormularioAgregarPostulacion({
             >
               <span className="text-sm text-slate-200">
                 {candidato.nombres} {candidato.apellidos}
-                <span className="ml-2 text-xs text-slate-500">C.I. {candidato.cedula}</span>
+                {candidato.cedula.length > 0 && (
+                  <span className="ml-2 text-xs text-slate-500">C.I. {candidato.cedula}</span>
+                )}
               </span>
               <button
                 type="button"

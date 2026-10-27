@@ -6,6 +6,11 @@ import { Pagina404 } from './pages/NoEncontrada';
 import { PaginaCandidatos } from './pages/candidatos/ListaCandidatos';
 import { PaginaDetalleCandidato } from './pages/candidatos/DetalleCandidato';
 import { PaginaNuevoCandidato } from './pages/candidatos/NuevoCandidato';
+import { PaginaDashboard } from './pages/dashboard/PaginaDashboard';
+import { PaginaDepartamentos } from './pages/departamentos/PaginaDepartamentos';
+import { PaginaEntrevistas } from './pages/entrevistas/PaginaEntrevistas';
+import { PaginaImportarHVs } from './pages/importacion/PaginaImportarHVs';
+import { PaginaBitacora } from './pages/bitacora/PaginaBitacora';
 import { PaginaLogin } from './pages/Login';
 import { PaginaDetalleRequerimiento } from './pages/requerimientos/DetalleRequerimiento';
 import { PaginaRequerimientos } from './pages/requerimientos/ListaRequerimientos';
@@ -21,11 +26,15 @@ import { TableroEmbudo } from './pages/embudo/TableroEmbudo';
  *  - `/*` con `RutaProtegida`        → exige token; sin él → `/login` dejando
  *    la ruta original en `location.state.from`.
  *  - Dentro, el `Layout` aporta header + navegación por rol.
+ *  - `/dashboard`                    → resumen operativo (Etapa 9).
  *  - `/requerimientos/:id/embudo` → tablero Kanban del embudo de selección
  *    (protegida, dentro del Layout).
- *  - `/usuarios` (+ `/usuarios/nuevo`) → SOLO `superusuario`
+ *  - `/importar`                     → importación masiva de HVs (Etapa 9).
+ *  - `/departamentos`                → áreas LARCO (Etapa 9).
+ *  - `/entrevistas`                  → agenda de entrevistas (Etapa 9).
+ *  - `/bitacora` (+ `/usuarios`)     → SOLO `superusuario`
  *    (`RutaProtegida rolPermitido`); cualquier otro rol → `/requerimientos`.
- *  - `/` → redirect a `/requerimientos`; cualquier otra ruta → 404.
+ *  - `/` → redirect a `/dashboard`; cualquier otra ruta → 404.
  */
 export function RutasAplicacion() {
   return (
@@ -33,7 +42,8 @@ export function RutasAplicacion() {
       <Route path="/login" element={<PaginaLogin />} />
       <Route element={<RutaProtegida />}>
         <Route element={<Layout />}>
-          <Route index element={<Navigate to="/requerimientos" replace />} />
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<PaginaDashboard />} />
           <Route path="requerimientos" element={<PaginaRequerimientos />} />
           <Route path="requerimientos/nuevo" element={<PaginaNuevoRequerimiento />} />
           <Route path="requerimientos/:id" element={<PaginaDetalleRequerimiento />} />
@@ -41,6 +51,12 @@ export function RutasAplicacion() {
           <Route path="candidatos" element={<PaginaCandidatos />} />
           <Route path="candidatos/nuevo" element={<PaginaNuevoCandidato />} />
           <Route path="candidatos/:id" element={<PaginaDetalleCandidato />} />
+          <Route path="importar" element={<PaginaImportarHVs />} />
+          <Route path="departamentos" element={<PaginaDepartamentos />} />
+          <Route path="entrevistas" element={<PaginaEntrevistas />} />
+          <Route path="bitacora" element={<RutaProtegida rolPermitido="superusuario" />}>
+            <Route index element={<PaginaBitacora />} />
+          </Route>
           <Route path="usuarios" element={<RutaProtegida rolPermitido="superusuario" />}>
             <Route index element={<PaginaUsuarios />} />
             <Route path="nuevo" element={<PaginaNuevoUsuario />} />

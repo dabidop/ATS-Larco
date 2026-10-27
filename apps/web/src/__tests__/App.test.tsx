@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { App } from '../App';
 import {
+  fixtureDashboard,
   fixturePagina,
   fixtureRequerimiento,
   instalarFetch,
@@ -35,12 +36,13 @@ describe('App (árbol de rutas completo)', () => {
     expect(screen.getByLabelText(/correo electrónico/i)).toBeInTheDocument();
   });
 
-  it('con sesión hidratada, la raíz redirige a /requerimientos y pinta el listado', async () => {
+  it('con sesión hidratada, la raíz redirige a /dashboard y pinta el resumen', async () => {
     irA('/');
     sembrarSesion('admin_rrhh');
-    instalarFetch(() => ({
-      cuerpo: fixturePagina([fixtureRequerimiento()], { total: 1, page: 1, limit: 10 }),
-    }));
+    instalarFetch((url) => {
+      if (url.startsWith('/api/dashboard')) return { cuerpo: fixtureDashboard() };
+      return { cuerpo: fixturePagina([fixtureRequerimiento()], { total: 1, page: 1, limit: 10 }) };
+    });
 
     render(
       <StrictMode>
@@ -48,8 +50,9 @@ describe('App (árbol de rutas completo)', () => {
       </StrictMode>,
     );
 
-    expect(await screen.findByText('REQ-2026-001')).toBeInTheDocument();
-    expect(screen.getByRole('banner')).toHaveTextContent('ATS · Gestión Humana — LARCO');
+    expect(await screen.findByText('Dashboard — Embudo RRHH')).toBeInTheDocument();
+    // El wordmark de LARCO acompaña al header en la raíz.
+    expect(screen.getByRole('banner')).toHaveTextContent('Applicant Tracking System');
   });
 
   it('una ruta desconocida muestra la página 404 dentro del layout', async () => {

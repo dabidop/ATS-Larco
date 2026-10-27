@@ -21,9 +21,17 @@ describe('layout autenticado (header con navegación por rol)', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('banner')).toHaveTextContent('ATS · Gestión Humana — LARCO');
-    expect(await screen.findByRole('link', { name: 'Requerimientos' })).toBeInTheDocument();
+    // Wordmark de LARCO arriba-izquierda (Etapa 9) + secciones del menú.
+    expect(screen.getByRole('banner')).toHaveTextContent('Applicant Tracking System');
+    expect(await screen.findByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Requerimientos' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Candidatos' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Importar HVs' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Departamentos' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Entrevistas' })).toBeInTheDocument();
+    // Bitácora y Usuarios son EXCLUSIVOS del superusuario (regla 7).
+    expect(screen.queryByRole('link', { name: 'Bitácora' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Usuarios' })).not.toBeInTheDocument();
     expect(screen.getByText(/usuario@larco\.test/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Salir' })).toBeInTheDocument();
   });

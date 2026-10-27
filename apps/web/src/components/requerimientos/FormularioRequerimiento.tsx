@@ -1,12 +1,35 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 
-import { mensajeDeError } from '../../lib/api';
+import { mensajeDeError, solicitud } from '../../lib/api';
 import { textoALista } from '../../lib/formato';
-import type { Requerimiento, RequerimientoNuevo } from '../../tipos';
+import { useRecurso } from '../../lib/useRecurso';
+import {
+  MODALIDADES_REQUERIMIENTO,
+  URGENCIAS_REQUERIMIENTO,
+  type Departamento,
+  type ModalidadRequerimiento,
+  type Requerimiento,
+  type RequerimientoNuevo,
+  type UrgenciaRequerimiento,
+} from '../../tipos';
 import { CampoArea, CampoTexto } from '../ui/campos';
 import { Spinner } from '../ui/feedback';
-import { CLASE_BOTON_PRINCIPAL } from '../ui/estilos';
+import { CLASE_BOTON_PRINCIPAL, CLASE_CAMPO, CLASE_ETIQUETA } from '../ui/estilos';
+
+/** Etiquetas legibles de urgencia (badges y selects). */
+export const ETIQUETA_URGENCIA: Readonly<Record<UrgenciaRequerimiento, string>> = {
+  normal: 'Normal',
+  alta: 'Alta',
+  critica: 'Crítica',
+};
+
+/** Etiquetas legibles de modalidad. */
+export const ETIQUETA_MODALIDAD: Readonly<Record<ModalidadRequerimiento, string>> = {
+  directa: 'Directa',
+  indirecta: 'Indirecta',
+  terceros: 'Terceros / Contratistas',
+};
 
 /**
  * Formulario de las 5 secciones del requerimiento, compartido por «Nuevo»
@@ -24,6 +47,9 @@ export interface EstadoFormularioRequerimiento {
   titulo: string;
   jefatura: string;
   numeroPlazas: string;
+  urgencia: UrgenciaRequerimiento;
+  modalidad: ModalidadRequerimiento;
+  departamentoId: string;
   ubicacion: string;
   fechaRequerida: string;
   experienciaRequerida: string;
@@ -46,6 +72,9 @@ export function formularioVacio(): EstadoFormularioRequerimiento {
     titulo: '',
     jefatura: '',
     numeroPlazas: '1',
+    urgencia: 'normal',
+    modalidad: 'directa',
+    departamentoId: '',
     ubicacion: '',
     fechaRequerida: '',
     experienciaRequerida: '',
@@ -69,6 +98,9 @@ export function formularioDesdeRequerimiento(
     titulo: requerimiento.titulo,
     jefatura: requerimiento.jefatura,
     numeroPlazas: String(requerimiento.numeroPlazas),
+    urgencia: requerimiento.urgencia,
+    modalidad: requerimiento.modalidad,
+    departamentoId: requerimiento.departamentoId ?? '',
     ubicacion: requerimiento.ubicacion ?? '',
     fechaRequerida: requerimiento.fechaRequerida ?? '',
     experienciaRequerida: requerimiento.experienciaRequerida ?? '',
@@ -159,6 +191,8 @@ export function aCuerpoRequerimiento(
       titulo: formulario.titulo.trim(),
       jefatura: formulario.jefatura.trim(),
       numeroPlazas: Number(formulario.numeroPlazas.trim()),
+      urgencia: formulario.urgencia,
+      modalidad: formulario.modalidad,
     },
     perfil: { perfilProfesional: formulario.perfilProfesional.trim() },
     conocimientos: {
@@ -169,6 +203,8 @@ export function aCuerpoRequerimiento(
     justificacion: { justificacion: formulario.justificacion.trim() },
   };
 
+  const departamentoId = formulario.departamentoId.trim();
+  if (departamentoId.length > 0) cuerpo.identificacion.departamentoId = departamentoId;
   const ubicacion = formulario.ubicacion.trim();
   if (ubicacion.length > 0) cuerpo.identificacion.ubicacion = ubicacion;
   if (formulario.fechaRequerida.length > 0) {
@@ -215,6 +251,13 @@ export function FormularioRequerimiento({
   const [errores, setErrores] = useState<ErroresFormulario>({});
   const [enviando, setEnviando] = useState(false);
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
+
+  // Catálogo de áreas LARCO para el select de departamento (best-effort:
+  // si falla, el campo sigue siendo opcional y el server valida el uuid).
+  const departamentos = useRecurso<Departamento[]>(
+    () => solicitud<Departamento[]>('/departamentos'),
+    [],
+  );
 
   const cambiar = (campo: keyof EstadoFormularioRequerimiento) => (valor: string) => {
     setFormulario((anterior) => ({ ...anterior, [campo]: valor }));
@@ -264,6 +307,62 @@ export function FormularioRequerimiento({
             onCambio={cambiar('numeroPlazas')}
             error={errores.numeroPlazas}
           />
+          <div>
+            <label htmlFor="req-urgencia" className={CLASE_ETIQUETA}>
+              Urgencia
+            </label>
+            <select
+              id="req-urgencia"
+              value={formulario.urgencia}
+              onChange={(evento) =>
+                cambiar('urgencia')(evento.target.value as UrgenciaRequerimiento)
+              }
+              className={CLASE_CAMPO}
+            >
+              {URGENCIAS_REQUERIMIENTO.map((urgencia) => (
+                <option key={urgencia} value={urgencia}>
+                  {ETIQUETA_URGENCIA[urgencia]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="req-modalidad" className={CLASE_ETIQUETA}>
+              Modalidad
+            </label>
+            <select
+              id="req-modalidad"
+              value={formulario.modalidad}
+              onChange={(evento) =>
+                cambiar('modalidad')(evento.target.value as ModalidadRequerimiento)
+              }
+              className={CLASE_CAMPO}
+            >
+              {MODALIDADES_REQUERIMIENTO.map((modalidad) => (
+                <option key={modalidad} value={modalidad}>
+                  {ETIQUETA_MODALIDAD[modalidad]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="req-departamento" className={CLASE_ETIQUETA}>
+              Departamento
+            </label>
+            <select
+              id="req-departamento"
+              value={formulario.departamentoId}
+              onChange={(evento) => cambiar('departamentoId')(evento.target.value)}
+              className={CLASE_CAMPO}
+            >
+              <option value="">(sin departamento)</option>
+              {(departamentos.datos ?? []).map((departamento) => (
+                <option key={departamento.id} value={departamento.id}>
+                  {departamento.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
           <CampoTexto
             etiqueta="Ubicación"
             valor={formulario.ubicacion}
