@@ -1,0 +1,459 @@
+================================================================================
+RESUMEN COMPLETO DE DESARROLLO - LARCO GESTION HUMANA (ATS)
+Sistema de Gestion de Talento / Reclutamiento
+================================================================================
+Fecha de elaboracion : 22/10/2026
+Ruta del proyecto     : C:\IA-APP\LARCO\GESTION HUMANA
+Version del documento : 1.0
+Auditorio             : Equipo de Desarrollo
+
+--------------------------------------------------------------------------------
+1. DESCRIPCION GENERAL
+--------------------------------------------------------------------------------
+Aplicacion web interna para gestionar el proceso de reclutamiento y seleccion
+de personal de LARCO (denominada "LARCO ATS" - Applicant Tracking System).
+
+El sistema cubre el ciclo completo:
+  Requerimiento de personal -> Importacion de CVs (Hojas de Vida) ->
+  Embudo de seleccion (kanban por fases) -> Entrevistas ->
+  Verificacion de antecedentes (scraping de portales oficiales) ->
+  Evaluacion por proveedor externo -> Historial y auditoria.
+
+Estado actual: FUNCIONAL y EN PRODUCCION LOCAL (maquina Windows).
+Ingreso web activo y verificado end-to-end (22/10/2026).
+
+--------------------------------------------------------------------------------
+2. STACK TECNOLOGICO
+--------------------------------------------------------------------------------
+BACKEND
+  - Framework   : NestJS 11 (Express 5) - TypeScript 5.8
+  - Base datos  : PostgreSQL 17 (puerto 5433) - SQL crudo via pool `pg`
+                  + TypeORM SOLO para el modulo de requerimientos
+  - Auth        : JWT Bearer (@nestjs/jwt + passport-jwt) + bcryptjs (cost 12)
+  - Extras      : multer (subida de CVs), pdf-parse (parseo de HVs),
+                  playwright (scraping antecedentes, Chromium headless),
+                  class-validator / class-transformer (ValidationPipe),
+                  @nestjs/serve-static (sirve el frontend compilado)
+
+FRONTEND
+  - React 19 + Vite 6 + TypeScript 5.7
+  - Tailwind CSS 4 (@tailwindcss/vite)
+  - react-router-dom 7 (enrutamiento SPA)
+  - zustand 5 (estado global, sesion persistida en localStorage)
+  - axios 1.11 (cliente HTTP con interceptor Bearer)
+  - @dnd-kit + @hello-pangea/dnd (kanban drag & drop)
+  - lucide-react (iconos), date-fns (fechas)
+
+INFRAESTRUCTURA
+  - PostgreSQL 17 instalado como servicio Windows (postgresql-x64-17, puerto 5433)
+    NOTA: tambien existe postgresql-x64-15 en puerto 5432 (NO usar, es otro server)
+  - docker-compose.yml disponible (solo servicio postgres, puerto publicado 5433)
+  - Arranque automatico: tarea programada LARCO-ATS-AutoStart -> start-larco-ats.bat
+  - Node.js 24 en la maquina (requiere >= 18)
+
+--------------------------------------------------------------------------------
+3. ARQUITECTURA Y FLUJO
+--------------------------------------------------------------------------------
+  Navegador (SPA React)
+        |
+        |  http://localhost:3001  (un puerto solo: backend sirve frontend)
+        |  o http://localhost:5173 (dev Vite, proxy /api -> 3001)
+        v
+  Backend NestJS (puerto 3001, prefijo global /api)
+        |  - JWTAuthGuard en 9 de 10 modulos (login es publico)
+        |  - Cifrado AES-256 de PII de candidatos (reutiliza JWT_SECRET)
+        v
+  PostgreSQL 17 (puerto 5433, base: gestion_humana_ats)
+
+RUTA DEL INGRESO WEB (flujo verificado):
+  /login -> POST /api/auth/login -> AuthService.validateUser
+    -> SQL usuarios JOIN roles (activo=true) + bcrypt.compare
+    -> firma JWT (payload {sub, email}, expira 24h)
+    -> useAuthStore.login() persiste en localStorage ('larco-auth')
+    -> navigate('/') -> ProtectedRoute deja pasar
+  Cada request: axios inyecta 'Authorization: Bearer <token>'
+  Si 401: logout automatico y redireccion a /login
+
+--------------------------------------------------------------------------------
+4. ESTRUCTURA DE DIRECTORIOS
+--------------------------------------------------------------------------------
+GESTION HUMANA/
+├── backend/                     NestJS (API REST)
+│   ├── src/
+│   │   ├── main.ts              Bootstrap: prefijo /api, CORS, puerto 3001
+│   │   ├── app.module.ts        11 modulos + TypeORM + ServeStaticModule
+│   │   ├── common/
+│   │   │   ├── database/        DatabaseModule @Global (Pool pg, max 20)
+│   │   │   ├── decorators/      @CurrentUser, @Roles
+│   │   │   ├── filters/         HttpExceptionFilter (existe, NO registrado)
+│   │   │   ├── guards/          RolesGuard (existe, NO registrado)
+│   │   │   └── interceptors/    AuditInterceptor (existe, NO registrado)
+│   │   └── modules/             10 modulos (ver seccion 5)
+│   ├── dist/                    Build compilado (node dist/main.js)
+│   └── .env                     Copia del .env raiz
+├── frontend/                    React + Vite
+│   ├── src/
+│   │   ├── App.tsx              Rutas + ProtectedRoute
+│   │   ├── pages/               9 paginas (ver seccion 7)
+│   │   ├── components/          kanban/, candidatos/, shared/ (Header, Sidebar)
+│   │   ├── services/            9 servicios axios (ver seccion 7)
+│   │   ├── store/               useAuthStore (persist), useEmbudoStore
+│   │   └── types/               Interfaces TypeScript (User, LoginDto, etc.)
+│   └── dist/                    Build compilado (lo sirve el backend)
+├── database/
+│   ├── migrations/              001_init_schema.sql, 002_requerimientos_mejorados.sql
+│   ├── seeds/                   001_roles_y_usuarios.sql (3 roles + admin)
+│   └── scripts/                 setup_inicial.sql, setup_pgcrypto.sql,
+│                                actualizadores de fases, importadores python/js
+├── BD CANDIDATOS/               Lotes fuente de HVs: LOTE0 (61), LOTE1 (45), LOTE2 (60)
+├── uploads/candidatos/          CVs subidos (163 PDFs actualmente)
+├── logs/                        backend.log, frontend.log (del .bat)
+├── .env                         Configuracion principal
+├── docker-compose.yml           Servicio postgres:17-alpine (puerto 5433)
+├── start-larco-ats.bat          Arranque completo (BD + backend + frontend)
+├── install-task.ps1             Crea tarea de Windows auto-start (LARCO-ATS-AutoStart)
+├── README.md                    Guia de instalacion
+└── DOCUMENTACION_TECNICA.md     Documentacion tecnica completa (645 lineas)
+
+--------------------------------------------------------------------------------
+5. MODULOS DEL BACKEND (10) - TODOS BAJO PREFIJO /api
+--------------------------------------------------------------------------------
+Todos los controllers aplican @UseGuards(JwtAuthGuard) a nivel de clase,
+EXCEPTO el login (unico endpoint publico).
+
+2.1 AUTH (publico en login)
+    POST   /api/auth/login          Login (email+password -> JWT + user)
+    GET    /api/auth/profile        Perfil del usuario autenticado
+
+2.2 CANDIDATOS
+    GET    /api/candidatos          Listado (filtros en query)
+    GET    /api/candidatos/:id      Detalle (descifra PII AES-256)
+    POST   /api/candidatos          Alta (soporta CV adjunto)
+    PATCH  /api/candidatos/:id      Edicion
+    GET    /api/candidatos/:id/historial  Historial del candidato
+
+2.3 EMBUDO (kanban de seleccion)
+    GET    /api/embudo/etapas          5 fases del embudo
+    GET    /api/embudo/candidaturas    Candidaturas con position
+    GET    /api/embudo/dashboard       Metricas del dashboard
+    POST   /api/embudo/mover-fase      Mover candidato de fase
+    POST   /api/embudo/crear-candidatura  Crear candidatura
+
+2.4 ANTECEDENTES (scraping Playwright - Policia Nacional, SIMIT, etc.)
+    GET    /api/antecedentes/candidato/:id         Historial de consultas
+    POST   /api/antecedentes/consultar/:candidatoId  Disparar consulta
+    GET    /api/antecedentes/estado/:consultaId    Estado del scraping
+
+2.5 ENTREVISTAS
+    GET    /api/entrevistas                Listado
+    GET    /api/entrevistas/candidatura/:id Por candidatura
+    POST   /api/entrevistas                Crear
+    PATCH  /api/entrevistas/:id            Editar/actualizar resultado
+    DELETE /api/entrevistas/:id            Eliminar
+
+2.6 PROVEEDOR (evaluacion por terceros)
+    GET    /api/proveedor/candidatura/:i  Resultados por candidatura
+    POST   /api/proveedor                 Registrar resultado
+    PATCH  /api/proveedor/:id             Actualizar resultado
+
+2.7 HISTORIAL Y AUDITORIA
+    GET    /api/historial/candidato/:id   Historial completo de un candidato
+    GET    /api/historial/auditoria       Logs de auditoria (tabla inmutable por trigger)
+    GET    /api/historial/rechazos        Historial de rechazos (motivo obligatorio)
+
+2.8 REQUERIMIENTOS (TypeORM - unico modulo con ORM)
+    GET    /api/requerimientos            Listado
+    GET    /api/requerimientos/estadisticas  Metricas
+    GET    /api/requerimientos/:id        Detalle
+    POST   /api/requerimientos            Crear
+    PUT    /api/requerimientos/:id        Editar
+    DELETE /api/requerimientos/:id        Eliminar
+
+2.9 UPLOADS
+    POST   /api/uploads                   Subir archivo (entidad + id)
+    GET    /api/uploads/:entidad/:entidadId  Listar adjuntos
+
+2.10 IMPORTACION (carga masiva de HVs)
+    POST   /api/importacion/parse-pdf       Parsear un PDF (pdf-parse)
+    POST   /api/importacion/importar-cvs    Importar lote de CVs
+    GET    /api/importacion/pdf/:filename   Descargar PDF original
+
+--------------------------------------------------------------------------------
+6. AUTENTICACION, RBAC Y SEGURIDAD
+--------------------------------------------------------------------------------
+CREDENCIALES POR DEFECTO (sembradas en BD):
+  Email      : admin@larco.com
+  Contrasena : admin123        (cambiar en produccion)
+  Rol        : admin_rrhh
+
+ROLES RBAC (tabla roles, permisos en JSONB):
+  admin_rrhh          : can_view, can_edit, can_delete, can_view_polygraph,
+                        can_export, can_manage_users
+  analista_seleccion  : can_view, can_edit, can_export
+  lider_area          : solo can_view (solo lectura)
+
+MECANISMOS ACTIVOS:
+  - JWT Bearer (expira 24h, secret en .env JWT_SECRET)
+  - bcryptjs cost 12 para contrasenas
+  - JwtAuthGuard en 9 modulos (todas las rutas salvo login)
+  - PII de candidatos cifrada en columnas *_cifrado (BYTEA, AES-256)
+  - Auditoria persistida en auditoria_logs (inmutable: trigger bloquea UPDATE/DELETE)
+  - Trigger de alerta de candidato repetido (por email/documento)
+  - Trigger que obliga motivo en rechazos
+  - CORS restringido a FRONTEND_URL (localhost:5173)
+
+PENDIENTES DE SEGURIDAD (documentados en DOCUMENTACION_TECNICA.md seccion Mejoras):
+  - Registrar RolesGuard global + usar @Roles en controllers (RBAC efectivo
+    por endpoint; hoy solo existe en BD/UI, NO se valida en backend)
+  - Registrar HttpExceptionFilter global
+  - Registrar AuditInterceptor (auditoria real de acciones)
+  - Rate-limiting anti fuerza bruta en login
+  - helmet (headers de seguridad)
+  - Validacion estricta de tipo de archivo en uploads (DTOs completos)
+  - Ocultar credenciales de prueba visibles en LoginPage.tsx
+  - Gesturacion de usuarios desde UI (permiso existe, no hay CRUD ni pagina)
+  - Cambio/recuperacion de contrasena (no existe)
+
+--------------------------------------------------------------------------------
+7. FRONTEND - PAGINAS, RUTAS Y SERVICIOS
+--------------------------------------------------------------------------------
+RUTAS (todas protegidas por ProtectedRoute excepto /login):
+  /login                  LoginPage                 Formulario de ingreso
+  /                       DashboardPage             Panel de metricas
+  /embudo                 EmbudoPage                Kanban drag & drop por fases
+  /candidatos             CandidatosPage            Listado y busqueda
+  /candidatos/:id         CandidatoDetailPage       Ficha completa del candidato
+  /entrevistas            EntrevistasPage           Calendario/gestion de entrevistas
+  /departamentos          DepartamentosPage         Gestion de areas/departamentos
+  /requerimientos         RequerimientosPage        Solicitudes de personal
+  /importar-candidatos    ImportarCandidatosPage    Carga masiva de HVs (PDF)
+  *                       Navigate to / (404 -> home)
+
+COMPONENTES:
+  components/kanban/      KanbanBoard, Column, Card, CandidateDetailModal
+  components/candidatos/  CandidatoForm, CVUploader, HistorialCandidato
+  components/shared/      Header (usuario/rol), Sidebar (menu + logout)
+
+SERVICIOS (axios, baseURL '/api'):
+  api.ts                  Cliente con interceptor Bearer + manejo 401
+  auth.service.ts         login(), getProfile()
+  candidatos.service.ts   CRUD + historial + subirCV
+  embudo.service.ts       etapas, candidaturas, dashboard, mover, crear
+  entrevistas.service.ts  CRUD entrevistas
+  antecedentes.service.ts consultar, estado, historial
+  proveedor.service.ts    resultados proveedor
+  importacion.service.ts  parse-pdf, importar-cvs
+  requerimientos.service.ts CRUD + estadisticas
+
+ESTADO:
+  useAuthStore (zustand + persist localStorage 'larco-auth'):
+    { token, user, isAuthenticated, login(), logout() }
+  useEmbudoStore: estado del kanban
+
+--------------------------------------------------------------------------------
+8. BASE DE DATOS
+--------------------------------------------------------------------------------
+BASE: gestion_humana_ats (PostgreSQL 17, puerto 5433, usuario postgres)
+
+TABLAS (15):
+  usuarios, roles, candidatos, vacantes, etapas_embudo, estados_posibles,
+  candidaturas_procesos, movimientos_embudo, historial_rechazos,
+  antecedentes_consultados, entrevistas, resultados_proveedor,
+  archivos_adjuntos, auditoria_logs, requerimientos_personal
+
+VISTAS:
+  vw_dashboard_embudo, vw_historial_candidato
+
+TRIGGERS:
+  - Inmutabilidad de auditoria_logs (bloquea UPDATE/DELETE)
+  - Alerta de candidato repetido
+  - Motivo obligatorio en rechazos
+
+DATOS ACTUALES (22/10/2026):
+  candidatos        : 105
+  candidaturas      : 103
+  movimientos_embudo: 62
+  vacantes          : 38
+  entrevistas       : 18
+  requerimientos    : 11
+  usuarios          : 1  (admin)
+  roles             : 3
+  archivos_adjuntos : 0
+  antecedentes      : 0  (scraping no utilizado aun en esta BD)
+
+MIGRACIONES:
+  001_init_schema.sql              Esquema completo + fases del embudo + roles
+  002_requerimientos_mejorados.sql Tabla requerimientos_personal (37 columnas)
+                                   + columna candidatos.departamento
+  Ambas ejecutadas en la BD actual. docker-compose.yml y start-larco-ats.bat
+  ya las aplican automaticamente en BDs nuevas.
+
+SEED (database/seeds/001_roles_y_usuarios.sql):
+  3 roles + usuario admin (hash bcrypt CORREGIDO 22/10/2026; el anterior era
+  invalido - 59 caracteres - y hacia fallar el login en BDs nuevas).
+
+--------------------------------------------------------------------------------
+9. ESTADO DE LA DATA Y RECURSOS
+--------------------------------------------------------------------------------
+  uploads/candidatos/     : 163 PDFs de HVs subidos
+  backend/uploads/        : PDFs residuales de pruebas (limpiar recomendado)
+  BD CANDIDATOS/          : Lotes fuente para importacion
+                            LOTE0: 61 archivos | LOTE1: 45 | LOTE2: 60
+  logs/                   : backend.log, frontend.log, backend-test.log
+
+--------------------------------------------------------------------------------
+10. CAMBIOS RECIENTES (22/10/2026) - ALTA DEL INGRESO WEB
+--------------------------------------------------------------------------------
+El ingreso web ya existia en codigo pero estaba bloqueado. Se corrigio y
+activo el acceso unificado:
+
+ 1. database/seeds/001_roles_y_usuarios.sql
+    - Regenerado hash bcrypt del admin (el seed tenia un hash FALSO de 59
+      caracteres; un bcrypt valido mide 60). Nuevo hash valido para admin123.
+    - La BD viva ya tenia hash valido, no requirio cambio.
+
+ 2. backend/src/app.module.ts
+    - Registrado ServeStaticModule (@nestjs/serve-static) sirviendo
+      frontend/dist. El frontend ahora se sirve desde el backend en el
+      MISMO puerto 3001 (no se necesita el dev server de Vite).
+    - Exclude '/api/{*path}' (sintaxis path-to-regexp v8 de Express 5;
+      '/api/(.*)' causaba PathError y 500 en el fallback SPA).
+
+ 3. docker-compose.yml
+    - Puerto corregido "5433:5432" (antes 5432:5432; la app usa 5433).
+    - Agregado montaje de migracion 002 en docker-entrypoint-initdb.d.
+
+ 4. start-larco-ats.bat
+    - Ejecuta migracion 002 al crear BD nueva (antes solo 001).
+    - Anuncia la URL unificada de ingreso web.
+
+ 5. README.md y DOCUMENTACION_TECNICA.md
+    - Actualizadas con acceso en puerto 3001 y DB_PORT=5433.
+
+VERIFICACION REALIZADA (end-to-end, todo OK):
+  - POST /api/auth/login con admin123 -> JWT emitido, rol admin_rrhh
+  - Password incorrecta -> 401
+  - GET / , /login , /dashboard -> sirven la SPA (200)
+  - Assets JS e imagenes -> 200
+  - GET /api/candidatos con Bearer -> 200
+
+--------------------------------------------------------------------------------
+11. CÓMO EJECUTAR EL SISTEMA
+--------------------------------------------------------------------------------
+OPCION A - Arranque automatico (produccion local):
+  Ejecutar una vez:  powershell -File install-task.ps1
+  (crea tarea LARCO-ATS-AutoStart que corre start-larco-ats.bat al iniciar
+   sesion de Windows con privilegios elevados)
+
+  O manualmente:     start-larco-ats.bat
+  (verifica PostgreSQL 5433, crea BD si no existe + migraciones + seed,
+   inicia backend y frontend)
+
+OPCION B - Desarrollo manual (2 terminales):
+  Terminal 1 - Backend:
+    cd backend
+    npm install
+    npm run dev          # watch, puerto 3001
+
+  Terminal 2 - Frontend (opcional, solo para desarrollar UI):
+    cd frontend
+    npm install
+    npm run dev          # Vite, puerto 5173 con proxy /api -> 3001
+
+ACCESO:
+  Ingreso web (recomendado): http://localhost:3001
+  Frontend dev (opcional)  : http://localhost:5173
+  Backend API              : http://localhost:3001/api
+  Usuario                  : admin@larco.com
+  Contrasena               : admin123
+
+REQUISITOS:
+  Node >= 18, npm >= 9, PostgreSQL 17 en puerto 5433 (o Docker).
+
+--------------------------------------------------------------------------------
+12. CONFIGURACION (.env en raiz y backend/)
+--------------------------------------------------------------------------------
+  DB_HOST=localhost
+  DB_PORT=5433                # ALINEADO con docker-compose (corregido 22/10)
+  DB_USERNAME=postgres
+  DB_PASSWORD=****            # default postgres
+  DB_DATABASE=gestion_humana_ats
+  JWT_SECRET=****             # CAMBIAR EN PRODUCCION (usado tambien como clave AES-256)
+  JWT_EXPIRES_IN=24h
+  PORT=3001
+  UPLOADS_PATH=C:\IA-APP\LARCO\GESTION HUMANA\uploads
+  HEADLESS=true               # Playwright sin ventana
+  FRONTEND_URL=http://localhost:5173   # CORS (dev Vite)
+
+NOTAS DE CONFIG:
+  - Los scripts npm de migraciones de TypeORM (migration:run) apuntan a
+    src/config/data-source.ts que NO EXISTE; las migraciones reales se
+    ejecutan con psql o automaticamente via .bat/docker.
+  - Secret fallback en codigo: 'larco_ats_jwt_secret_2026' (auth.module.ts,
+    jwt.strategy.ts). Usar siempre el .env presente.
+  - CORS solo permite localhost:5173; para acceso desde otra maquina/IP
+    ampliar FRONTEND_URL (irrelevante al acceder via puerto 3001 same-origin).
+
+--------------------------------------------------------------------------------
+13. BACKLOG / TRABAJO PENDIENTE (conocido)
+--------------------------------------------------------------------------------
+PRIORIDAD ALTA:
+  [ ] Registrar RolesGuard global + decorador @Roles en controllers
+      (hoy el RBAC existe en BD pero NO se valida por endpoint)
+  [ ] Rate-limiting en endpoint de login (fuerza bruta)
+  [ ] Registrar HttpExceptionFilter global (mensajes de error consistentes)
+  [ ] Cambiar JWT_SECRET por valor fuerte en produccion (tambien clave AES-256)
+  [ ] Ocultar credenciales de prueba mostradas en LoginPage.tsx
+
+PRIORIDAD MEDIA:
+  [ ] CRUD de usuarios y roles desde UI (permiso can_manage_users existe)
+  [ ] Cambio y recuperacion de contrasena
+  [ ] Registrar AuditInterceptor (auditar acciones; corregir antes su
+      conexion: usa puerto 5432 por defecto, debe usar 5433/env)
+  [ ] helmet + validacion estricta de tipo MIME en uploads
+  [ ] Endpoint POST /api/candidatos/:id/cv (el frontend lo invoca en
+      candidatos.service.ts subirCV pero el controller NO lo tiene -> 404)
+  [ ] FileInterceptor con storage en memoria en candidatos.controller.ts
+      (usa file.buffer sin configurar almacenamiento explicito)
+
+PRIORIDAD BAJA:
+  [ ] Paginacion en listados
+  [ ] DTOs completos con class-validator en todos los endpoints
+  [ ] Limpieza de PDFs residuales en backend/uploads
+  [ ] Tests automatizados (no existen)
+  [ ] CI/CD y despliegue (hoy todo local)
+
+--------------------------------------------------------------------------------
+14. COMANDOS UTILES DE DIAGNOSTICO
+--------------------------------------------------------------------------------
+  # Estado de servicios
+  netstat -ano | findstr ":3001 :5433 :5173"
+
+  # Verificar BD (requiere PGPASSWORD=postgres)
+  "C:\Program Files\PostgreSQL\17\bin\psql.exe" -h localhost -p 5433 -U postgres -d gestion_humana_ats
+
+  # Probar login por API
+  curl -X POST http://localhost:3001/api/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@larco.com\",\"password\":\"admin123\"}"
+
+  # Reconstruir backend tras cambiar codigo
+  cd backend && npm run build    # genera dist/
+  node dist/main.js
+
+  # Reconstruir frontend (lo sirve el backend desde frontend/dist)
+  cd frontend && npm run build
+
+  # Logs
+  logs\backend.log, logs\frontend.log (del .bat de arranque)
+
+--------------------------------------------------------------------------------
+15. CONTACTO DEL SISTEMA
+--------------------------------------------------------------------------------
+  Proyecto   : LARCO Gestion Humana / LARCO ATS
+  Tipo       : Aplicacion web interna (localhost)
+  Owner      : Area de Recursos Humanos LARCO
+  Estado     : Activo - ingreso web verificado 22/10/2026
+
+================================================================================
+FIN DEL DOCUMENTO - Generado automaticamente 22/10/2026
+Para actualizar: regenerar este resumen tras cada release o cambio de esquema.
+================================================================================

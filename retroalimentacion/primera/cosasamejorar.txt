@@ -1,0 +1,11 @@
+- Todos los campos de candidato son obligatorios. Almenos validar en el front
+- En el tablero kanban, los candidatos descartados deben o reducir su tamaño o desaparecer.
+- Una vez se realice la contratación o contrataciones, si se supera el número de plazas, el estado del requerimiento debería reflejar el cambio de estado a contrato exitoso o concluido.
+- El tablero kanban no debería aceptar más candidatos para un requerimiento, si ya en el tablero, están los candidatos solicitados en la sección de contratación, tampoco mover los demás a contratación
+- Cuando el admin cierra un requerimiento, sea por contratación o el cierre de la vacante, no se solicita motivo, ni lleva seguimiento de si se contrató o no en dicho requerimiento.
+- Candidatos que ya han sido movidos en el kanban a contratación, no deberían poder ser asignados a otro requerimiento.
+- El superusuario, debe poder ver logs de cada acción en la app, si se ha movido un candidato, quién lo ha movido, en que momento lo hizo y qué hizo exactamente.
+- un candidato sólo puede pertenecer a un requerimiento.
+- los campos deven validar cantidad de caracteres, no puede llamarse un requerimiento o candidato como P o Si, NO. Correo electrónico con expresión regular, para aceptar correos electrónicos válidos.
+- Si el requerimiento cierra por contratación, debe aparecer el o los candidatos contratados.
+- En el tablero kanban, no debería poder devolver un candidato de una etapa a una anterior.
