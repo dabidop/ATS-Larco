@@ -29,11 +29,13 @@ import { TableroEmbudo } from './pages/embudo/TableroEmbudo';
  *  - `/dashboard`                    → resumen operativo (Etapa 9).
  *  - `/requerimientos/:id/embudo` → tablero Kanban del embudo de selección
  *    (protegida, dentro del Layout).
- *  - `/importar`                     → importación masiva de HVs (Etapa 9).
- *  - `/departamentos`                → áreas LARCO (Etapa 9).
- *  - `/entrevistas`                  → agenda de entrevistas (Etapa 9).
+ *  - `/importar`                     → importación masiva de HVs (Etapa 9;
+ *    solo analista/admin/superusuario).
+ *  - `/departamentos`                → áreas LARCO (Etapa 9; cualquier rol).
+ *  - `/entrevistas`                  → agenda de entrevistas (Etapa 9;
+ *    solo analista/admin/superusuario).
  *  - `/bitacora` (+ `/usuarios`)     → SOLO `superusuario`
- *    (`RutaProtegida rolPermitido`); cualquier otro rol → `/requerimientos`.
+ *    (`RutaProtegida rolPermitido`); cualquier otro rol → `/dashboard`.
  *  - `/` → redirect a `/dashboard`; cualquier otra ruta → 404.
  */
 export function RutasAplicacion() {
@@ -51,9 +53,23 @@ export function RutasAplicacion() {
           <Route path="candidatos" element={<PaginaCandidatos />} />
           <Route path="candidatos/nuevo" element={<PaginaNuevoCandidato />} />
           <Route path="candidatos/:id" element={<PaginaDetalleCandidato />} />
-          <Route path="importar" element={<PaginaImportarHVs />} />
+          <Route
+            path="importar"
+            element={
+              <RutaProtegida rolPermitido={['analista_seleccion', 'admin_rrhh', 'superusuario']} />
+            }
+          >
+            <Route index element={<PaginaImportarHVs />} />
+          </Route>
           <Route path="departamentos" element={<PaginaDepartamentos />} />
-          <Route path="entrevistas" element={<PaginaEntrevistas />} />
+          <Route
+            path="entrevistas"
+            element={
+              <RutaProtegida rolPermitido={['analista_seleccion', 'admin_rrhh', 'superusuario']} />
+            }
+          >
+            <Route index element={<PaginaEntrevistas />} />
+          </Route>
           <Route path="bitacora" element={<RutaProtegida rolPermitido="superusuario" />}>
             <Route index element={<PaginaBitacora />} />
           </Route>

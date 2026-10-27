@@ -173,7 +173,7 @@
                        app.current_user_id que fija la API con el sub del JWT.
 
   CAMPOS NUEVOS EN requerimientos (migración 009): urgencia ENUM
-  (normal/media/critica), modalidad ENUM (directa/concurso),
+  (normal/alta/critica), modalidad ENUM (directa/indirecta/terceros),
   departamento_id → departamentos, motivo_cierre, resultado_cierre ENUM
   (contratacion/cierre_vacante) y estado_requerimiento += 'exitoso'.
   CHECK requerimientos_cierre_check: estado='cerrado' ⇒

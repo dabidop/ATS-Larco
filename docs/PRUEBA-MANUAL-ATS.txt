@@ -130,8 +130,8 @@ PANTALLA 3 — Requerimientos (lista)
 PANTALLA 4 — Nuevo requerimiento (rol líder o admin)
   Formulario con:
     1. Identificación y jefatura: título*, jefatura*, número de plazas*,
-       ubicación, fecha requerida, URGENCIA (normal/media/crítica),
-       MODALIDAD (directa/concurso) y DEPARTAMENTO (catálogo de las 8
+       ubicación, fecha requerida, URGENCIA (normal/alta/crítica),
+       MODALIDAD (directa/indirecta/terceros) y DEPARTAMENTO (catálogo de las 8
        áreas LARCO).
     2. Perfil profesional: perfil*, experiencia y nivel de educación.
     3. Conocimientos y habilidades*: dos listas separadas por comas.

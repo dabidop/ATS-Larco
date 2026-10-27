@@ -6,6 +6,7 @@ import { RutasAplicacion } from '../App';
 import { PaginaNuevoUsuario } from '../pages/usuarios/NuevoUsuario';
 import { PaginaUsuarios } from '../pages/usuarios/ListaUsuarios';
 import {
+  fixtureDashboard,
   fixturePagina,
   fixtureUsuario,
   instalarFetch,
@@ -214,9 +215,12 @@ describe('listado de usuarios (gestión exclusiva del superusuario)', () => {
     expect(fetchMock.mock.calls.length).toBe(0);
   });
 
-  it('la ruta /usuarios redirige a /requerimientos a un rol distinto del superusuario', async () => {
+  it('la ruta /usuarios redirige a /dashboard a un rol distinto del superusuario', async () => {
     sembrarSesion('admin_rrhh');
-    instalarFetch(() => ({ cuerpo: fixturePagina([]) }));
+    instalarFetch((url) => {
+      if (url.startsWith('/api/dashboard')) return { cuerpo: fixtureDashboard() };
+      return { cuerpo: fixturePagina([]) };
+    });
 
     render(
       <MemoryRouter initialEntries={['/usuarios']}>
@@ -224,7 +228,7 @@ describe('listado de usuarios (gestión exclusiva del superusuario)', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole('heading', { name: 'Requerimientos' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Dashboard/i })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Nuevo usuario' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Usuarios' })).not.toBeInTheDocument();
   });

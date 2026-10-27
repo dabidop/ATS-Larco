@@ -10,12 +10,16 @@ import { useSesionStore } from '../../store/sesion';
  * la sesión en el store y, como este componente está suscrito, la siguiente
  * renderización redirige a `/login` sin necesidad de tocar el history a mano.
  *
- * Rol opcional (`rolPermitido`): si se pasa y el rol de la sesión no coincide,
- * se redirige a `/requerimientos` (patrón de la ruta `/usuarios`, exclusiva
- * del `superusuario`). Sin la prop el comportamiento es EXACTAMENTE el
- * original: solo se exige token.
+ * Rol opcional (`rolPermitido`): si se pasa (un rol o una lista de roles) y
+ * el rol de la sesión no está en la lista, se redirige a `/dashboard` (la
+ * página inicial desde la Etapa 9). Patrones: `/usuarios` y `/bitacora`
+ * exclusivos del `superusuario`; `/entrevistas` e `/importar` de
+ * analista/admin/superusuario. Sin la prop el comportamiento es EXACTAMENTE
+ * el original: solo se exige token.
  */
-export function RutaProtegida({ rolPermitido }: { rolPermitido?: string } = {}) {
+export function RutaProtegida({
+  rolPermitido,
+}: { rolPermitido?: string | readonly string[] } = {}) {
   const token = useSesionStore((estado) => estado.token);
   const rol = useSesionStore((estado) => estado.usuario?.role ?? null);
   const ubicacion = useLocation();
@@ -23,8 +27,14 @@ export function RutaProtegida({ rolPermitido }: { rolPermitido?: string } = {}) 
   if (token === null) {
     return <Navigate to="/login" replace state={{ from: ubicacion }} />;
   }
-  if (rolPermitido !== undefined && rol !== rolPermitido) {
-    return <Navigate to="/requerimientos" replace />;
+  if (rolPermitido !== undefined && !permitido(rol, rolPermitido)) {
+    return <Navigate to="/dashboard" replace />;
   }
   return <Outlet />;
+}
+
+/** ¿`rol` está en la lista de roles permitidos? */
+function permitido(rol: string | null, permitidos: string | readonly string[]): boolean {
+  if (typeof permitidos === 'string') return rol === permitidos;
+  return rol !== null && permitidos.includes(rol);
 }

@@ -98,4 +98,23 @@ describe('App (árbol de rutas completo)', () => {
       await screen.findByRole('heading', { name: /Tablero de selección/i }),
     ).toBeInTheDocument();
   });
+
+  it('/entrevistas exige rol de operación: un líder es redirigido a /dashboard', async () => {
+    irA('/entrevistas');
+    sembrarSesion('lider_area');
+    const fetchMock = instalarFetch((url) => {
+      if (url.startsWith('/api/dashboard')) return { cuerpo: fixtureDashboard() };
+      return { cuerpo: [] };
+    });
+
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByText('Dashboard — Embudo RRHH')).toBeInTheDocument();
+    // Ni siquiera se lanza la petición de entrevistas (la API respondería 403).
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/entrevistas'))).toBe(false);
+  });
 });
