@@ -501,6 +501,75 @@ export class CandidatosService {
     });
   }
 
+  /**
+   * Borra un candidato capturado por ERROR (corrección posterior a la Etapa 9).
+   *
+   * Reglas, en este ORDEN (todas decididas AQUÍ: no hay `@Roles` en la ruta,
+   * porque es una cuestión de PROPIEDAD de la fila y no de rol):
+   *  1. **404** si no existe.
+   *  2. **403** si no es el `superusuario` (IT) ni el que lo CREÓ. A
+   *     diferencia de `update`, `admin_rrhh` NO borra candidatos ajenos: aquí
+   *     se destruyen datos, no se corrigen.
+   *  3. **409** si está ligado a un requerimiento (tiene postulaciones): el
+   *     histórico de selección es intocable, esa es la condición del usuario.
+   *
+   * El borrado es UNA sentencia con el `NOT EXISTS` DENTRO (atómico): no puede
+   * llegar una postulación entre la comprobación y el DELETE, y el
+   * `ON DELETE CASCADE` de `postulaciones.candidato_id` nunca llega a actuar.
+   * Sus `archivos_cv` SÍ se borran en cascada; los FICHEROS en disco quedan
+   * (dedup por sha256, pueden ser compartidos).
+   *
+   * Va dentro de una transacción con el GUC del actor: el trigger
+   * `candidatos_audit_log` (que audita DELETE desde la migración 011) deja la
+   * entrada en `audit_log` con `changed_by` = quién borró.
+   */
+  async eliminar(id: string, user: AuthenticatedUser): Promise<void> {
+    const repo = await this.store.repo();
+    const entidad = await repo.findOneBy({ id });
+    if (entidad === null) {
+      throw new NotFoundException(`No existe un candidato con id ${id}`);
+    }
+
+    if (entidad.createdBy !== user.sub && user.role !== ROLE_SUPERUSUARIO) {
+      throw new ForbiddenException(
+        'Solo el creador del candidato o el superusuario (IT) pueden eliminarlo',
+      );
+    }
+
+    await this.store.withTransaction(async (em) => {
+      await this.fijarActorDeAuditoria(em, user.sub);
+
+      // TypeORM devuelve [filas, cantidadAfectada] para DELETE ... RETURNING,
+      // no solamente el arreglo de filas. Antes se comprobaba `borrado.length`,
+      // que siempre vale 2 incluso cuando no se eliminaba ninguna fila; eso
+      // permitía borrar candidatos que ya tenían una postulación.
+      const resultadoBorrado = await em.query<{ id: string }[][]>(
+        `DELETE FROM candidatos
+          WHERE id = $1
+            AND NOT EXISTS (SELECT 1 FROM postulaciones WHERE candidato_id = $1)
+          RETURNING id`,
+        [id],
+      );
+      const filasBorradas = resultadoBorrado[0] ?? [];
+      if (filasBorradas.length > 0) {
+        return;
+      }
+
+      // No se borró: o está ligado a un requerimiento (409) o desapareció
+      // entre la lectura previa y esta transacción (404).
+      const ligadas = await em.query<{ id: string }[]>(
+        'SELECT id FROM postulaciones WHERE candidato_id = $1',
+        [id],
+      );
+      if (ligadas.length > 0) {
+        throw new ConflictException(
+          'No se puede eliminar: el candidato está ligado a un requerimiento',
+        );
+      }
+      throw new NotFoundException(`No existe un candidato con id ${id}`);
+    });
+  }
+
   // ───────────────────────── historial (Fase 4, parte 3) ─────────────────────────
 
   /**

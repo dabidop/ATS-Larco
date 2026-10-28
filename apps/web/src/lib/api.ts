@@ -36,7 +36,7 @@ export class ApiError extends Error {
 }
 
 export interface OpcionesSolicitud {
-  metodo?: 'GET' | 'POST' | 'PUT' | 'PATCH';
+  metodo?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   /** Cuerpo JSON (se serializa automáticamente; su presencia añade el header). */
   cuerpo?: unknown;
 }

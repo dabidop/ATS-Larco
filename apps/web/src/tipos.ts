@@ -329,6 +329,11 @@ export interface Usuario {
   /** Nombre legible del rol (`roles.name`) para pintar la tabla. */
   rolNombre: string;
   activo: boolean;
+  /**
+   * Jefatura/área del `lider_area` (corrección posterior a la Etapa 9): con
+   * ella el líder solo ve lo de SU área. `null` si no tiene asignada.
+   */
+  jefatura: string | null;
   /** ISO 8601 (UTC). */
   creadoEn: string;
 }
@@ -339,6 +344,8 @@ export interface UsuarioNuevo {
   email: string;
   password: string;
   rol: string;
+  /** Jefatura del líder; opcional (y sin efecto en roles que no son líder). */
+  jefatura?: string | null;
 }
 
 /**
@@ -470,6 +477,12 @@ export interface EntradaAuditoria {
   tabla: string;
   registroId: string;
   accion: 'INSERT' | 'UPDATE' | 'DELETE';
+  /**
+   * Nombre legible del registro («REQ-2026-001 — Vacante», «Juan Pérez»…),
+   * resuelto en el servidor desde el snapshot. `null` = la tabla no aporta
+   * nombre y se muestra el id corto.
+   */
+  etiqueta: string | null;
   /** Quién ejecutó la escritura (resuelto desde `users`; `null` si fue SQL). */
   actor: { id: string | null; email: string | null };
   fecha: string;

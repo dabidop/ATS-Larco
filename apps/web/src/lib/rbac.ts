@@ -103,6 +103,21 @@ export function puedeEditarCandidato(rol: string | null | undefined, esCreador: 
   return esCreador || esAdministradorRRHH(rol);
 }
 
+/**
+ * Eliminar (`DELETE /:id`, corrección posterior a la Etapa 9): SOLO el creador
+ * o el `superusuario` (IT) — a diferencia de editar, `admin_rrhh` NO borra
+ * candidatos ajenos. El servidor es la verdad (403 con mensaje); aquí solo se
+ * oculta el botón. El «sin postulaciones» NO se evalúa en cliente: si el
+ * candidato está ligado a un requerimiento el API responde 409 y la página
+ * muestra ese mensaje.
+ */
+export function puedeEliminarCandidato(
+  rol: string | null | undefined,
+  esCreador: boolean,
+): boolean {
+  return esCreador || rol === 'superusuario';
+}
+
 // ──────────────────────────── Embudo de selección ────────────────────────────
 
 /**

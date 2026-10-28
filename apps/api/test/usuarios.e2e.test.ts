@@ -538,7 +538,7 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
       expect(hash).not.toContain('NuevaClave1');
     });
 
-    it('400 «Debe indicar al menos un cambio (activo, rol o password)» si el cuerpo va vacío', async () => {
+    it('400 «Debe indicar al menos un cambio (activo, rol, password o jefatura)» si el cuerpo va vacío', async () => {
       const response = await request(app.getHttpServer())
         .patch(`/api/usuarios/${analistaId}`)
         .set('Authorization', `Bearer ${tokenSuper}`)
@@ -546,7 +546,7 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
         .expect(400);
 
       expect(response.body.message).toContain(
-        'Debe indicar al menos un cambio (activo, rol o password)',
+        'Debe indicar al menos un cambio (activo, rol, password o jefatura)',
       );
     });
 

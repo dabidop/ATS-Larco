@@ -33,4 +33,13 @@ export class UpdateUsuarioDto {
   @IsString({ message: 'password debe ser una cadena de texto' })
   @MinLength(8, { message: 'password debe tener al menos 8 caracteres' })
   password?: string;
+
+  /**
+   * Jefatura del líder (misma regla que en el alta). `''` la VACÍA: un líder
+   * vuelve al filtro por `created_by` hasta que IT le asigne área. No es
+   * obligatorio: el resto de campos del cuerpo siguen siendo opcionales.
+   */
+  @IsOptional()
+  @IsString({ message: 'jefatura debe ser una cadena de texto' })
+  jefatura?: string | null;
 }

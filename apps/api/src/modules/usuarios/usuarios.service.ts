@@ -27,7 +27,7 @@ const ROL_SUPERUSUARIO = 'superusuario';
 
 /** Mensajes de negocio compartidos por servicio y tests. */
 const MENSAJE_DUPLICADO = 'Ya existe un usuario con ese correo';
-const MENSAJE_SIN_CAMBIOS = 'Debe indicar al menos un cambio (activo, rol o password)';
+const MENSAJE_SIN_CAMBIOS = 'Debe indicar al menos un cambio (activo, rol, password o jefatura)';
 const MENSAJE_DESACTIVARSE = 'No puede desactivar su propia cuenta';
 const MENSAJE_CAMBIAR_ROL_PROPIO = 'No puede cambiar su propio rol';
 const MENSAJE_ULTIMO_SUPERUSUARIO = 'Debe permanecer al menos un superusuario activo';
@@ -62,6 +62,23 @@ function esViolacionUnica(error: unknown, constraint: string): boolean {
  */
 function escaparLike(texto: string): string {
   return texto.replace(/[\\%_]/g, '\\$&');
+}
+
+/**
+ * Jefatura del líder (corrección posterior a la Etapa 9) normalizada:
+ *  - `undefined` → SIN CAMBIO (campo ausente en el cuerpo);
+ *  - `null` o `''` → `NULL` (área vacía: el líder queda con el fallback);
+ *  - cualquier texto → `trim()`; si tras el trim no queda nada, `NULL`.
+ */
+function normalizarJefatura(valor: string | null | undefined): string | null | undefined {
+  if (valor === undefined) {
+    return undefined;
+  }
+  if (valor === null) {
+    return null;
+  }
+  const texto = valor.trim();
+  return texto.length === 0 ? null : texto;
 }
 
 /**
@@ -174,14 +191,15 @@ export class UsuariosService {
     }
 
     const passwordHash = await hashPassword(dto.password);
+    const jefatura = normalizarJefatura(dto.jefatura) ?? null;
 
     try {
       return await this.conActorDeAuditoria(actor, async (cliente) => {
         const insertado = await cliente.query<{ id: string }>(
-          `INSERT INTO users (role_id, email, password_hash, full_name, active)
-           VALUES ($1, $2, $3, $4, true)
+          `INSERT INTO users (role_id, email, password_hash, full_name, active, jefatura)
+           VALUES ($1, $2, $3, $4, true, $5)
            RETURNING id`,
-          [rolId, email, passwordHash, dto.nombre],
+          [rolId, email, passwordHash, dto.nombre, jefatura],
         );
         const id = insertado.rows[0]?.id;
         if (id === undefined) {
@@ -207,7 +225,8 @@ export class UsuariosService {
    * Actualización parcial → **200** con la fila ACTUALIZADA.
    *
    * Reglas, en este orden (todas verificadas por `test/usuarios.e2e.test.ts`):
-   *  1. **400** si no viene NINGÚN campo (`activo`, `rol` o `password`).
+   *  1. **400** si no viene NINGÚN campo (`activo`, `rol`, `password` o
+   *     `jefatura`).
    *  2. **404** si el usuario no existe (**400** si el id no es uuid: lo dice
    *     el `UUID_PARAM` del controlador).
    *  3. **409** si se desactiva a SÍ MISMO (`sub` del JWT).
@@ -226,7 +245,12 @@ export class UsuariosService {
    * entre sí y la segunda re-cuenta sobre el estado ya confirmado de la primera.
    */
   async actualizar(id: string, dto: UpdateUsuarioDto, actor: string): Promise<UsuarioResponseDto> {
-    if (dto.activo === undefined && dto.rol === undefined && dto.password === undefined) {
+    if (
+      dto.activo === undefined &&
+      dto.rol === undefined &&
+      dto.password === undefined &&
+      dto.jefatura === undefined
+    ) {
       throw new BadRequestException(MENSAJE_SIN_CAMBIOS);
     }
 
@@ -280,6 +304,11 @@ export class UsuariosService {
       if (passwordHash !== undefined) {
         params.push(passwordHash);
         sets.push(`password_hash = $${params.length}`);
+      }
+      const jefatura = normalizarJefatura(dto.jefatura);
+      if (jefatura !== undefined) {
+        params.push(jefatura);
+        sets.push(`jefatura = $${params.length}`);
       }
       params.push(id);
 

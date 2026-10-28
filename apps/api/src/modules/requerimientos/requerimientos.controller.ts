@@ -108,10 +108,16 @@ export class RequerimientosController {
     return this.requerimientos.create(body, requireUser(request).sub);
   }
 
-  /** Listado paginado con filtros por `estado` y `jefatura` (cualquier rol). */
+  /**
+   * Listado paginado con filtros por `estado` y `jefatura` (cualquier rol).
+   * El `lider_area` solo recibe los de SU jefatura (decisión en el servicio).
+   */
   @Get()
-  async list(@Query() query: ListRequerimientosQueryDto): Promise<RequerimientosPageDto> {
-    return this.requerimientos.list(query);
+  async list(
+    @Query() query: ListRequerimientosQueryDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<RequerimientosPageDto> {
+    return this.requerimientos.list(query, requireUser(request));
   }
 
   /** Detalle por id (uuid); 400 si el id no es uuid y 404 si no existe. */

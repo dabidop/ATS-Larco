@@ -18,11 +18,28 @@ export function fechaCorta(iso: string | null | undefined): string {
   return `${dia}/${mes}/${anio}`;
 }
 
-/** `dd/mm/aaaa HH:MM` (UTC) para el historial y los timestamps. */
+/** Rellena con un `0` a la izquierda para que hora y día siempre sean 2 cifras. */
+function dosDigitos(valor: number): string {
+  return String(valor).padStart(2, '0');
+}
+
+/**
+ * `dd/mm/aaaa HH:MM` en la HORA DEL SISTEMA (huso local de quien mira).
+ *
+ * El ISO que devuelve la API está en UTC (`timestamptz` de `pg`). La versión
+ * anterior hacía `slice(11, 16)` sobre ese texto y pintaba la hora UTC
+ * disfrazada de local —el bug de la bitácora—; ahora se construye con `Date`
+ * y sus partes LOCALES (`getDate`, `getHours`…), así un registro hecho a las
+ * 18:30 en Bogotá se ve a las 18:30 en cualquier máquina.
+ *
+ * `fechaCorta` NO cambia: sigue leyendo el texto de los `YYYY-MM-DD` de
+ * negocio (`fechaRequerida`), fechas SIN hora que no deben correrse de día.
+ */
 export function fechaHora(iso: string | null | undefined): string {
-  if (iso === null || iso === undefined || iso.length < 16) return SIN_DATO;
-  const hora = iso.slice(11, 16);
-  return `${fechaCorta(iso)} ${hora}`;
+  if (iso === null || iso === undefined) return SIN_DATO;
+  const fecha = new Date(iso);
+  if (Number.isNaN(fecha.getTime())) return SIN_DATO;
+  return `${dosDigitos(fecha.getDate())}/${dosDigitos(fecha.getMonth() + 1)}/${fecha.getFullYear()} ${dosDigitos(fecha.getHours())}:${dosDigitos(fecha.getMinutes())}`;
 }
 
 /** Tamaño legible de un fichero: KB o MB (base binaria, como ve el usuario). */

@@ -27,6 +27,8 @@ export type UsuarioFila = {
   /** `roles.name` (p. ej. `Administrador RRHH`). */
   rol_nombre: string;
   activo: boolean;
+  /** `users.jefatura` (corrección posterior a la Etapa 9): área del líder. */
+  jefatura: string | null;
   /** `timestamptz` llega desde `pg` como `Date`. */
   creado_en: Date;
 };
@@ -40,6 +42,11 @@ export interface UsuarioResponseDto {
   /** Nombre legible del rol (para pintar la tabla sin resolver el código). */
   rolNombre: string;
   activo: boolean;
+  /**
+   * Jefatura/área del líder (`lider_area`): con ella el líder solo ve los
+   * requerimientos de SU área. `null` si no tiene (o si no es líder).
+   */
+  jefatura: string | null;
   /** ISO 8601 (UTC). */
   creadoEn: string;
 }
@@ -65,6 +72,7 @@ export const COLUMNAS_USUARIO = `
   r.code AS rol,
   r.name AS rol_nombre,
   u.active AS activo,
+  u.jefatura,
   u.created_at AS creado_en
 `;
 
@@ -77,6 +85,7 @@ export function toUsuarioResponse(fila: UsuarioFila): UsuarioResponseDto {
     rol: fila.rol,
     rolNombre: fila.rol_nombre,
     activo: fila.activo,
+    jefatura: fila.jefatura,
     creadoEn: new Date(fila.creado_en).toISOString(),
   };
 }

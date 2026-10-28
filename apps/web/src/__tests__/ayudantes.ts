@@ -209,6 +209,7 @@ export function fixtureUsuario(extra: Partial<Usuario> = {}): Usuario {
     rol: 'admin_rrhh',
     rolNombre: 'Administrador RRHH',
     activo: true,
+    jefatura: null,
     creadoEn: '2026-01-10T08:00:00.000Z',
     ...extra,
   };

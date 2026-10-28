@@ -39,7 +39,9 @@ function EntradaAuditoriaFila({ entrada }: { entrada: EntradaAuditoria }) {
           {ETIQUETA_ACCION_HISTORIAL[entrada.accion] ?? entrada.accion}
         </span>
         <span className="font-medium text-slate-100">{entrada.tabla}</span>
-        <span className="text-xs text-slate-500">registro {entrada.registroId.slice(0, 8)}…</span>
+        <span className="text-xs text-slate-500">
+          {entrada.etiqueta ?? `registro ${entrada.registroId.slice(0, 8)}…`}
+        </span>
         <span className="text-xs text-slate-400">
           {entrada.actor.email ?? '—'} · {fechaHora(entrada.fecha)}
         </span>

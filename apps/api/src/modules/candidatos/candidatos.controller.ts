@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -76,6 +77,7 @@ function requireUser(request: AuthenticatedRequest): AuthenticatedUser {
  * | GET  /api/candidatos/:id                   | autenticado (cualquier rol)                                |
  * | GET  /api/candidatos/:id/historial         | autenticado (cualquier rol)                                |
  * | PATCH /api/candidatos/:id                  | creador o @Roles('admin_rrhh','superusuario') (en servicio) |
+ * | DELETE /api/candidatos/:id                  | creador o `superusuario` (IT), sin postulaciones (servicio) |
  * | POST /api/candidatos/:id/archivos          | @Roles('analista_seleccion','admin_rrhh','superusuario')   |
  * | GET  /api/candidatos/:id/archivos          | autenticado (cualquier rol)                                |
  * | GET  /api/candidatos/:id/archivos/:aid/descarga | autenticado (cualquier rol)                           |
@@ -97,12 +99,18 @@ function requireUser(request: AuthenticatedRequest): AuthenticatedUser {
  * devuelve DESCIFRADA al cliente autenticado. El hash interno `cedulaHash` NUNCA
  * sale por aquí.
  *
- * NO EXISTE `DELETE /api/candidatos/:id` en esta fase: los candidatos son datos
- * con trazabilidad para Gestión Humana y el histórico de auditoría
- * (`audit_log`, inmutable) debe poder reconstruirse; el borrado lógico llegará
- * más adelante si el plan lo requiere. En consecuencia TAMPOCO hay borrado de
- * archivos: los CVs subidos se RETIENAN (misma filosofía que `requerimientos`;
- * ver la decisión de retención documentada en `AlmacenamientoService`).
+ * `DELETE /api/candidatos/:id` existe para DESHACER UN ERROR de captura, con
+ * las reglas decididas en el SERVICIO (sin `@Roles`: no es un permiso de rol
+ * sino de PROPIEDAD de la fila):
+ *  - **403** si no es el `superusuario` (IT) ni el que CREÓ el candidato;
+ *  - **409** si está ligado a un requerimiento (tiene postulaciones): el
+ *    histórico de selección NO se toca;
+ *  - **404** si no existe; **204** si se borró.
+ * El borrado deja rastro en `audit_log` (el trigger `candidatos_audit_log`
+ * audita INSERT/UPDATE/DELETE desde la migración 011) y elimina en cascada
+ * sus filas de `archivos_cv`; los FICHEROS en disco se RETIENEN (dedup por
+ * sha256: pueden estar compartidos con otro candidato, misma filosofía de
+ * retención de `AlmacenamientoService`).
  */
 @Controller('candidatos')
 export class CandidatosController {
@@ -169,6 +177,24 @@ export class CandidatosController {
     @Req() request: AuthenticatedRequest,
   ): Promise<CandidatoResponseDto> {
     return this.candidatos.update(id, body, requireUser(request));
+  }
+
+  /**
+   * Elimina un candidato capturado por ERROR → **204**.
+   *
+   * Sin `@Roles(...)`: la regla es de PROPIEDAD, no de rol y vive en el
+   * servicio — **403** si no es el `superusuario` (IT) ni el creador, **409**
+   * si tiene postulaciones (está ligado a un requerimiento), **404** si no
+   * existe. Tampoco se oculta el botón por rol en el front: quien no puede
+   * borrarlo recibe el 403 con mensaje en español.
+   */
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async eliminar(
+    @Param('id', UUID_PARAM) id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<void> {
+    return this.candidatos.eliminar(id, requireUser(request));
   }
 
   // ───────────────────────── archivos de CV (Fase 4, parte 2) ─────────────────────────

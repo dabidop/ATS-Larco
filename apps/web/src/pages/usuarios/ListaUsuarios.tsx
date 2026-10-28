@@ -224,6 +224,9 @@ export function PaginaUsuarios() {
                     Rol
                   </th>
                   <th scope="col" className="px-4 py-3">
+                    Jefatura
+                  </th>
+                  <th scope="col" className="px-4 py-3">
                     Estado
                   </th>
                   <th scope="col" className="px-4 py-3">
@@ -245,6 +248,9 @@ export function PaginaUsuarios() {
                       <td className="px-4 py-3 font-medium text-slate-100">{usuario.nombre}</td>
                       <td className="px-4 py-3 text-slate-300">{usuario.email}</td>
                       <td className="px-4 py-3 text-slate-300">{usuario.rolNombre}</td>
+                      {/* ÁREA del líder (corrección posterior a la Etapa 9): es
+                          el filtro con el que un `lider_area` ve SU jefatura. */}
+                      <td className="px-4 py-3 text-slate-300">{usuario.jefatura ?? '—'}</td>
                       <td className="px-4 py-3">
                         <span
                           className={

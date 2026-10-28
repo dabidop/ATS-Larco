@@ -16,6 +16,13 @@ export interface EntradaAuditoriaDto {
   tabla: string;
   registroId: string;
   accion: 'INSERT' | 'UPDATE' | 'DELETE';
+  /**
+   * Nombre legible del registro que tocó la escritura («REQ-2026-001 —
+   * Vacante de Analista», «Juan Pérez», «it@larco.co»…), resuelto desde el
+   * snapshot `old_data`/`new_data`. `null` cuando la tabla no aporta etiqueta
+   * (el cliente entonces cae al id corto).
+   */
+  etiqueta: string | null;
   /** Quién ejecutó la escritura (resuelto desde `users`). */
   actor: { id: string | null; email: string | null };
   fecha: string;
@@ -91,13 +98,77 @@ export function diffAuditoria(
   return cambios;
 }
 
+/**
+ * Valor de `clave` en el snapshot si es un texto NO vacío (trim).
+ *
+ * `to_jsonb` devuelve los textos tal cual, pero un campo puede ser `null`,
+ * numérico o ausente: todo eso se trata como «sin etiqueta».
+ */
+function textoDe(datos: Record<string, unknown> | null, clave: string): string | null {
+  const valor = datos?.[clave];
+  return typeof valor === 'string' && valor.trim().length > 0 ? valor.trim() : null;
+}
+
+/**
+ * Etiqueta legible del registro auditado, a partir de su snapshot (función
+ * PURA: se testea sin BD).
+ *
+ * Por qué existe: la bitácora identificaba cada fila con el uuid crudo
+ * («registro c6745hdfj7…»), imposible de leer. Aquí cada tabla aporta SU
+ * nombre de negocio:
+ *  - `requerimientos` → «REQ-2026-001 — Vacante de Analista»;
+ *  - `candidatos`     → «Juan Pérez»;
+ *  - `users`          → «it@larco.co» (o el nombre completo);
+ *  - `departamentos`  → nombre del área.
+ *
+ * `null` = la tabla no tiene nombre legible en su snapshot (p. ej.
+ * `postulaciones`, cuyo snapshot solo trae uuids); el cliente muestra entonces
+ * el id corto, como hasta ahora.
+ */
+export function etiquetaAuditoria(
+  tabla: string,
+  datos: Record<string, unknown> | null,
+): string | null {
+  if (datos === null) return null;
+
+  switch (tabla) {
+    case 'requerimientos': {
+      const codigo = textoDe(datos, 'codigo');
+      const titulo = textoDe(datos, 'titulo');
+      if (codigo !== null && titulo !== null) return `${codigo} — ${titulo}`;
+      return codigo ?? titulo;
+    }
+    case 'candidatos': {
+      const nombres = textoDe(datos, 'nombres');
+      const apellidos = textoDe(datos, 'apellidos');
+      if (nombres !== null && apellidos !== null) return `${nombres} ${apellidos}`;
+      return nombres ?? apellidos;
+    }
+    case 'users': {
+      const email = textoDe(datos, 'email');
+      const nombre = textoDe(datos, 'full_name');
+      if (email !== null && nombre !== null) return `${nombre} (${email})`;
+      return email ?? nombre;
+    }
+    case 'departamentos':
+      return textoDe(datos, 'nombre');
+    default:
+      return null;
+  }
+}
+
 /** Fila cruda → entrada pública (camelCase + diff enmascarado). */
 export function toResponse(fila: AuditoriaFilaCruda): EntradaAuditoriaDto {
+  // La etiqueta sale del snapshot del MISMO instante que la escritura: `new`
+  // en INSERT/UPDATE (el estado vigente) y `old` en DELETE (lo que existía).
+  const snapshot = fila.action === 'DELETE' ? fila.old_data : (fila.new_data ?? fila.old_data);
+
   return {
     id: fila.id,
     tabla: fila.table_name,
     registroId: fila.record_id,
     accion: fila.action,
+    etiqueta: etiquetaAuditoria(fila.table_name, snapshot),
     actor: { id: fila.changed_by, email: fila.actor_email },
     fecha: fila.created_at.toISOString(),
     cambios: diffAuditoria(fila.old_data, fila.new_data),

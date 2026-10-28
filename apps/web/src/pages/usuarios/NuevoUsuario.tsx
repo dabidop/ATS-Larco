@@ -23,7 +23,7 @@ export const MENSAJE_PASSWORD_CORTA = `password debe tener al menos ${PASSWORD_M
 
 const PATRON_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-type CampoFormulario = 'nombre' | 'email' | 'password' | 'rol';
+type CampoFormulario = 'nombre' | 'email' | 'password' | 'rol' | 'jefatura';
 type ErroresUsuario = Partial<Record<CampoFormulario, string>>;
 
 /** Valida el alta con los MISMOS mensajes en español que el DTO del backend. */
@@ -60,6 +60,7 @@ export function PaginaNuevoUsuario() {
     email: '',
     password: '',
     rol: '',
+    jefatura: '',
   });
   const [errores, setErrores] = useState<ErroresUsuario>({});
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
@@ -82,6 +83,12 @@ export function PaginaNuevoUsuario() {
       password: formulario.password,
       rol: formulario.rol,
     };
+    // La jefatura solo viaja cuando tiene contenido: el servidor la guarda
+    // como `NULL` si no (y en roles que no son líder no significa nada).
+    const jefatura = formulario.jefatura.trim();
+    if (jefatura.length > 0) {
+      cuerpo.jefatura = jefatura;
+    }
 
     setEnviando(true);
     setErrorServidor(null);
@@ -161,6 +168,22 @@ export function PaginaNuevoUsuario() {
             </select>
             {errores.rol && <p className="mt-1 text-xs text-rose-400">{errores.rol}</p>}
           </div>
+
+          {formulario.rol === 'lider_area' && (
+            <div className="sm:col-span-2">
+              <CampoTexto
+                etiqueta="Jefatura / área"
+                autoComplete="organization"
+                valor={formulario.jefatura}
+                onCambio={cambiar('jefatura')}
+                error={errores.jefatura}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Un líder solo verá los requerimientos de su jefatura; si queda vacío, verá solo los
+                que él mismo cree.
+              </p>
+            </div>
+          )}
         </div>
 
         {errorServidor && (

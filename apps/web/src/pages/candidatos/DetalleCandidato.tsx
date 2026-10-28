@@ -1,18 +1,22 @@
 import { useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { descargar, mensajeDeError, solicitud, subirArchivo } from '../../lib/api';
 import { validarArchivoCv } from '../../lib/archivos';
 import { fechaCorta, fechaHora, tamanoArchivo, valorHistorial } from '../../lib/formato';
-import { puedeEditarCandidato, puedeGestionarCandidatos } from '../../lib/rbac';
+import {
+  puedeEditarCandidato,
+  puedeEliminarCandidato,
+  puedeGestionarCandidatos,
+} from '../../lib/rbac';
 import { useRecurso } from '../../lib/useRecurso';
 import { useSesionStore } from '../../store/sesion';
 import type { ArchivoCv, Candidato, CandidatoNuevo, EntradaHistorial } from '../../tipos';
 import { FormularioCandidato } from '../../components/candidatos/FormularioCandidato';
 import { FilaDato, Tarjeta } from '../../components/ui/datos';
 import { AvisoExito, EstadoVacio, MensajeError, Spinner } from '../../components/ui/feedback';
-import { CLASE_BOTON_SECUNDARIO } from '../../components/ui/estilos';
+import { CLASE_BOTON_PELIGRO, CLASE_BOTON_SECUNDARIO } from '../../components/ui/estilos';
 
 /**
  * Detalle del candidato: datos (la API devuelve cédula y teléfono DESCIFRADOS
@@ -24,8 +28,10 @@ import { CLASE_BOTON_SECUNDARIO } from '../../components/ui/estilos';
 export function PaginaDetalleCandidato() {
   const parametros = useParams();
   const id = parametros.id ?? '';
+  const navegar = useNavigate();
   const [recarga, setRecarga] = useState(0);
   const [editando, setEditando] = useState(false);
+  const [eliminando, setEliminando] = useState(false);
   const [exito, setExito] = useState<string | null>(null);
   const [errorOperacion, setErrorOperacion] = useState<string | null>(null);
 
@@ -46,6 +52,30 @@ export function PaginaDetalleCandidato() {
     await solicitud<Candidato>(`/candidatos/${id}`, { metodo: 'PATCH', cuerpo });
     setExito('Cambios guardados correctamente');
     recargarTodo();
+  };
+
+  /**
+   * Borrado de un candidato capturado por ERROR (corrección posterior a la
+   * Etapa 9): solo IT o quien lo creó, y solo si NO está ligado a un
+   * requerimiento. El `confirm` es la única barrera suave; el servidor manda
+   * (403/409) y su mensaje se pinta tal cual.
+   */
+  const alEliminar = async (nombre: string) => {
+    const confirmado = window.confirm(
+      `¿Eliminar definitivamente a ${nombre}? Esta acción no se puede deshacer.`,
+    );
+    if (!confirmado) return;
+
+    setEliminando(true);
+    setErrorOperacion(null);
+    try {
+      await solicitud<void>(`/candidatos/${id}`, { metodo: 'DELETE' });
+      navegar('/candidatos');
+    } catch (error) {
+      setErrorOperacion(mensajeDeError(error, 'No se pudo eliminar el candidato'));
+    } finally {
+      setEliminando(false);
+    }
   };
 
   if (recurso.fase === 'cargando' && candidato === null) {
@@ -91,6 +121,18 @@ export function PaginaDetalleCandidato() {
           <Link to="/candidatos" className={CLASE_BOTON_SECUNDARIO}>
             ← Volver
           </Link>
+          {puedeEliminarCandidato(rol, esCreador) && !editando && (
+            <button
+              type="button"
+              onClick={() => {
+                void alEliminar(`${candidato.nombres} ${candidato.apellidos}`.trim());
+              }}
+              disabled={eliminando}
+              className={CLASE_BOTON_PELIGRO}
+            >
+              {eliminando ? 'Eliminando…' : 'Eliminar candidato'}
+            </button>
+          )}
         </div>
       </div>
 

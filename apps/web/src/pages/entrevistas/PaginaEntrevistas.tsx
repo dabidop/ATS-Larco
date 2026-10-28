@@ -4,6 +4,7 @@ import { mensajeDeError, solicitud } from '../../lib/api';
 import { fechaCorta, fechaHora } from '../../lib/formato';
 import { useRecurso } from '../../lib/useRecurso';
 import { ESTADOS_ENTREVISTA, type Entrevista, type EstadoEntrevista } from '../../tipos';
+import { CalendarioEntrevistas } from '../../components/entrevistas/CalendarioEntrevistas';
 import { DialogoAgendar } from '../../components/entrevistas/DialogoAgendar';
 import { EstadoVacio, MensajeError, Spinner } from '../../components/ui/feedback';
 import { CLASE_BOTON_PRINCIPAL, CLASE_CAMPO, CLASE_ETIQUETA } from '../../components/ui/estilos';
@@ -13,6 +14,10 @@ import { CLASE_BOTON_PRINCIPAL, CLASE_CAMPO, CLASE_ETIQUETA } from '../../compon
  * estado y de fechas (los resuelve la API: `GET /api/entrevistas?estado=…&desde=…`),
  * alta vía `DialogoAgendar` (POST sobre una postulación activa) y cambio de
  * estado por fila (PATCH: agendada → realizada / cancelada).
+ *
+ * Además PINTA `CalendarioEntrevistas` (corrección posterior a la Etapa 9):
+ * la vista mensual con las entrevistas del mes y su estado, autónoma respecto
+ * de los filtros de la tabla.
  */
 
 /** Badge de color por estado de la entrevista. */
@@ -192,6 +197,9 @@ export function PaginaEntrevistas() {
           />
         </div>
       </div>
+
+      {/* Vista mensual con los estados: trae SUS datos (desde/hasta del mes). */}
+      <CalendarioEntrevistas />
 
       {recurso.fase === 'cargando' && entrevistas.length === 0 && (
         <Spinner texto="Cargando agenda…" />

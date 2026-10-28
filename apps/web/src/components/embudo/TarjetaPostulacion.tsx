@@ -1,4 +1,4 @@
-import { useDraggable } from '@dnd-kit/core';
+                                           import { useDraggable } from '@dnd-kit/core';
 
 import { ETIQUETA_ESTADO_POSTULACION, ETIQUETA_FASE, esTerminal } from '../../lib/embudo';
 import { FASES_POSTULACION, type Postulacion } from '../../tipos';
@@ -83,9 +83,9 @@ export function TarjetaPostulacion({
         <p className="font-medium text-slate-100">
           {postulacion.candidato.nombres} {postulacion.candidato.apellidos}
         </p>
-        <p className="mt-1 text-xs text-slate-500">{ETIQUETA_FASE[postulacion.fase]}</p>
+        {/*<p className="mt-1 text-xs text-slate-500">{ETIQUETA_FASE[postulacion.fase]}</p>*/}
       </div>
-
+      {/*
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <span
           className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold ${CLASES_ESTADO[postulacion.estado]}`}
@@ -93,13 +93,14 @@ export function TarjetaPostulacion({
           {ETIQUETA_ESTADO_POSTULACION[postulacion.estado]}
         </span>
       </div>
+      */}
 
       {postulacion.estado === 'descartado' && postulacion.motivoDescarte !== null && (
         <p className="mt-2 truncate text-xs text-rose-300/90" title={postulacion.motivoDescarte}>
           Motivo: {postulacion.motivoDescarte}
         </p>
       )}
-
+      {/*
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         {movible && !terminal && posterior !== undefined && (
           <button
@@ -131,6 +132,7 @@ export function TarjetaPostulacion({
           Historial
         </button>
       </div>
+      */}
     </article>
   );
 }

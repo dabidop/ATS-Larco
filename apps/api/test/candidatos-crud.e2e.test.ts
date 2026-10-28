@@ -50,6 +50,9 @@ import { CandidatosStoreService } from '../src/modules/candidatos/candidatos-sto
 
 const ADMIN_EMAIL = 'admin@larco.co';
 
+/** IT del seed 008: el `superusuario`, único rol ajeno que puede borrar candidatos. */
+const SUPER_EMAIL = 'it@larco.co';
+
 /** Hash de mentira: estos usuarios jamás inician sesión (solo aportan un id). */
 const PASSWORD_HASH_FICTICIO = 'no-utilizable-en-tests';
 
@@ -97,6 +100,10 @@ const CEDULA_COLISION = `${BASE_CEDULA}22`;
 const CEDULA_POST = `${BASE_CEDULA}33`;
 /** Cédula NUEVA que el creador asigna a "Baltasar" en el primer PATCH. */
 const CEDULA_EDITADA = `${BASE_CEDULA}44`;
+/** Cédulas de los fixtures del bloque DELETE (corrección posterior a la Etapa 9). */
+const CEDULA_BORRABLE = `${BASE_CEDULA}55`;
+const CEDULA_BORRABLE_IT = `${BASE_CEDULA}66`;
+const CEDULA_LIGADA = `${BASE_CEDULA}77`;
 
 /**
  * HMAC-SHA-256 (hex) de una cédula con la llave REAL del entorno: sirve de
@@ -123,11 +130,13 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
 
   let adminId: string;
   let creadorId: string;
+  let superId: string;
 
   let tokenAdmin: string;
   let tokenAnalista: string;
   let tokenAnalistaOtro: string;
   let tokenLider: string;
+  let tokenSuper: string;
 
   /** Candidato principal: PII, GET, filtros y 403 de no-creador. */
   let candidatoPrincipal: { id: string };
@@ -172,6 +181,18 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
       );
     }
 
+    // El IT del seed 008: el ÚNICO rol (junto al creador) que puede borrar
+    // candidatos ajenos (corrección posterior a la Etapa 9).
+    const supers = (await repo.query('SELECT id FROM users WHERE email = $1', [
+      SUPER_EMAIL,
+    ])) as Array<{ id: string }>;
+    superId = supers[0]?.id ?? '';
+    if (superId === '') {
+      throw new Error(
+        `No se encontró el usuario ${SUPER_EMAIL}: ejecuta las migraciones (pnpm --filter @ats/api db:migrate)`,
+      );
+    }
+
     // Usuarios de prueba (FK `created_by` → `users(id)`: hacen falta UUIDs reales).
     for (const usuario of USUARIOS_DE_PRUEBA) {
       await repo.query(
@@ -209,6 +230,7 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
       role: 'analista_seleccion',
     });
     tokenLider = jwt.sign({ sub: idDe(EMAIL_LIDER), email: EMAIL_LIDER, role: 'lider_area' });
+    tokenSuper = jwt.sign({ sub: superId, email: SUPER_EMAIL, role: 'superusuario' });
 
     // Fixtures: el candidato principal (para GET/filtros/403) y un segundo
     // candidato que servirá de "colisión" de cédula en el PATCH.
@@ -597,6 +619,143 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
         .patch(`/api/candidatos/${randomUUID()}`)
         .set('Authorization', `Bearer ${tokenAnalista}`)
         .send({ notas: 'Fantasma' })
+        .expect(404);
+    });
+  });
+
+  // ───────────────────────── DELETE (corrección posterior a la Etapa 9) ─────────────────────────
+
+  describe('DELETE /api/candidatos/:id (borrado por error de captura)', () => {
+    it('otro analista (NO creador) → 403 con mensaje claro', async () => {
+      const response = await request(app.getHttpServer())
+        .delete(`/api/candidatos/${candidatoPrincipal.id}`)
+        .set('Authorization', `Bearer ${tokenAnalistaOtro}`)
+        .expect(403);
+
+      expect(response.body.message).toBe(
+        'Solo el creador del candidato o el superusuario (IT) pueden eliminarlo',
+      );
+
+      // La fila NO se tocó.
+      const filas = (await repo.query('SELECT id FROM candidatos WHERE id = $1', [
+        candidatoPrincipal.id,
+      ])) as Array<{ id: string }>;
+      expect(filas).toHaveLength(1);
+    });
+
+    it('admin_rrhh NO creador → 403 (a diferencia de editar, NO borra ajenos)', async () => {
+      const response = await request(app.getHttpServer())
+        .delete(`/api/candidatos/${candidatoPrincipal.id}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .expect(403);
+
+      expect(response.body.message).toBe(
+        'Solo el creador del candidato o el superusuario (IT) pueden eliminarlo',
+      );
+    });
+
+    it('el CREADOR → 204, borra la fila y deja el DELETE en audit_log con el actor', async () => {
+      const fixture = await crearFixture('Borrable', CEDULA_BORRABLE, TOKEN_Q);
+
+      await request(app.getHttpServer())
+        .delete(`/api/candidatos/${fixture.id}`)
+        .set('Authorization', `Bearer ${tokenAnalista}`)
+        .expect(204);
+
+      // La fila desapareció de `candidatos`.
+      const filas = (await repo.query('SELECT id FROM candidatos WHERE id = $1', [
+        fixture.id,
+      ])) as Array<{ id: string }>;
+      expect(filas).toHaveLength(0);
+
+      // El trigger `candidatos_audit_log` (DELETE desde la 011) dejó la entrada
+      // con changed_by = quién ejecutó el borrado (el GUC del servicio).
+      const auditoria = (await repo.query(
+        `SELECT action, changed_by, old_data, new_data
+           FROM audit_log
+          WHERE table_name = 'candidatos' AND record_id = $1 AND action = 'DELETE'`,
+        [fixture.id],
+      )) as Array<{
+        action: string;
+        changed_by: string | null;
+        old_data: Record<string, unknown> | null;
+        new_data: Record<string, unknown> | null;
+      }>;
+      expect(auditoria).toHaveLength(1);
+      expect(auditoria[0]?.changed_by).toBe(creadorId);
+      expect(auditoria[0]?.old_data).not.toBeNull();
+      expect(auditoria[0]?.new_data).toBeNull();
+    });
+
+    it('el superusuario (IT) → 204 sobre un candidato AJENO', async () => {
+      const fixture = await crearFixture('BorrableIT', CEDULA_BORRABLE_IT, TOKEN_Q);
+
+      await request(app.getHttpServer())
+        .delete(`/api/candidatos/${fixture.id}`)
+        .set('Authorization', `Bearer ${tokenSuper}`)
+        .expect(204);
+
+      const filas = (await repo.query('SELECT id FROM candidatos WHERE id = $1', [
+        fixture.id,
+      ])) as Array<{ id: string }>;
+      expect(filas).toHaveLength(0);
+    });
+
+    it('con POSTULACIÓN (ligado a un requerimiento) → 409 y la fila se conserva', async () => {
+      const fixture = await crearFixture('BorrableLigada', CEDULA_LIGADA, TOKEN_Q);
+
+      // Requerimiento + postulación por SQL crudo: el escenario es «está ligado»,
+      // no probar el flujo de postulaciones (eso tiene su propio e2e).
+      const codigoReq = `REQ-2026-${randomInt(100000, 999999)}`;
+      const requerimientos = (await repo.query(
+        `INSERT INTO requerimientos
+           (code, created_by, titulo, jefatura, numero_plazas, perfil_profesional, justificacion)
+         VALUES ($1, $2, 'Requerimiento de prueba DELETE', 'Talento Humano', 1,
+                 'Perfil de prueba', 'Justificación de prueba')
+         RETURNING id`,
+        [codigoReq, creadorId],
+      )) as Array<{ id: string }>;
+      const requerimientoId = requerimientos[0]?.id ?? '';
+      expect(requerimientoId).not.toBe('');
+
+      await repo.query(
+        `INSERT INTO postulaciones (candidato_id, requerimiento_id, created_by)
+         VALUES ($1, $2, $3)`,
+        [fixture.id, requerimientoId, creadorId],
+      );
+
+      try {
+        const response = await request(app.getHttpServer())
+          .delete(`/api/candidatos/${fixture.id}`)
+          .set('Authorization', `Bearer ${tokenAnalista}`)
+          .expect(409);
+
+        expect(response.body.message).toBe(
+          'No se puede eliminar: el candidato está ligado a un requerimiento',
+        );
+
+        // El candidato y su postulación siguen intactos.
+        const candidatos = (await repo.query('SELECT id FROM candidatos WHERE id = $1', [
+          fixture.id,
+        ])) as Array<{ id: string }>;
+        expect(candidatos).toHaveLength(1);
+        const postulaciones = (await repo.query(
+          'SELECT id FROM postulaciones WHERE candidato_id = $1',
+          [fixture.id],
+        )) as Array<{ id: string }>;
+        expect(postulaciones).toHaveLength(1);
+      } finally {
+        // Limpieza: el requerimiento se borra y la postulación cae en cascada.
+        await repo.query('DELETE FROM requerimientos WHERE id = $1', [requerimientoId]);
+      }
+    });
+
+    it('sin token → 401; id inexistente → 404', async () => {
+      await request(app.getHttpServer()).delete(`/api/candidatos/${randomUUID()}`).expect(401);
+
+      await request(app.getHttpServer())
+        .delete(`/api/candidatos/${randomUUID()}`)
+        .set('Authorization', `Bearer ${tokenAnalista}`)
         .expect(404);
     });
   });

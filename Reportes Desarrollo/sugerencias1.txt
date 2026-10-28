@@ -1,0 +1,75 @@
+================================================================================
+SUGERENCIAS DE DIRECCIÓN Y DESARROLLO - ATS LARCO
+================================================================================
+
+1. DECISIONES INMEDIATAS
+--------------------------------------------------------------------------------
+  - Mantener el estado del producto como PILOTO CONTROLADO, no producción.
+  - Mantener control de cambios y revisión por pull request; la prueba API y el
+    lint ya quedaron corregidos y verdes.
+  - Separar claramente cambios funcionales, correcciones y herramientas de
+    diagnóstico en commits y pull requests.
+  - Nombrar un responsable de producto de Gestión Humana para aprobar reglas,
+    permisos, campos obligatorios y criterios de descarte.
+
+2. MEJORAS TÉCNICAS PRIORITARIAS
+--------------------------------------------------------------------------------
+  - Corregir el borrado de candidatos ligados a postulaciones: debe responder
+    409 y conservar tanto candidato como historial.
+  - Crear CI obligatorio: install reproducible, migración en BD limpia, tests,
+    typecheck, lint, build y revisión de dependencias.
+  - Añadir pruebas de contrato API/web y pruebas de migración up/down.
+  - Sustituir progresivamente AES-CBC por AES-GCM o añadir MAC autenticado.
+  - Centralizar tipos, enums y contratos API compartidos en packages/shared.
+  - Incorporar paginación y límites también en cualquier nuevo listado masivo.
+  - Añadir observabilidad: correlation ID, métricas de errores/latencia,
+    health/readiness y alertas.
+
+3. PRODUCTO Y PROCESO
+--------------------------------------------------------------------------------
+  - Diseñar una matriz RACI: líder de área solicita, RRHH aprueba/opera y IT
+    administra cuentas, seguridad y plataforma.
+  - Definir SLA por vacante y métricas: tiempo por fase, conversión, tiempo de
+    cobertura, candidatos descartados y motivos.
+  - Hacer obligatoria la confirmación humana de cualquier dato extraído del CV.
+  - Agregar historial de decisiones y motivo para cambios sensibles.
+  - Realizar capacitación breve y un piloto con un solo departamento antes de
+    ampliar a los ocho departamentos.
+
+4. ROADMAP RECOMENDADO
+--------------------------------------------------------------------------------
+  PRIORIDAD 0 (bloqueante): revisión de la corrección DELETE, pruebas completas,
+  aceptación manual, backup/restore y despliegue seguro.
+
+  PRIORIDAD 1 (valor funcional): parser de teléfono/ciudad/habilidades,
+  confirmación humana, cola de trabajos y antecedentes con plugins por fuente.
+
+  PRIORIDAD 2 (gestión): indicadores ejecutivos, exportación CSV, recordatorios
+  de entrevistas, evaluaciones y reportes de auditoría para roles autorizados.
+
+  PRIORIDAD 3 (escala): notificaciones SMTP, portal de candidato, SSO,
+  contenedores gestionados y alta disponibilidad.
+
+5. CONTROLES DE DATOS PERSONALES
+--------------------------------------------------------------------------------
+  - Aprobar finalidad, consentimiento/base legal, tiempos de retención y proceso
+    de supresión antes de cargar hojas de vida reales.
+  - Mantener datos de producción fuera de ambientes de desarrollo.
+  - Cifrar backups y probar restauración periódicamente.
+  - Revisar quién puede descargar CVs y registrar cada descarga.
+  - Anonimizar PII en logs, pruebas, capturas y reportes administrativos.
+
+6. CRITERIO DE ÉXITO DEL PILOTO
+--------------------------------------------------------------------------------
+  - 100% de pruebas automatizadas y gates verdes.
+  - Cero hallazgos P0/P1 abiertos.
+  - Un requerimiento puede recorrer el proceso completo sin intervención
+    técnica.
+  - RRHH puede importar CVs, confirmar datos, mover candidatos y consultar
+    historial sin pérdida de información.
+  - IT puede crear/desactivar usuarios, restaurar un backup y auditar acciones.
+  - Usuarios finales firman acta de aceptación y lista de pendientes.
+
+================================================================================
+FIN DE SUGERENCIAS
+================================================================================

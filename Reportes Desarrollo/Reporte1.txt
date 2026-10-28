@@ -1,0 +1,201 @@
+================================================================================
+REPORTE DE DESARROLLO - ATS LARCO
+================================================================================
+Fecha de evaluación : 28 de octubre de 2026
+Proyecto            : Sistema de Gestión Humana - Applicant Tracking System
+Fuente de alcance   : ALCANCE.pdf
+Repositorio         : C:\AI APP\SistemaGestionHumana
+Audiencia           : Administrativos, Dirección de Sistemas y Gestión Humana
+Rol de evaluación   : Project Manager / Arquitectura y desarrollo senior
+
+1. RESUMEN EJECUTIVO
+--------------------------------------------------------------------------------
+El proyecto implementa un piloto funcional de ATS para centralizar el ciclo de
+selección de personal de LARCO: requerimientos, candidatos, hojas de vida,
+postulaciones, embudo Kanban, entrevistas, dashboard y auditoría.
+
+La solución cubre de forma sólida la mayor parte del alcance principal del PDF.
+La base técnica es apropiada para un piloto: monorepo pnpm, API NestJS modular,
+frontend React, PostgreSQL con migraciones, RBAC, cifrado de PII y pruebas
+automatizadas.
+
+Dictamen ejecutivo: AMARILLO - apto para demostración/piloto controlado, pero NO
+recomendado para producción todavía. El fallo de regresión detectado durante la
+evaluación ya fue corregido y validado; aún debe realizarse la prueba manual con
+usuarios y cerrar los pendientes de operación, despliegue y protección de datos.
+
+Nivel estimado de cumplimiento del alcance del PDF: ALTO para el MVP y PARCIAL
+para automatización avanzada y producción. El porcentaje no debe interpretarse
+como aceptación contractual; los criterios funcionales deben aprobarse con
+Gestión Humana.
+
+2. ESTADO REAL VERIFICADO
+--------------------------------------------------------------------------------
+Comandos ejecutados sobre el estado actual del repositorio:
+
+  - pnpm test: OK.
+    API: 32 archivos, 401 pruebas exitosas.
+    Web: 17 archivos, 115 pruebas exitosas.
+    Shared: 2 pruebas exitosas.
+  - pnpm typecheck: OK en API, web y shared.
+  - pnpm build: OK en API, web y shared.
+  - pnpm lint: OK.
+
+Corrección aplicada durante esta evaluación:
+  DELETE /api/candidatos/:id con una postulación asociada esperaba HTTP 409,
+  pero devolvía HTTP 204. TypeORM retorna DELETE ... RETURNING como
+  [filas, cantidadAfectada] y el código estaba verificando la longitud del
+  contenedor completo. Se corrigió para verificar las filas realmente borradas;
+  la prueba específica y la suite completa ahora pasan.
+
+El repositorio contiene cambios locales sin consolidar y archivos nuevos no
+versionados, entre ellos una migración 011 y modificaciones de candidatos,
+usuarios, bitácora, entrevistas y frontend. Este reporte evalúa ese estado real,
+no únicamente el último commit. Se recomienda revisar, probar y versionar esos
+cambios mediante pull request antes de cualquier entrega.
+
+3. CUMPLIMIENTO DEL ALCANCE FUNCIONAL
+--------------------------------------------------------------------------------
+3.1 Gestión de requerimientos - CUMPLIDO PARA MVP
+  - Formulario estructurado y estados pendiente, aprobado, en_proceso, cerrado,
+    rechazado y exitoso.
+  - Código anual atómico REQ-YYYY-NNN protegido contra concurrencia.
+  - Reglas de transición, permisos por rol, cupos, urgencia, modalidad,
+    departamento y cierre con motivo/resultado.
+  - Restricciones críticas reforzadas en PostgreSQL.
+
+3.2 Captura e ingesta de candidatos - PARCIALMENTE CUMPLIDO
+  - CRUD de candidatos y carga unitaria de CV con almacenamiento por SHA-256.
+  - Importación de hasta 50 PDF por lote, límite de 5 MB por archivo y resumen
+    individual de éxito/error.
+  - Extracción actual: texto PDF, nombre mediante heurística y correo por regex.
+  - Pendiente frente al alcance original: extracción robusta de teléfono, ciudad,
+    habilidades y flujo de confirmación humana completo. No hay OCR para PDF
+    escaneado.
+
+3.3 Embudo/Kanban - CUMPLIDO PARA EL PILOTO
+  - Cinco fases: preselección, antecedentes, entrevistas, proveedor externo y
+    contratación.
+  - Drag-and-drop, actualización optimista con rollback y validación server-side.
+  - El embudo solo avanza; el descarte exige motivo y queda auditado.
+  - Control de cupo y contratación automática del requerimiento al cubrir plazas.
+
+3.4 Antecedentes y proveedor externo - NO IMPLEMENTADO
+  - Los módulos existen como andamiaje y endpoints ping/placeholder.
+  - No están implementados los scrapers Playwright, workers, reintentos,
+    evidencias, resultados JSONB ni integración con fuentes oficiales.
+  - Esta es la brecha funcional más relevante respecto al alcance D del PDF.
+
+3.5 Entrevistas, dashboard y administración - PARCIAL/IMPLEMENTADO
+  - Agenda de entrevistas con alta, filtros y estados agendada, realizada y
+    cancelada.
+  - Dashboard operativo con embudo, retención y contadores por estado.
+  - Departamentos LARCO y gestión de usuarios exclusiva para superusuario.
+  - Pendiente: recordatorios, evaluaciones, indicadores ejecutivos avanzados,
+    tiempos por fase, conversión por vacante y exportación CSV.
+
+4. EVALUACIÓN DE ARQUITECTURA
+--------------------------------------------------------------------------------
+La arquitectura es coherente con el alcance solicitado:
+
+  - Backend: NestJS 11, Node.js 20+, TypeScript estricto y módulos separados.
+  - Persistencia: PostgreSQL 16, pool pg para la mayoría de módulos y TypeORM
+    limitado a requerimientos. Es válido, aunque aumenta el costo de
+    mantenimiento y exige convenciones estrictas.
+  - Migraciones versionadas node-pg-migrate; no se observa dependencia de
+    synchronize para producción.
+  - Frontend: React 19, Vite 8, Tailwind 4, Zustand y dnd-kit.
+  - Monorepo pnpm con API, web y paquete shared.
+  - La autoridad de negocio permanece en API/BD; la UI replica reglas solo para
+    mejorar experiencia, decisión arquitectónica correcta.
+
+Fortalezas técnicas:
+  - Máquina de estados y restricciones críticas centralizadas.
+  - Generación atómica de códigos y pruebas de concurrencia.
+  - Separación de roles, servicios y controladores.
+  - Auditoría por triggers inmutables, con actor de la operación.
+  - Manejo de errores HTTP normalizado y validación de DTOs.
+
+Deuda arquitectónica:
+  - Persistencia híbrida pg + TypeORM debe documentarse y limitarse para no
+    duplicar patrones de acceso.
+  - packages/shared todavía es pequeño; enums y contratos se mantienen en cada
+    aplicación, con riesgo de divergencia API/web.
+  - No existe aún arquitectura de jobs/colas para tareas largas.
+
+5. SEGURIDAD Y CUMPLIMIENTO
+--------------------------------------------------------------------------------
+Implementado y favorable para el piloto:
+  - JWT con vigencia configurable y RBAC de admin_rrhh, analista_seleccion,
+    lider_area y superusuario.
+  - Contraseñas con scrypt.
+  - Cédula y teléfono cifrados con AES-256-CBC, IV aleatorio por valor y hash
+    HMAC para búsqueda exacta de cédula.
+  - Helmet, CORS restringido, rate limiting y validación de entorno.
+  - Validación de tipo real de archivos por magic bytes y límite de tamaño.
+  - Auditoría inmutable en BD y bitácora exclusiva del superusuario.
+
+Riesgos que deben cerrarse antes de producción:
+  - AES-CBC no proporciona autenticación criptográfica; planificar migración a
+    AES-GCM o encrypt-then-MAC, manteniendo compatibilidad con datos existentes.
+  - Definir política formal de retención, supresión, habeas data, acceso y
+    exportación de datos conforme a la Ley 1581 de Colombia.
+  - Revisar almacenamiento de archivos, backups y permisos del volumen.
+  - Validar rotación de secretos, expiración/revocación de sesiones y gestión
+    segura de credenciales iniciales.
+
+6. CALIDAD, RIESGOS Y GO/NO-GO
+--------------------------------------------------------------------------------
+Riesgos de prioridad alta:
+  P0 - Verificar en revisión de código la corrección de DELETE de candidatos:
+       la suite ya está verde, pero debe conservarse la prueba de BD que confirma
+       candidato y postulación intactos.
+  P1 - El archivo debug-em-query.cjs debe mantenerse solo como herramienta
+       temporal/documentada o retirarse antes de cerrar la entrega.
+  P1 - No existe docker-compose.prod.yml, CI/CD, monitoreo ni runbook operativo.
+  P1 - Antecedentes/proveedor son placeholders, no automatización productiva.
+  P1 - Falta prueba manual con usuarios, especialmente drag-and-drop, permisos,
+       cierre, importación y uso de datos reales anonimizados.
+  P2 - Documentación y conteos de pruebas previos no reflejan exactamente el
+       estado actual; actualizarla luego de consolidar los cambios.
+
+Criterio de liberación recomendado: NO-GO actualmente. Pasar a GO para piloto
+controlado cuando: tests y lint estén verdes, migraciones estén aplicadas en un
+entorno limpio, se ejecute la aceptación de Gestión Humana, se verifique backup
+y restore, y se apruebe una matriz de riesgos y datos personales.
+
+7. PLAN DE CIERRE PROPUESTO
+--------------------------------------------------------------------------------
+Semana 1 - Estabilización:
+  1. Revisar y consolidar la corrección de DELETE y la migración 011.
+  2. Retirar o documentar el debug antes de la entrega.
+  3. Ejecutar test, typecheck, lint, build y migraciones desde una BD limpia.
+  4. Consolidar cambios locales en commits pequeños y revisables.
+
+Semana 2 - Aceptación y operación:
+  1. Prueba manual con representantes de Gestión Humana y Sistemas.
+  2. Pruebas de autorización por cada rol y escenarios de concurrencia.
+  3. Backup/restore documentado; datos de prueba anonimizados.
+  4. Crear despliegue productivo, TLS, variables secretas, logs y monitoreo.
+
+Después del piloto:
+  1. Implementar workers de antecedentes y proveedor externo con reintentos,
+     timeouts, evidencia y revisión humana.
+  2. Completar parser de CV y confirmación humana.
+  3. Implementar reportes ejecutivos y exportación CSV.
+
+8. CONCLUSIÓN
+--------------------------------------------------------------------------------
+El desarrollo demuestra una base profesional y una cobertura alta del núcleo
+ATS solicitado. La solución ya es presentable como piloto técnico y puede
+aportar valor inmediato al ordenar requerimientos y postulaciones.
+
+No debe presentarse todavía como sistema productivo terminado: aunque los gates
+automatizados están verdes, la infraestructura productiva está pendiente y dos
+áreas centrales del alcance original (antecedentes/proveedor externo) no tienen
+implementación real. Con el plan anterior, el proyecto puede avanzar de piloto
+controlado a producción con riesgo razonablemente gestionado.
+
+================================================================================
+FIN DEL REPORTE
+================================================================================

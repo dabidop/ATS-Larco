@@ -110,8 +110,20 @@ export class RequerimientosService {
    * por `estado`, `jefatura`, `urgencia`, `modalidad` y `departamentoId`
    * (los dos últimos los añadió la Etapa 9). Devuelve el total de filas
    * filtradas para que el cliente calcule el número de páginas.
+   *
+   * FILTRO DE ÁREA del `lider_area` (corrección posterior a la Etapa 9:
+   * «un líder solo debe ver lo correspondiente a su área»), aplicado SIEMPRE
+   * y pisando cualquier `?jefatura=` del cliente:
+   *  - Líder CON `users.jefatura` → solo los requerimientos de ESA jefatura;
+   *  - Líder SIN jefatura (`NULL`, «líder por cada jefatura» aún no asignada)
+   *    → fallback sobre `created_by = él`: no se le deja a ciegas (vería todo)
+   *    ni se le da de más (solo lo que él mismo solicitó).
+   * El resto de roles no cambia.
    */
-  async list(query: ListRequerimientosQueryDto): Promise<RequerimientosPageDto> {
+  async list(
+    query: ListRequerimientosQueryDto,
+    user: AuthenticatedUser,
+  ): Promise<RequerimientosPageDto> {
     const repo = await this.store.repo();
 
     const where: FindOptionsWhere<Requerimiento> = {};
@@ -131,6 +143,15 @@ export class RequerimientosService {
       where.departamentoId = query.departamentoId;
     }
 
+    if (user.role === 'lider_area') {
+      const jefatura = await this.jefaturaDe(user.sub);
+      if (jefatura !== null) {
+        where.jefatura = jefatura;
+      } else {
+        where.createdBy = user.sub;
+      }
+    }
+
     const [entidades, total] = await repo.findAndCount({
       where,
       order: { createdAt: 'DESC' },
@@ -139,6 +160,22 @@ export class RequerimientosService {
     });
 
     return { items: entidades.map(toResponse), total, page: query.page, limit: query.limit };
+  }
+
+  /**
+   * Jefatura asignada al usuario (`users.jefatura`, migración 011) o `null`
+   * si la fila no existe o el líder todavía no tiene área.
+   *
+   * Solo la consulta `list` (y solo para `lider_area`): una búsqueda por PK,
+   * barata, y con `NULL` explícito como caso legítimo (el fallback de `list`).
+   */
+  private async jefaturaDe(sub: string): Promise<string | null> {
+    const repo = await this.store.repo();
+    const filas = await repo.manager.query<Array<{ jefatura: string | null }>>(
+      'SELECT jefatura FROM users WHERE id = $1',
+      [sub],
+    );
+    return filas[0]?.jefatura ?? null;
   }
 
   /** Detalle por id; 404 con mensaje claro si no existe. */

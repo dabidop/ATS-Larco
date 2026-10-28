@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
 /**
  * Cuerpo de `POST /api/usuarios`.
@@ -48,4 +48,16 @@ export class CreateUsuarioDto {
   @IsString({ message: 'rol debe ser una cadena de texto' })
   @IsIn(ROLES_VALIDOS, { message: ROL_MENSAJE })
   rol!: RolValido;
+
+  /**
+   * Jefatura a la que pertenece la cuenta (corrección posterior a la Etapa 9:
+   * «líder por cada jefatura»). Texto libre, igual que
+   * `requerimientos.jefatura`, y solo INTERESA para `lider_area`: es el
+   * filtro con el que el líder ve SU área. Opcional para el resto de roles y
+   * también para un líder recién creado sin área asignada (el servicio
+   * aplicará el fallback por `created_by`). Un `''` se guarda como `NULL`.
+   */
+  @IsOptional()
+  @IsString({ message: 'jefatura debe ser una cadena de texto' })
+  jefatura?: string | null;
 }
