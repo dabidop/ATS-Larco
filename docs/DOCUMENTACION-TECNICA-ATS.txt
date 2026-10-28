@@ -29,7 +29,7 @@
     Persistencia: pool `pg` global (DatabaseService) para casi todos los
     módulos + DataSource de TypeORM SOLO en el módulo requerimientos.
     Migraciones: node-pg-migrate con archivos TS en apps/api/db/migrations
-    (001–010) — NO hay Prisma en el proyecto.
+     (001–012) — NO hay Prisma en el proyecto.
     Seguridad: helmet, CORS endurecido, Throttler global (100 peticiones/
     minuto por IP) y @Throttle(5/min) en login; nestjs-pino (logging).
     CV: multer en memoria, 5 MB máx., tipo real por MAGIC BYTES (PDF/DOC/
@@ -68,7 +68,7 @@
   pnpm-workspace.yaml → apps/api, apps/web, packages/shared.
 
   apps/api/
-    db/migrations/          001_initial_schema … 010_candidatos_cedula_opcional (TS)
+     db/migrations/          001_initial_schema … 013_requerimientos_campos_obligatorios (TS)
     src/
       config/               env validada con zod, JWT (JWT_TTL_HOURS=24)
       common/
@@ -183,17 +183,24 @@
   la admite vacía (los HVs importados pueden no traerla); el alta MANUAL
   la sigue exigiendo (la validación vive en cada DTO).
 
-  NO existen tablas de historial ni de transiciones: el historial de cada
+   Todos los campos funcionales del requerimiento son obligatorios en nuevas
+   altas: departamento, ubicación, fecha, experiencia, educación, salarios,
+   tipo de contrato, jornada y listas no vacías. La migración 013 aplica una
+   restricción NOT VALID para no inventar datos históricos del piloto; esos
+   registros deben completarse antes de validar la restricción.
+
+   NO existen tablas de historial ni de transiciones: el historial de cada
   candidato/postulación se LEE de audit_log. NO hay catálogos de cargos,
   jornadas, etc.: jefatura, tipo de contrato, jornada y ubicación se
   guardan como texto en requerimientos.
 
   Aplicar migraciones: pnpm --filter @ats/api db:migrate
-  (las 10 están aplicadas en la BD dev; registro en la tabla pgmigrations;
+   (las 12 están versionadas; registro en la tabla pgmigrations;
   la 002 crea roles y admin, la 008 crea el rol superusuario y siembra
   it@larco.co con la contraseña de SUPER_INITIAL_PASSWORD, la 009 crea
   departamentos/entrevistas y la 010 hace opcional la cédula en
-  importación).
+   importación, la 011 añade jefatura y auditoría de DELETE y la 012 elimina
+   coordinadores personales de demostración).
 
 ================================================================================
 4. MÁQUINAS DE ESTADOS
@@ -261,8 +268,8 @@
   GET  /requerimientos                      autenticado · filtros: estado,
        page, limit (1-100, por defecto 20)
   GET  /requerimientos/:id                  autenticado
-  PATCH /requerimientos/:id                 creador o admin_rrhh · solo
-       estado pendiente
+   PATCH /requerimientos/:id                 solo creador · solo estado
+                                             pendiente
   POST /requerimientos/:id/transiciones     {destino, motivo?, resultado?} ·
        puerta de 3 roles + matriz en el servicio (ver §4)
 
@@ -501,8 +508,8 @@
   • PENDIENTE: prueba manual del usuario (guion en PRUEBA-MANUAL-ATS.txt)
     y puesta en producción. Los commits de la Etapa 9 están LOCALES (sin
     push): d370a36, 4ec65a0, 7ad0c96, cb37b03.
-  • FASE 6 PARCIAL: los módulos antecedentes y proveedor externo siguen
-    respondiendo solo GET ping (sin UI). Entrevistas, importación e
+   • FASE 6 PARCIAL: los módulos antecedentes y proveedor externo siguen
+     sin lógica de negocio ni UI. Entrevistas, importación e
     historial/auditoría SÍ están implementados desde la Etapa 9.
   • Sin módulo de reportes ni generación de PDF (el plan los contempla).
   • Drag & drop solo verificado a mano (sensor de dnd-kit exige umbral de
@@ -530,9 +537,10 @@
   apps/api/src/common/guards/auth.guard.ts + roles.guard.ts      RBAC
   apps/api/src/common/crypto/password.util.ts + crypto.service.ts
       scrypt y AES-256-CBC
-  apps/api/db/migrations/001…010_candidatos_cedula_opcional.ts   esquema +
-      CHECKs + triggers de auditoría + rol superusuario/it@larco.co +
-      departamentos/entrevistas/exitoso (009) + cédula opcional (010)
+   apps/api/db/migrations/001…013_requerimientos_campos_obligatorios.ts
+       esquema + CHECKs + triggers de auditoría + rol superusuario parametrizable
+       + departamentos/entrevistas/exitoso (009) + cédula opcional (010) +
+       campos obligatorios de requerimientos (013)
   apps/api/src/modules/usuarios/                                 CRUD de
       usuarios (alta, rol, contrasena, activo) con reglas anti auto-daño
       y ≥1 superusuario activo · test e2e apps/api/test/usuarios.e2e.test.ts

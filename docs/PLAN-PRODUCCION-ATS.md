@@ -109,7 +109,7 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 ### Fase 3 · Módulo Requerimientos (1 semana)
 
 - [ ] Entidad + API CRUD con las 5 secciones del formulario.
-- [ ] Máquina de estados del flujo con permisos por rol (quién aprueba, quién cierra).
+  - [ ] Máquina de estados del flujo con permisos por rol (quién aprueba, quién cierra); edición únicamente por el creador mientras está pendiente.
 - [ ] Generador atómico de código `REQ-YYYY-NNN` (sequence por tabla con transacción; test de concurrencia).
 - [ ] Tests unitarios del flujo de estados y del generador de códigos.
 - **Salida:** líderes registran y aprueban solicitudes; códigos únicos garantizados bajo concurrencia.
@@ -210,9 +210,10 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
   - `7ad0c96` módulos API nuevos: `GET /api/dashboard`, `GET/PATCH /api/departamentos`, `GET/POST/PATCH /api/entrevistas`, `POST /api/importacion/hvs` (pdfjs-dist), `GET /api/historial/auditoria` (solo superusuario).
   - `cb37b03` frontend completo: 5 páginas nuevas (Dashboard, Departamentos, Entrevistas, Importar HVs, Bitácora), logo LARCO en el header, menú de 8 secciones por rol, raíz `/` → `/dashboard`, kanban sin retroceso y con descartados ocultos, cierre con motivo + resultado.
 - **Bug corregido en el humo**: la API emitía ETag por defecto y el navegador recibía 304 sin cuerpo tras el redirect del alta → listados vacíos sin error. Solución: `etag: false` + `Cache-Control: no-store`.
-- **Baselines verificados hoy (27/10/2026)**: API **395/395** (32 ficheros, incluye 230 e2e contra BD real), web **110/110** (16 ficheros), shared 2/2; `typecheck`/`lint`/`build`/`format:check` en verde. Gates ejecutados tras el commit `cb37b03`.
+- **Baselines verificados el 28/10/2026**: API **401/401** (32 ficheros), web **116/116** (17 ficheros), shared 2/2; `typecheck`/`lint`/`build`/`format:check` en verde. Se añadieron endpoints de liveness/readiness, redacción de secretos en logs, request IDs seguros, validación de configuración productiva y migraciones 011–012.
 - **Documentación actualizada a la Etapa 9**: `docs/PRUEBA-MANUAL-ATS.txt` (guion con las 5 pruebas, incluye Dashboard/Departamentos/Entrevistas/Importar/Bitácora y los 11 casos de la retroalimentación), `docs/DOCUMENTACION-TECNICA-ATS.txt` y este plan. Además `Reportes Desarrollo/Reporte-Desarrollo-2026-10-27.txt` (reporte general para el equipo; los futuros se guardan en esa carpeta con fecha nueva).
-- **Pendiente antes de producción**: (1) auditoría completa del asistente sobre el código de la Etapa 9; (2) **prueba manual del usuario** con el guion de `docs/PRUEBA-MANUAL-ATS.txt` —incluye el arrastre real del Kanban y el intento de retroceder, que debe fallar—; (3) retroalimentación del usuario; (4) SOLO ENTONCES push + `docker-compose.prod.yml` + runbook (Fase 10) cuando se cree el repo de GitHub de la empresa.
+- **Pendiente antes de producción**: antecedentes/proveedor externo, sesión productiva con revocación/MFA, cola de trabajos y parser asistido, privacidad/retención, pruebas Playwright/carga/seguridad, backup-restore de BD y CV, `docker-compose.prod.yml` o plataforma objetivo, CI/CD, runbook y **prueba manual del usuario** con el guion de `docs/PRUEBA-MANUAL-ATS.txt`.
+- **Regla funcional incorporada**: todos los campos del formulario de requerimientos son obligatorios en nuevas altas; la migración `013` bloquea nuevas filas incompletas y deja identificados los registros históricos del piloto que deben completarse.
 
 ---
 

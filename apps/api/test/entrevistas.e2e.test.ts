@@ -101,8 +101,12 @@ describe('Entrevistas — agenda e2e (BD dev docker real)', () => {
     const requerimiento = await database.query<{ id: string }>(
       `INSERT INTO requerimientos
          (code, estado, jefatura, titulo, numero_plazas, perfil_profesional,
-          justificacion, modalidad, urgencia, created_by)
-       VALUES ($1, 'en_proceso', $2, $3, 2, $4, $5, 'directa', 'normal', $6)
+          experiencia_requerida, nivel_educacion, conocimientos, habilidades,
+          salario_min, salario_max, tipo_contrato, jornada, departamento_id,
+          ubicacion, fecha_requerida, justificacion, modalidad, urgencia, created_by)
+       VALUES ($1, 'en_proceso', $2, $3, 2, $4, '2 años', 'Profesional', ARRAY['SQL'], ARRAY['Análisis'],
+          2800000, 3500000, 'Indefinido', 'Diurna', (SELECT id FROM departamentos LIMIT 1),
+          'Bogotá D.C.', '2026-12-01', $5, 'directa', 'normal', $6)
        RETURNING id`,
       [
         `REQ-2026-${randomInt(100000, 999999)}`,
@@ -135,8 +139,12 @@ describe('Entrevistas — agenda e2e (BD dev docker real)', () => {
     const otroRequerimiento = await database.query<{ id: string }>(
       `INSERT INTO requerimientos
          (code, estado, jefatura, titulo, numero_plazas, perfil_profesional,
-          justificacion, modalidad, urgencia, created_by)
-       VALUES ($1, 'en_proceso', $2, $3, 1, $4, $5, 'directa', 'normal', $6)
+          experiencia_requerida, nivel_educacion, conocimientos, habilidades,
+          salario_min, salario_max, tipo_contrato, jornada, departamento_id,
+          ubicacion, fecha_requerida, justificacion, modalidad, urgencia, created_by)
+       VALUES ($1, 'en_proceso', $2, $3, 1, $4, '2 años', 'Profesional', ARRAY['SQL'], ARRAY['Análisis'],
+          2800000, 3500000, 'Indefinido', 'Diurna', (SELECT id FROM departamentos LIMIT 1),
+          'Bogotá D.C.', '2026-12-01', $5, 'directa', 'normal', $6)
        RETURNING id`,
       [
         `REQ-2026-${randomInt(100000, 999999)}`,

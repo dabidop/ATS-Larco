@@ -43,6 +43,20 @@ export class HealthController {
     };
   }
 
+  /** Liveness: el proceso está vivo; no depende de PostgreSQL. */
+  @Public()
+  @Get('health/live')
+  live(): { status: 'ok'; module: 'api'; timestamp: string } {
+    return { status: 'ok', module: 'api', timestamp: new Date().toISOString() };
+  }
+
+  /** Readiness: alias explícito para balanceadores y orquestadores. */
+  @Public()
+  @Get('health/ready')
+  async ready(@Res({ passthrough: true }) response: Response): Promise<HealthResponse> {
+    return this.health(response);
+  }
+
   private async checkDatabase(): Promise<'up' | 'down'> {
     try {
       await this.database.query('SELECT 1');

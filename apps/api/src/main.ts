@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
@@ -7,6 +8,14 @@ import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { parseCorsOrigins, type Env } from './config/env.validation';
+
+/** Solo aceptamos IDs de correlación cortos y seguros para evitar log injection. */
+function requestIdSeguro(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(value)) {
+    return undefined;
+  }
+  return value;
+}
 
 async function bootstrap(): Promise<void> {
   // bufferLogs: los logs del arranque quedan en cola hasta `useLogger`.
@@ -28,6 +37,10 @@ async function bootstrap(): Promise<void> {
   app.getHttpAdapter().getInstance().set('etag', false);
   app.use((_req: Request, res: Response, next: NextFunction) => {
     res.set('Cache-Control', 'no-store');
+    const incoming = requestIdSeguro(_req.headers['x-request-id']);
+    const requestId = incoming ?? randomUUID();
+    _req.headers['x-request-id'] = requestId;
+    res.set('X-Request-Id', requestId);
     next();
   });
 

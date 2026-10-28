@@ -104,21 +104,18 @@ export interface SeccionIdentificacion {
   titulo: string;
   jefatura: string;
   numeroPlazas: number;
-  /** Prioridad (Etapa 9, opcional; default `normal` en BD). */
-  urgencia?: UrgenciaRequerimiento;
-  /** Modalidad (Etapa 9, opcional; default `directa` en BD). */
-  modalidad?: ModalidadRequerimiento;
-  /** Área LARCO (Etapa 9, opcional; uuid de `departamentos`). */
-  departamentoId?: string;
-  ubicacion?: string;
-  /** `'YYYY-MM-DD'` exacto (`@IsDateString({ strictSeparator: true })`). */
-  fechaRequerida?: string;
+  urgencia: UrgenciaRequerimiento;
+  modalidad: ModalidadRequerimiento;
+  departamentoId: string;
+  ubicacion: string;
+  /** `'YYYY-MM-DD'` exacto (`@IsDateString({ strictSeparator: true })`. */
+  fechaRequerida: string;
 }
 
 /** Sección 2. */
 export interface SeccionPerfil {
-  experienciaRequerida?: string;
-  nivelEducacion?: string;
+  experienciaRequerida: string;
+  nivelEducacion: string;
   perfilProfesional: string;
 }
 
@@ -128,12 +125,12 @@ export interface SeccionConocimientos {
   habilidades: string[];
 }
 
-/** Sección 4: todo opcional (la BD admite nulos). */
+/** Sección 4: todos los campos son obligatorios. */
 export interface SeccionCondiciones {
-  salarioMin?: number;
-  salarioMax?: number;
-  tipoContrato?: string;
-  jornada?: string;
+  salarioMin: number;
+  salarioMax: number;
+  tipoContrato: string;
+  jornada: string;
 }
 
 /** Sección 5. */

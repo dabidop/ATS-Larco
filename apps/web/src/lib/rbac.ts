@@ -72,15 +72,14 @@ export function puedeTransicionarRequerimientos(rol: string | null | undefined):
 }
 
 /**
- * Editar (`PATCH /:id`): «solo el creador del requerimiento o un administrador
- * de RRHH (o el `superusuario`, su heredero) pueden modificarlo» (servicio), y
- * además el estado debe ser `pendiente` (409 en otro estado).
+ * Editar (`PATCH /:id`): solo el creador puede modificarlo; además el estado
+ * debe ser `pendiente` (409 en otro estado).
  */
 export function puedeEditarRequerimiento(
   rol: string | null | undefined,
   esCreador: boolean,
 ): boolean {
-  return esCreador || esAdministradorRRHH(rol);
+  return esCreador && rol !== null && rol !== undefined;
 }
 
 // ──────────────────────────────── Candidatos ────────────────────────────────

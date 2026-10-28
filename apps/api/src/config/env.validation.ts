@@ -21,6 +21,19 @@ export const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => (value && value.trim() !== '' ? value : undefined)),
+  /** Correo del administrador inicial; configurable por ambiente. */
+  ADMIN_INITIAL_EMAIL: z.string().email().default('admin@larco.co'),
+  /** Nombre del administrador inicial; configurable por ambiente. */
+  ADMIN_INITIAL_NAME: z.string().min(3).default('Administrador RRHH'),
+  /** Correo del superusuario inicial; configurable por ambiente. */
+  SUPER_INITIAL_EMAIL: z.string().email().default('it@larco.co'),
+  /** Nombre del superusuario inicial; configurable por ambiente. */
+  SUPER_INITIAL_NAME: z.string().min(3).default('Superusuario IT'),
+  /** Solo se usa al ejecutar la migración 008 de bootstrap. */
+  SUPER_INITIAL_PASSWORD: z
+    .string()
+    .optional()
+    .transform((value) => (value && value.trim() !== '' ? value : undefined)),
   /**
    * Secreto para firmar los JWT. Obligatorio y mínimo 32 caracteres.
    * Un valor vacío se trata como AUSENTE y produce un error claro en el arranque.
@@ -121,7 +134,25 @@ export function validateEnv(config: Record<string, unknown>): Env {
       .join('\n');
     throw new Error(`Configuración de entorno inválida:\n${issues}`);
   }
-  return result.data;
+  const data = result.data;
+  if (data.NODE_ENV === 'production') {
+    const errores: string[] = [];
+    if (!data.CORS_ORIGIN || parseCorsOrigins(data.CORS_ORIGIN).length === 0) {
+      errores.push('CORS_ORIGIN es obligatorio en producción');
+    }
+    if (data.ADMIN_INITIAL_EMAIL === 'admin@larco.co') {
+      errores.push('ADMIN_INITIAL_EMAIL debe parametrizarse en producción');
+    }
+    if (data.SUPER_INITIAL_EMAIL === 'it@larco.co') {
+      errores.push('SUPER_INITIAL_EMAIL debe parametrizarse en producción');
+    }
+    if (errores.length > 0) {
+      throw new Error(
+        `Configuración de entorno inválida:\n${errores.map((e) => `  - ${e}`).join('\n')}`,
+      );
+    }
+  }
+  return data;
 }
 
 /** Convierte un CSV de orígenes CORS en una lista limpia (sin vacíos). */

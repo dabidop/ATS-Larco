@@ -135,12 +135,20 @@ export function validarFormularioRequerimiento(
     errores.numeroPlazas = 'numeroPlazas debe ser al menos 1';
   }
 
-  if (formulario.fechaRequerida.length > 0 && !PATRON_FECHA.test(formulario.fechaRequerida)) {
+  if (formulario.fechaRequerida.trim().length === 0) {
+    errores.fechaRequerida = 'fechaRequerida es obligatoria';
+  } else if (!PATRON_FECHA.test(formulario.fechaRequerida)) {
     errores.fechaRequerida = 'fechaRequerida debe ser una fecha válida en formato YYYY-MM-DD';
   }
 
   if (formulario.perfilProfesional.trim().length === 0) {
     errores.perfilProfesional = 'perfilProfesional es obligatorio';
+  }
+  if (formulario.experienciaRequerida.trim().length === 0) {
+    errores.experienciaRequerida = 'experienciaRequerida es obligatoria';
+  }
+  if (formulario.nivelEducacion.trim().length === 0) {
+    errores.nivelEducacion = 'nivelEducacion es obligatorio';
   }
 
   if (textoALista(formulario.conocimientos).length === 0) {
@@ -149,17 +157,27 @@ export function validarFormularioRequerimiento(
   if (textoALista(formulario.habilidades).length === 0) {
     errores.habilidades = 'habilidades no puede estar vacía';
   }
+  if (formulario.departamentoId.trim().length === 0) {
+    errores.departamentoId = 'departamentoId es obligatorio';
+  }
+  if (formulario.ubicacion.trim().length === 0) {
+    errores.ubicacion = 'ubicacion es obligatoria';
+  }
 
   const min = formulario.salarioMin.trim();
   const max = formulario.salarioMax.trim();
-  if (min.length > 0) {
+  if (min.length === 0) {
+    errores.salarioMin = 'salarioMin es obligatorio';
+  } else {
     if (Number.isNaN(Number(min))) {
       errores.salarioMin = 'salarioMin debe ser un número';
     } else if (Number(min) < 0) {
       errores.salarioMin = 'salarioMin no puede ser negativo';
     }
   }
-  if (max.length > 0) {
+  if (max.length === 0) {
+    errores.salarioMax = 'salarioMax es obligatorio';
+  } else {
     if (Number.isNaN(Number(max))) {
       errores.salarioMax = 'salarioMax debe ser un número';
     } else if (Number(max) < 0) {
@@ -174,6 +192,12 @@ export function validarFormularioRequerimiento(
     Number(min) > Number(max)
   ) {
     errores.salarioMax = 'El salario mínimo no puede ser mayor que el salario máximo';
+  }
+  if (formulario.tipoContrato.trim().length === 0) {
+    errores.tipoContrato = 'tipoContrato es obligatorio';
+  }
+  if (formulario.jornada.trim().length === 0) {
+    errores.jornada = 'jornada es obligatoria';
   }
 
   if (formulario.justificacion.trim().length === 0) {
@@ -194,37 +218,27 @@ export function aCuerpoRequerimiento(
       numeroPlazas: Number(formulario.numeroPlazas.trim()),
       urgencia: formulario.urgencia,
       modalidad: formulario.modalidad,
+      departamentoId: formulario.departamentoId.trim(),
+      ubicacion: formulario.ubicacion.trim(),
+      fechaRequerida: formulario.fechaRequerida,
     },
-    perfil: { perfilProfesional: formulario.perfilProfesional.trim() },
+    perfil: {
+      perfilProfesional: formulario.perfilProfesional.trim(),
+      experienciaRequerida: formulario.experienciaRequerida.trim(),
+      nivelEducacion: formulario.nivelEducacion.trim(),
+    },
     conocimientos: {
       conocimientos: textoALista(formulario.conocimientos),
       habilidades: textoALista(formulario.habilidades),
     },
-    condiciones: {},
+    condiciones: {
+      salarioMin: Number(formulario.salarioMin.trim()),
+      salarioMax: Number(formulario.salarioMax.trim()),
+      tipoContrato: formulario.tipoContrato.trim(),
+      jornada: formulario.jornada.trim(),
+    },
     justificacion: { justificacion: formulario.justificacion.trim() },
   };
-
-  const departamentoId = formulario.departamentoId.trim();
-  if (departamentoId.length > 0) cuerpo.identificacion.departamentoId = departamentoId;
-  const ubicacion = formulario.ubicacion.trim();
-  if (ubicacion.length > 0) cuerpo.identificacion.ubicacion = ubicacion;
-  if (formulario.fechaRequerida.length > 0) {
-    cuerpo.identificacion.fechaRequerida = formulario.fechaRequerida;
-  }
-
-  const experiencia = formulario.experienciaRequerida.trim();
-  if (experiencia.length > 0) cuerpo.perfil.experienciaRequerida = experiencia;
-  const educacion = formulario.nivelEducacion.trim();
-  if (educacion.length > 0) cuerpo.perfil.nivelEducacion = educacion;
-
-  const min = formulario.salarioMin.trim();
-  if (min.length > 0) cuerpo.condiciones.salarioMin = Number(min);
-  const max = formulario.salarioMax.trim();
-  if (max.length > 0) cuerpo.condiciones.salarioMax = Number(max);
-  const tipoContrato = formulario.tipoContrato.trim();
-  if (tipoContrato.length > 0) cuerpo.condiciones.tipoContrato = tipoContrato;
-  const jornada = formulario.jornada.trim();
-  if (jornada.length > 0) cuerpo.condiciones.jornada = jornada;
 
   return cuerpo;
 }
@@ -257,8 +271,7 @@ export function FormularioRequerimiento({
   const [enviando, setEnviando] = useState(false);
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
 
-  // Catálogo de áreas LARCO para el select de departamento (best-effort:
-  // si falla, el campo sigue siendo opcional y el server valida el uuid).
+  // El catálogo de departamentos es obligatorio para crear un requerimiento.
   const departamentos = useRecurso<Departamento[]>(
     () => solicitud<Departamento[]>('/departamentos'),
     [],
@@ -382,7 +395,7 @@ export function FormularioRequerimiento({
           </div>
           <div>
             <label htmlFor="req-departamento" className={CLASE_ETIQUETA}>
-              Departamento
+              Departamento *
             </label>
             <select
               id="req-departamento"
@@ -390,22 +403,25 @@ export function FormularioRequerimiento({
               onChange={(evento) => cambiar('departamentoId')(evento.target.value)}
               className={CLASE_CAMPO}
             >
-              <option value="">(sin departamento)</option>
+              <option value="">(selecciona un departamento)</option>
               {(departamentos.datos ?? []).map((departamento) => (
                 <option key={departamento.id} value={departamento.id}>
                   {departamento.nombre}
                 </option>
               ))}
             </select>
+            {errores.departamentoId && (
+              <p className="mt-1 text-xs text-rose-300">{errores.departamentoId}</p>
+            )}
           </div>
           <CampoTexto
-            etiqueta="Ubicación"
+            etiqueta="Ubicación *"
             valor={formulario.ubicacion}
             onCambio={cambiar('ubicacion')}
             error={errores.ubicacion}
           />
           <CampoTexto
-            etiqueta="Fecha requerida"
+            etiqueta="Fecha requerida *"
             type="date"
             valor={formulario.fechaRequerida}
             onCambio={cambiar('fechaRequerida')}
@@ -426,13 +442,13 @@ export function FormularioRequerimiento({
           />
           <div className="grid gap-4 sm:grid-cols-2">
             <CampoTexto
-              etiqueta="Experiencia requerida"
+              etiqueta="Experiencia requerida *"
               valor={formulario.experienciaRequerida}
               onCambio={cambiar('experienciaRequerida')}
               error={errores.experienciaRequerida}
             />
             <CampoTexto
-              etiqueta="Nivel de educación"
+              etiqueta="Nivel de educación *"
               valor={formulario.nivelEducacion}
               onCambio={cambiar('nivelEducacion')}
               error={errores.nivelEducacion}
@@ -471,27 +487,27 @@ export function FormularioRequerimiento({
         </legend>
         <div className="grid gap-4 sm:grid-cols-2">
           <CampoTexto
-            etiqueta="Salario mínimo"
+            etiqueta="Salario mínimo *"
             inputMode="decimal"
             valor={formulario.salarioMin}
             onCambio={cambiar('salarioMin')}
             error={errores.salarioMin}
           />
           <CampoTexto
-            etiqueta="Salario máximo"
+            etiqueta="Salario máximo *"
             inputMode="decimal"
             valor={formulario.salarioMax}
             onCambio={cambiar('salarioMax')}
             error={errores.salarioMax}
           />
           <CampoTexto
-            etiqueta="Tipo de contrato"
+            etiqueta="Tipo de contrato *"
             valor={formulario.tipoContrato}
             onCambio={cambiar('tipoContrato')}
             error={errores.tipoContrato}
           />
           <CampoTexto
-            etiqueta="Jornada"
+            etiqueta="Jornada *"
             valor={formulario.jornada}
             onCambio={cambiar('jornada')}
             error={errores.jornada}

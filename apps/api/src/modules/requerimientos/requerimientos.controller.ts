@@ -65,7 +65,7 @@ function requireUser(request: AuthenticatedRequest): AuthenticatedUser {
  * | POST /api/requerimientos                  | @Roles('admin_rrhh','superusuario','lider_area')       |
  * | GET  /api/requerimientos                  | autenticado (cualquier rol)                            |
  * | GET  /api/requerimientos/:id              | autenticado (cualquier rol)                            |
- * | PATCH /api/requerimientos/:id             | creador o @Roles('admin_rrhh','superusuario')          |
+ * | PATCH /api/requerimientos/:id             | creador, únicamente en pendiente                         |
  * | POST /api/requerimientos/:id/transiciones | @Roles('admin_rrhh','superusuario','analista_seleccion','lider_area') |
  *
  * `superusuario` (IT, migración 008) hereda TODO el poder de `admin_rrhh`
@@ -126,7 +126,7 @@ export class RequerimientosController {
     return this.requerimientos.findById(id);
   }
 
-  /** Actualización parcial: solo en `pendiente` y solo creador, `admin_rrhh` o `superusuario`. */
+  /** Actualización parcial: solo el creador y únicamente en `pendiente`. */
   @Patch(':id')
   async update(
     @Param('id', UUID_PARAM) id: string,

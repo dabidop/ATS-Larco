@@ -32,8 +32,8 @@ import { hashPassword } from '../../src/common/crypto/password.util';
  * el trigger de inmutabilidad rechazaría).
  */
 
-const SUPER_EMAIL = 'it@larco.co';
-const SUPER_FULL_NAME = 'Superusuario IT';
+const SUPER_EMAIL = process.env.SUPER_INITIAL_EMAIL?.trim() || 'it@larco.co';
+const SUPER_FULL_NAME = process.env.SUPER_INITIAL_NAME?.trim() || 'Superusuario IT';
 const SUPER_ROLE_CODE = 'superusuario';
 const SUPER_ROLE_NAME = 'Superusuario (IT)';
 

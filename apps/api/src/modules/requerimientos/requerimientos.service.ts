@@ -19,15 +19,6 @@ import { TRANSICIONES_VALIDAS, denegacionPermiso } from './requerimientos-flujo'
 import { buildCreateData, buildUpdateData, toResponse } from './requerimientos.mapper';
 import { RequerimientosStoreService } from './requerimientos-store.service';
 
-/** Rol con poderes de administración sobre los requerimientos (RBAC). */
-const ROLE_ADMIN = 'admin_rrhh';
-
-/**
- * Heredero directo de `admin_rrhh` (migración 008, Etapa 8B): el
- * `superusuario` (IT) edita requerimientos ajenos con el MISMO poder que RRHH.
- */
-const ROLE_SUPERUSUARIO = 'superusuario';
-
 /**
  * Campos obligatorios de la entidad: un `PATCH` no puede dejarlos vacíos
  * (las columnas son NOT NULL en BD y la API responde 400 en vez del 500 que
@@ -37,7 +28,20 @@ const CAMPOS_OBLIGATORIOS: ReadonlyArray<{ campo: keyof Requerimiento; etiqueta:
   { campo: 'titulo', etiqueta: 'titulo' },
   { campo: 'jefatura', etiqueta: 'jefatura' },
   { campo: 'numeroPlazas', etiqueta: 'numeroPlazas' },
+  { campo: 'urgencia', etiqueta: 'urgencia' },
+  { campo: 'modalidad', etiqueta: 'modalidad' },
+  { campo: 'departamentoId', etiqueta: 'departamentoId' },
+  { campo: 'ubicacion', etiqueta: 'ubicacion' },
+  { campo: 'fechaRequerida', etiqueta: 'fechaRequerida' },
+  { campo: 'experienciaRequerida', etiqueta: 'experienciaRequerida' },
+  { campo: 'nivelEducacion', etiqueta: 'nivelEducacion' },
   { campo: 'perfilProfesional', etiqueta: 'perfilProfesional' },
+  { campo: 'conocimientos', etiqueta: 'conocimientos' },
+  { campo: 'habilidades', etiqueta: 'habilidades' },
+  { campo: 'salarioMin', etiqueta: 'salarioMin' },
+  { campo: 'salarioMax', etiqueta: 'salarioMax' },
+  { campo: 'tipoContrato', etiqueta: 'tipoContrato' },
+  { campo: 'jornada', etiqueta: 'jornada' },
   { campo: 'justificacion', etiqueta: 'justificacion' },
 ];
 
@@ -88,15 +92,17 @@ export class RequerimientosService {
    * El código `REQ-YYYY-NNN` lo genera el servicio de códigos y el estado
    * arranca SIEMPRE en `pendiente`; `createdBy` llega del JWT y no del cuerpo.
    */
-  async create(dto: CreateRequerimientoDto, user: AuthenticatedUser): Promise<RequerimientoResponseDto> {
+  async create(
+    dto: CreateRequerimientoDto,
+    user: AuthenticatedUser,
+  ): Promise<RequerimientoResponseDto> {
     const code = await this.codigoGenerator.siguienteCodigo();
     const repo = await this.store.repo();
 
     // La jefatura del líder es una regla de seguridad, no solo una precarga de
     // UI. Si el usuario tiene jefatura asignada, se ignora cualquier valor
     // manipulado en el cuerpo y se usa la jefatura real de su cuenta.
-    const jefaturaDelLider =
-      user.role === 'lider_area' ? await this.jefaturaDe(user.sub) : null;
+    const jefaturaDelLider = user.role === 'lider_area' ? await this.jefaturaDe(user.sub) : null;
     const dtoAplicado =
       user.role === 'lider_area' && jefaturaDelLider !== null
         ? {
@@ -209,8 +215,7 @@ export class RequerimientosService {
    *  2. 409 si no está `pendiente`: el ciclo de vida lo decide la máquina de
    *     estados (parte 4); editar un requerimiento aprobado/en proceso ya
    *     rompería la trazabilidad.
-   *  3. 403 si no lo creó el usuario actual y no es `admin_rrhh` ni
-   *     `superusuario`.
+   *  3. 403 si no lo creó el usuario actual.
    *  4. 400 si el cambio dejaría un campo obligatorio vacío o el rango
    *     salarial inconsistente (el CHECK de BD devolvería un 500).
    *
@@ -237,13 +242,10 @@ export class RequerimientosService {
       );
     }
 
-    // `admin_rrhh` y su heredero `superusuario` (Etapa 8B) editan cualquier
-    // fila; el resto solo lo que creó.
-    const esAdministrador = user.role === ROLE_ADMIN || user.role === ROLE_SUPERUSUARIO;
-    if (entidad.createdBy !== user.sub && !esAdministrador) {
-      throw new ForbiddenException(
-        'Solo el creador del requerimiento o un administrador de RRHH pueden modificarlo',
-      );
+    // La autoría es estricta: aprobar o administrar no concede permiso para
+    // editar solicitudes ajenas.
+    if (entidad.createdBy !== user.sub) {
+      throw new ForbiddenException('Solo el creador del requerimiento puede modificarlo');
     }
 
     const cambios = buildUpdateData(dto);
@@ -256,8 +258,7 @@ export class RequerimientosService {
 
     // Escritura en transacción: fija el GUC del actor ANTES del UPDATE para
     // que `audit_log.changed_by` sea QUIÉN edita y no el `created_by` de la
-    // fila (migración 004). El resultado observable para el creador es el
-    // mismo de siempre; ahora el admin que edita también queda registrado.
+    // fila (migración 004).
     return this.store.withTransaction(async (em) => {
       await this.fijarActorDeAuditoria(em, user.sub);
       const guardada = await em.save(Requerimiento, resultado);
@@ -408,7 +409,13 @@ export class RequerimientosService {
   private assertCamposObligatorios(entidad: Requerimiento): void {
     for (const { campo, etiqueta } of CAMPOS_OBLIGATORIOS) {
       const valor = entidad[campo];
-      if (valor === null || valor === undefined || valor === '') {
+      const vacío =
+        valor === null ||
+        valor === undefined ||
+        (typeof valor === 'string' && valor.trim() === '') ||
+        (Array.isArray(valor) &&
+          (valor.length === 0 || valor.some((elemento) => elemento.trim() === '')));
+      if (vacío) {
         throw new BadRequestException(`${etiqueta} es obligatorio y no puede quedar vacío`);
       }
     }

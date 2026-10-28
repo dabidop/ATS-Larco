@@ -132,26 +132,26 @@ export class Requerimiento {
   })
   modalidad!: ModalidadRequerimiento;
 
-  /** Área LARCO solicitante (FK `departamentos(id)`; nullable). */
-  @Column({ name: 'departamento_id', type: 'uuid', nullable: true })
-  departamentoId!: string | null;
+  /** Área LARCO solicitante (FK `departamentos(id)`). */
+  @Column({ name: 'departamento_id', type: 'uuid' })
+  departamentoId!: string;
 
-  @Column({ type: 'text', nullable: true })
-  ubicacion!: string | null;
+  @Column({ type: 'text' })
+  ubicacion!: string;
 
   /** `'YYYY-MM-DD'`: el driver hidrata `date` como string, no como Date. */
-  @Column({ name: 'fecha_requerida', type: 'date', nullable: true })
-  fechaRequerida!: string | null;
+  @Column({ name: 'fecha_requerida', type: 'date' })
+  fechaRequerida!: string;
 
   // ---------------------------------------------------------------------------
   // Sección 2 — perfil profesional
   // ---------------------------------------------------------------------------
 
-  @Column({ name: 'experiencia_requerida', type: 'text', nullable: true })
-  experienciaRequerida!: string | null;
+  @Column({ name: 'experiencia_requerida', type: 'text' })
+  experienciaRequerida!: string;
 
-  @Column({ name: 'nivel_educacion', type: 'text', nullable: true })
-  nivelEducacion!: string | null;
+  @Column({ name: 'nivel_educacion', type: 'text' })
+  nivelEducacion!: string;
 
   @Column({ name: 'perfil_profesional', type: 'text' })
   perfilProfesional!: string;
@@ -173,24 +173,22 @@ export class Requerimiento {
   @Column({
     name: 'salario_min',
     type: 'numeric',
-    nullable: true,
     transformer: transformerNumerico,
   })
-  salarioMin!: number | null;
+  salarioMin!: number;
 
   @Column({
     name: 'salario_max',
     type: 'numeric',
-    nullable: true,
     transformer: transformerNumerico,
   })
-  salarioMax!: number | null;
+  salarioMax!: number;
 
-  @Column({ name: 'tipo_contrato', type: 'text', nullable: true })
-  tipoContrato!: string | null;
+  @Column({ name: 'tipo_contrato', type: 'text' })
+  tipoContrato!: string;
 
-  @Column({ type: 'text', nullable: true })
-  jornada!: string | null;
+  @Column({ type: 'text' })
+  jornada!: string;
 
   // ---------------------------------------------------------------------------
   // Sección 5 — justificación

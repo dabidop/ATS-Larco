@@ -14,8 +14,8 @@ import { hashPassword } from '../../src/common/crypto/password.util';
  * ruidosa en lugar de silenciar un estado inconsistente.
  */
 
-const ADMIN_EMAIL = 'admin@larco.co';
-const ADMIN_FULL_NAME = 'Administrador RRHH';
+const ADMIN_EMAIL = process.env.ADMIN_INITIAL_EMAIL?.trim() || 'admin@larco.co';
+const ADMIN_FULL_NAME = process.env.ADMIN_INITIAL_NAME?.trim() || 'Administrador RRHH';
 const ADMIN_ROLE_CODE = 'admin_rrhh';
 
 const ROLES: ReadonlyArray<{ code: string; name: string }> = [

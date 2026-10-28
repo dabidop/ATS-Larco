@@ -8,7 +8,6 @@ import {
   IsInt,
   IsNotEmpty,
   IsNumber,
-  IsOptional,
   IsString,
   IsUUID,
   Min,
@@ -51,47 +50,43 @@ export class IdentificacionRequerimientoDto {
   @Min(1, { message: 'numeroPlazas debe ser al menos 1' })
   numeroPlazas!: number;
 
-  /** Prioridad de la vacante (default `normal` en BD). */
-  @IsOptional()
+  /** Prioridad de la vacante. */
   @IsEnum(UrgenciaRequerimiento, {
     message: `urgencia debe ser una de: ${Object.values(UrgenciaRequerimiento).join(', ')}`,
   })
-  urgencia?: UrgenciaRequerimiento;
+  urgencia!: UrgenciaRequerimiento;
 
-  /** Modalidad de contratación (default `directa` en BD). */
-  @IsOptional()
+  /** Modalidad de contratación. */
   @IsEnum(ModalidadRequerimiento, {
     message: `modalidad debe ser una de: ${Object.values(ModalidadRequerimiento).join(', ')}`,
   })
-  modalidad?: ModalidadRequerimiento;
+  modalidad!: ModalidadRequerimiento;
 
-  /** Área LARCO solicitante (FK a `departamentos`; nullable). */
-  @IsOptional()
+  /** Área LARCO solicitante. */
   @IsUUID('4', { message: 'departamentoId debe ser un UUID válido' })
-  departamentoId?: string;
+  departamentoId!: string;
 
-  @IsOptional()
   @IsString({ message: 'ubicacion debe ser una cadena de texto' })
-  ubicacion?: string;
+  @IsNotEmpty({ message: 'ubicacion es obligatoria' })
+  ubicacion!: string;
 
   /** `'YYYY-MM-DD'` exacto: `strictSeparator` descarta fechas con hora. */
-  @IsOptional()
   @IsDateString(
     { strictSeparator: true },
     { message: 'fechaRequerida debe ser una fecha válida en formato YYYY-MM-DD' },
   )
-  fechaRequerida?: string;
+  fechaRequerida!: string;
 }
 
 /** Sección 2 — perfil profesional. */
 export class PerfilRequerimientoDto {
-  @IsOptional()
   @IsString({ message: 'experienciaRequerida debe ser una cadena de texto' })
-  experienciaRequerida?: string;
+  @IsNotEmpty({ message: 'experienciaRequerida es obligatoria' })
+  experienciaRequerida!: string;
 
-  @IsOptional()
   @IsString({ message: 'nivelEducacion debe ser una cadena de texto' })
-  nivelEducacion?: string;
+  @IsNotEmpty({ message: 'nivelEducacion es obligatorio' })
+  nivelEducacion!: string;
 
   @IsString({ message: 'perfilProfesional debe ser una cadena de texto' })
   @IsNotEmpty({ message: 'perfilProfesional es obligatorio' })
@@ -103,33 +98,33 @@ export class ConocimientosRequerimientoDto {
   @IsArray({ message: 'conocimientos debe ser una lista' })
   @ArrayNotEmpty({ message: 'conocimientos no puede estar vacía' })
   @IsString({ each: true, message: 'cada conocimiento debe ser una cadena de texto' })
+  @IsNotEmpty({ each: true, message: 'cada conocimiento es obligatorio' })
   conocimientos!: string[];
 
   @IsArray({ message: 'habilidades debe ser una lista' })
   @ArrayNotEmpty({ message: 'habilidades no puede estar vacía' })
   @IsString({ each: true, message: 'cada habilidad debe ser una cadena de texto' })
+  @IsNotEmpty({ each: true, message: 'cada habilidad es obligatoria' })
   habilidades!: string[];
 }
 
 /** Sección 4 — condiciones salariales y contractuales. */
 export class CondicionesRequerimientoDto {
-  @IsOptional()
   @IsNumber({}, { message: 'salarioMin debe ser un número' })
   @Min(0, { message: 'salarioMin no puede ser negativo' })
-  salarioMin?: number;
+  salarioMin!: number;
 
-  @IsOptional()
   @IsNumber({}, { message: 'salarioMax debe ser un número' })
   @Min(0, { message: 'salarioMax no puede ser negativo' })
-  salarioMax?: number;
+  salarioMax!: number;
 
-  @IsOptional()
   @IsString({ message: 'tipoContrato debe ser una cadena de texto' })
-  tipoContrato?: string;
+  @IsNotEmpty({ message: 'tipoContrato es obligatorio' })
+  tipoContrato!: string;
 
-  @IsOptional()
   @IsString({ message: 'jornada debe ser una cadena de texto' })
-  jornada?: string;
+  @IsNotEmpty({ message: 'jornada es obligatoria' })
+  jornada!: string;
 }
 
 /** Sección 5 — justificación. */

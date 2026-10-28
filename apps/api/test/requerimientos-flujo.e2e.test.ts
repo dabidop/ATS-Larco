@@ -93,6 +93,7 @@ describe('Requerimientos — máquina de estados e2e (BD dev docker real)', () =
 
   /** Rechazado por admin con motivo: para comprobar el 409 desde un terminal. */
   let requerimientoRechazadoId = '';
+  let departamentoId: string;
 
   beforeAll(async () => {
     const url = process.env.DATABASE_URL;
@@ -123,6 +124,11 @@ describe('Requerimientos — máquina de estados e2e (BD dev docker real)', () =
 
     // Abre la conexión LAZY del módulo (mismo patrón que el test de CRUD).
     await store.repo();
+    const departamentos = (await dataSource.query(
+      'SELECT id FROM departamentos ORDER BY nombre LIMIT 1',
+    )) as Array<{ id: string }>;
+    departamentoId = departamentos[0]?.id ?? '';
+    if (departamentoId === '') throw new Error('No se encontró un departamento para el fixture');
 
     // El admin del seed 002 es el único admin_rrhh real de la BD dev.
     const admins = (await dataSource.query('SELECT id FROM users WHERE email = $1', [
@@ -209,10 +215,16 @@ describe('Requerimientos — máquina de estados e2e (BD dev docker real)', () =
         titulo,
         jefatura: JEFATURA_FLUJO,
         numeroPlazas: 1,
+        urgencia: 'normal',
+        modalidad: 'directa',
+        departamentoId,
         ubicacion: 'Bogotá D.C.',
+        fechaRequerida: '2026-12-01',
       },
       perfil: {
         perfilProfesional: 'Profesional de prueba de la máquina de estados',
+        experienciaRequerida: '2 años de experiencia',
+        nivelEducacion: 'Profesional',
       },
       conocimientos: {
         conocimientos: ['SQL'],
@@ -221,6 +233,8 @@ describe('Requerimientos — máquina de estados e2e (BD dev docker real)', () =
       condiciones: {
         salarioMin: 2_800_000,
         salarioMax: 3_500_000,
+        tipoContrato: 'Indefinido',
+        jornada: 'Diurna',
       },
       justificacion: { justificacion: 'Prueba de la máquina de estados (Fase 3, parte 4)' },
     };

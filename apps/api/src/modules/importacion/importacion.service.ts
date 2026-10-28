@@ -180,7 +180,9 @@ export function extraerEmail(texto: string): string | null {
 }
 
 export function extraerCedula(texto: string): string | null {
-  const coincidencia = texto.match(/(?:c\.?\s*c\.?|c[eé]dula)(?:\s*(?:no\.?|n[uú]mero))?\s*[:#.-]*\s*([\d .-]{6,18})/i);
+  const coincidencia = texto.match(
+    /(?:c\.?\s*c\.?|c[eé]dula)(?:\s*(?:no\.?|n[uú]mero))?\s*[:#.-]*\s*([\d .-]{6,18})/i,
+  );
   if (coincidencia === null) return null;
   const cedula = coincidencia[1]?.replace(/\D/g, '') ?? '';
   return /^\d{6,10}$/.test(cedula) ? cedula : null;
@@ -192,18 +194,44 @@ export function extraerTelefono(texto: string): string | null {
 }
 
 const CIUDADES_COLOMBIA = [
-  'Medellín', 'Bogotá', 'Cali', 'Barranquilla', 'Cartagena', 'Sabaneta',
-  'Envigado', 'Itagüí', 'Bello', 'Rionegro', 'Manizales', 'Pereira',
-  'Armenia', 'Santa Marta', 'Villavicencio', 'Bucaramanga', 'Ibagué',
+  'Medellín',
+  'Bogotá',
+  'Cali',
+  'Barranquilla',
+  'Cartagena',
+  'Sabaneta',
+  'Envigado',
+  'Itagüí',
+  'Bello',
+  'Rionegro',
+  'Manizales',
+  'Pereira',
+  'Armenia',
+  'Santa Marta',
+  'Villavicencio',
+  'Bucaramanga',
+  'Ibagué',
 ];
 
 export function extraerCiudad(texto: string): string | null {
-  const conEtiqueta = texto.match(/(?:ciudad|ubicaci[oó]n|residencia)\s*[:-]?\s*([\p{L} .'-]{3,60})/iu);
+  const conEtiqueta = texto.match(
+    /(?:ciudad|ubicaci[oó]n|residencia)\s*[:-]?\s*([\p{L} .'-]{3,60})/iu,
+  );
   if (conEtiqueta?.[1]) return conEtiqueta[1].trim().split(/[,\n]/)[0]?.trim() ?? null;
-  const normalizado = texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  return CIUDADES_COLOMBIA.find((ciudad) =>
-    normalizado.includes(ciudad.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()),
-  ) ?? null;
+  const normalizado = texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  return (
+    CIUDADES_COLOMBIA.find((ciudad) =>
+      normalizado.includes(
+        ciudad
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase(),
+      ),
+    ) ?? null
+  );
 }
 
 /**

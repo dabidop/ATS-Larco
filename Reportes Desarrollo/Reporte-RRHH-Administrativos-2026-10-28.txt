@@ -1,0 +1,116 @@
+================================================================================
+REPORTE DE AVANCE DEL SOFTWARE — ATS LARCO
+Para: Gestión Humana, RRHH y personal administrativo
+Fecha: 28 de octubre de 2026
+================================================================================
+
+1. RESUMEN EJECUTIVO
+---------------------
+El ATS LARCO es una aplicación web para organizar el proceso de selección de
+personal: solicitudes de contratación, candidatos, hojas de vida, postulaciones,
+entrevistas y contratación.
+
+El núcleo del sistema ya funciona y puede utilizarse en un piloto interno con
+datos de prueba. La aplicación todavía NO debe declararse lista para producción
+ni exponerse a Internet, porque faltan medidas de operación, seguridad y algunos
+módulos especializados.
+
+Estado general: AMARILLO — piloto avanzado, pendiente de endurecimiento y
+aceptación formal por Gestión Humana y Sistemas.
+
+2. FUNCIONES DISPONIBLES
+------------------------
+
+2.1 Usuarios y permisos
+    - Inicio de sesión.
+    - Cuatro perfiles: administrador de RRHH, analista de selección, líder de
+      área y superusuario de IT.
+    - Cada perfil ve y utiliza solamente las opciones que le corresponden.
+    - El superusuario puede administrar cuentas: crear usuarios, desactivarlos,
+      cambiar roles y restablecer contraseñas.
+
+2.2 Requerimientos de personal
+    - Registro de solicitudes de personal mediante un formulario organizado.
+    - Todos los campos funcionales son obligatorios: área, ubicación, fecha,
+      experiencia, educación, salario, contrato, jornada, conocimientos y
+      habilidades, entre otros.
+    - Generación de código único para cada solicitud, por ejemplo REQ-2026-001.
+    - Estados: pendiente, aprobado, en proceso, cerrado, rechazado y exitoso.
+    - El creador puede corregir su solicitud únicamente mientras esté pendiente.
+      RRHH e IT pueden aprobar o cerrar, pero no editar solicitudes ajenas.
+    - Un rechazo requiere motivo. Un cierre requiere motivo y resultado.
+
+2.3 Candidatos y hojas de vida
+    - Creación, consulta y actualización de fichas de candidatos.
+    - Carga individual de hojas de vida.
+    - Importación de hasta 50 archivos PDF por lote, con reporte individual de
+      éxitos y errores.
+    - Control de archivos repetidos y validación del tipo real del archivo.
+    - La importación extrae texto básico del PDF y algunos datos iniciales; la
+      revisión humana sigue siendo necesaria.
+
+2.4 Embudo de selección
+    - Tablero visual tipo Kanban.
+    - Cinco etapas: preselección, antecedentes, entrevistas, proveedor externo
+      y contratación.
+    - El candidato solo puede avanzar, no retroceder.
+    - Se controla el número de plazas disponibles.
+    - El descarte exige un motivo y queda registrado.
+    - Al cubrir todas las plazas, el requerimiento puede marcarse como exitoso.
+
+2.5 Entrevistas y departamentos
+    - Catálogo de los departamentos de LARCO.
+    - Agenda de entrevistas.
+    - Estados de entrevista: agendada, realizada y cancelada.
+    - Filtros para consultar entrevistas.
+
+2.6 Dashboard y bitácora
+    - Dashboard con resumen del embudo y requerimientos por estado.
+    - Bitácora de actividades importantes para consulta del superusuario.
+    - Los cambios relevantes quedan registrados para facilitar seguimiento.
+
+3. BENEFICIOS ACTUALES PARA EL EQUIPO
+--------------------------------------
+    - Centraliza la información que normalmente se maneja en correos y archivos
+      separados.
+    - Permite saber en qué etapa está cada candidato.
+    - Evita avanzar candidatos sin respetar el flujo definido.
+    - Reduce duplicados de hojas de vida y candidatos.
+    - Facilita la trazabilidad de aprobaciones, descartes y cierres.
+    - Separa las funciones de RRHH, selección, líderes de área e IT.
+
+4. ASPECTOS TODAVÍA PENDIENTES
+-------------------------------
+Los siguientes puntos deben completarse antes de una puesta en producción:
+
+    - Verificación real de antecedentes con fuentes oficiales.
+    - Integración real con el proveedor externo.
+    - Parser completo de hojas de vida. Actualmente la extracción es una ayuda
+      inicial y siempre debe ser revisada por una persona.
+    - Notificaciones por correo, recordatorios y evaluaciones de entrevistas.
+    - Reportes avanzados, exportación a Excel/CSV e indicadores ejecutivos.
+    - Sesiones más seguras, revocación inmediata y MFA para cuentas administrativas.
+    - Copias de seguridad y pruebas de restauración.
+    - Instalación productiva, HTTPS, monitoreo, alertas y procedimiento de soporte.
+    - Política de privacidad, conservación y eliminación de datos personales.
+    - Prueba manual formal con usuarios de Gestión Humana.
+
+5. SITUACIÓN DE LOS DATOS DE PRUEBA
+------------------------------------
+Existen registros históricos incompletos en la base de desarrollo. No se han
+rellenado con información inventada. Antes de validar definitivamente la regla
+de obligatoriedad, esos registros deberán completarse con información real
+autorizada o eliminarse mediante una decisión aprobada.
+
+6. RECOMENDACIÓN
+----------------
+Se recomienda continuar como piloto controlado, usando datos ficticios o
+anonimizados, y realizar una sesión de aceptación con RRHH y Sistemas.
+
+La aplicación presenta una base funcional sólida para organizar el proceso de
+selección, pero el paso a producción debe esperar hasta cerrar los pendientes
+de seguridad, privacidad, copias de respaldo, despliegue y módulos externos.
+
+================================================================================
+FIN DEL REPORTE
+================================================================================

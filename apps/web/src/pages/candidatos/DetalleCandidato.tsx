@@ -151,27 +151,29 @@ export function PaginaDetalleCandidato() {
         <>
           {faltanDatosLaborales && puedeEditarCandidato(rol, esCreador) && (
             <div className="mb-4 rounded-lg border border-amber-700/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
-              Esta hoja de vida no contiene toda la información laboral. Puedes
-              completar manualmente el cargo actual y la expectativa salarial.
+              Esta hoja de vida no contiene toda la información laboral. Puedes completar
+              manualmente el cargo actual y la expectativa salarial.
             </div>
           )}
           <Tarjeta titulo="Datos del candidato">
-          <dl className="grid gap-4 sm:grid-cols-3">
-            <FilaDato etiqueta="Cédula" valor={candidato.cedula} />
-            <FilaDato etiqueta="Teléfono" valor={candidato.telefono ?? '—'} />
-            <FilaDato etiqueta="Email" valor={candidato.email ?? '—'} />
-            <FilaDato etiqueta="Ciudad" valor={candidato.ciudad ?? '—'} />
-            <FilaDato etiqueta="Cargo actual" valor={candidato.cargoActual ?? '—'} />
-            <FilaDato
-              etiqueta="Expectativa salarial"
-              valor={
-                candidato.expectativaSalarial === null ? '—' : String(candidato.expectativaSalarial)
-              }
-            />
-            <FilaDato etiqueta="Disponibilidad" valor={candidato.disponibilidad ?? '—'} />
-            <FilaDato etiqueta="Última actualización" valor={fechaHora(candidato.updatedAt)} />
-            <FilaDato etiqueta="Notas" valor={candidato.notas ?? '—'} />
-          </dl>
+            <dl className="grid gap-4 sm:grid-cols-3">
+              <FilaDato etiqueta="Cédula" valor={candidato.cedula} />
+              <FilaDato etiqueta="Teléfono" valor={candidato.telefono ?? '—'} />
+              <FilaDato etiqueta="Email" valor={candidato.email ?? '—'} />
+              <FilaDato etiqueta="Ciudad" valor={candidato.ciudad ?? '—'} />
+              <FilaDato etiqueta="Cargo actual" valor={candidato.cargoActual ?? '—'} />
+              <FilaDato
+                etiqueta="Expectativa salarial"
+                valor={
+                  candidato.expectativaSalarial === null
+                    ? '—'
+                    : String(candidato.expectativaSalarial)
+                }
+              />
+              <FilaDato etiqueta="Disponibilidad" valor={candidato.disponibilidad ?? '—'} />
+              <FilaDato etiqueta="Última actualización" valor={fechaHora(candidato.updatedAt)} />
+              <FilaDato etiqueta="Notas" valor={candidato.notas ?? '—'} />
+            </dl>
           </Tarjeta>
         </>
       )}

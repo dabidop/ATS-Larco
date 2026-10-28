@@ -1,0 +1,204 @@
+================================================================================
+REPORTE TÉCNICO DE DESARROLLO — ATS LARCO
+Para: Equipo de desarrollo, QA, infraestructura y soporte técnico
+Fecha: 28 de octubre de 2026
+Repositorio: C:\AI APP\SistemaGestionHumana
+Estado: MVP/piloto avanzado; NO aprobado aún para producción
+================================================================================
+
+1. RESUMEN DEL ESTADO
+---------------------
+El sistema cuenta con el flujo principal del ATS implementado: autenticación,
+RBAC, requerimientos, candidatos, CVs, postulaciones, Kanban, entrevistas,
+dashboard, departamentos, importación masiva y auditoría.
+
+Verificaciones recientes:
+    - API: 401 pruebas aprobadas.
+    - Web: 116 pruebas aprobadas.
+    - Shared: 2 pruebas aprobadas.
+    - Typecheck, lint, build y format:check aprobados.
+    - Las pruebas API E2E utilizan PostgreSQL de desarrollo real.
+
+La suite muestra estabilidad del código, pero no sustituye UAT, pruebas de carga,
+revisión de seguridad, backup/restore ni validación en un ambiente productivo.
+
+2. ARQUITECTURA Y DISEÑO
+------------------------
+
+2.1 Organización del repositorio
+    Monorepo administrado con pnpm:
+      apps/api       Backend NestJS.
+      apps/web       Aplicación web React.
+      packages/shared Utilidades compartidas, actualmente pequeño.
+      docs           Plan, documentación y guion de pruebas.
+      Reportes Desarrollo Informes de avance.
+
+2.2 Backend
+    - NestJS 11 sobre Node.js 20+.
+    - TypeScript en modo estricto.
+    - Diseño modular por dominio: auth, requerimientos, candidatos, uploads,
+      postulaciones/embudo, dashboard, departamentos, entrevistas, importación,
+      historial y usuarios.
+    - Flujo habitual: controller -> service -> persistencia.
+    - DTOs con class-validator, whitelist y rechazo de propiedades no permitidas.
+    - Manejo global de errores con respuestas HTTP normalizadas.
+
+2.3 Frontend
+    - React 19, Vite 8, TypeScript estricto y Tailwind CSS 4.
+    - React Router para navegación.
+    - Zustand para sesión y estado del tablero.
+    - dnd-kit para el Kanban.
+    - Validaciones de interfaz como ayuda de experiencia; la autorización real
+      siempre se aplica en el backend.
+
+2.4 Diseño de negocio
+    - La base de datos y el backend son la autoridad de las reglas.
+    - Las transiciones de estado se realizan mediante endpoints específicos.
+    - La interfaz no puede saltarse permisos, cupos ni requisitos obligatorios.
+    - La edición de requerimientos exige que el usuario sea el creador y que el
+      estado sea pendiente.
+
+3. MOTOR DE BASE DE DATOS Y PERSISTENCIA
+----------------------------------------
+Motor: PostgreSQL 16, ejecutado en desarrollo mediante Docker con
+postgres:16-alpine.
+
+Persistencia híbrida, documentada y delimitada:
+    - Pool pg global para la mayoría de los módulos.
+    - TypeORM únicamente en el módulo de requerimientos.
+    - Migraciones versionadas con node-pg-migrate.
+    - No se debe utilizar synchronize en producción.
+
+Tablas y áreas principales:
+    - users y roles: cuentas, roles y estado activo.
+    - requerimientos: solicitudes, estados, salarios, departamento y cierre.
+    - candidatos: información personal y profesional.
+    - archivos_cv: metadatos, hash SHA-256 y ubicación del archivo.
+    - postulaciones: relación candidato-requerimiento, fase y estado.
+    - departamentos: catálogo de áreas LARCO.
+    - entrevistas: agenda y estado de entrevistas.
+    - audit_log: auditoría inmutable.
+    - codigo_sequences: generación atómica de códigos REQ-YYYY-NNN.
+
+Migraciones relevantes:
+    001-007: esquema base, auditoría, candidatos, archivos y postulaciones.
+    008: superusuario y gestión administrativa de usuarios.
+    009: departamentos, entrevistas, urgencia, modalidad y cierre trazable.
+    010: cédula opcional únicamente en importación.
+    011: jefatura y auditoría de borrados.
+    012: retiro de datos demo de coordinadores.
+    013: campos obligatorios de requerimientos para nuevas escrituras.
+
+La migración 013 usa una restricción NOT VALID para no inventar información de
+67 registros históricos incompletos del entorno de desarrollo. Deben resolverse
+antes de validar definitivamente la restricción.
+
+4. MODELO DE SEGURIDAD ACTUAL
+-----------------------------
+
+Implementado:
+    - Autenticación JWT con duración configurable.
+    - RBAC para admin_rrhh, analista_seleccion, lider_area y superusuario.
+    - Contraseñas protegidas con scrypt.
+    - Cédula y teléfono cifrados en la aplicación; HMAC para búsqueda exacta de
+      cédula.
+    - Helmet, CORS restringido y rate limiting.
+    - Validación de magic bytes y tamaño máximo para archivos.
+    - Auditoría mediante triggers de PostgreSQL; la tabla de auditoría rechaza
+      UPDATE y DELETE.
+    - Redacción de secretos y datos sensibles en logs, request IDs seguros y
+      endpoints de health liveness/readiness.
+    - Configuración de producción validada para evitar valores demo por defecto.
+
+Limitaciones y riesgos antes de producción:
+    - El JWT se almacena actualmente en localStorage del navegador.
+    - No existe todavía revocación/rotación completa de sesiones ni MFA.
+    - No hay CI/CD obligatorio, escaneo integral ni despliegue productivo
+      reproducible en el repositorio.
+    - No hay estrategia probada de backup/restore para PostgreSQL y CVs.
+    - Deben formalizarse retención, supresión, consentimiento y acceso a PII
+      conforme a la Ley 1581 de Colombia.
+    - Debe verificarse exhaustivamente que ningún log, métrica o error exponga
+      Authorization, cookies, cédulas, teléfonos o contenido de CV.
+
+Nivel de seguridad: adecuado para desarrollo y piloto controlado, insuficiente
+para declarar producción sin completar los puntos anteriores.
+
+5. REGLAS FUNCIONALES IMPORTANTES
+----------------------------------
+    - Requerimientos: pendiente -> aprobado -> en_proceso -> cerrado/rechazado.
+    - exitoso es terminal y se alcanza automáticamente al cubrir plazas.
+    - Códigos de requerimiento únicos y seguros ante concurrencia.
+    - Todos los campos funcionales son obligatorios en nuevas altas.
+    - Solo el creador edita un requerimiento y únicamente en pendiente.
+    - RRHH y superusuario aprueban/cerran, pero no editan solicitudes ajenas.
+    - El embudo solo avanza una etapa cada vez.
+    - Contratación respeta el cupo de plazas.
+    - El descarte requiere motivo.
+    - El cierre requiere motivo y resultado.
+    - Un candidato no puede tener más de una postulación para el mismo
+      requerimiento.
+
+6. FUNCIONES PARCIALES O NO IMPLEMENTADAS
+------------------------------------------
+    - Antecedentes: existe andamiaje, no verificación real con fuentes oficiales.
+    - Proveedor externo: existe identificación de módulo, no integración real.
+    - Parser de CV: extracción básica de texto; falta parser completo, OCR y
+      confirmación estructurada por campo.
+    - Importación: funciona por lote, pero aún no usa cola persistente ni worker
+      durable con reintentos/dead-letter.
+    - Reportes: dashboard operativo; faltan indicadores avanzados y exportación.
+    - Entrevistas: agenda y estados; faltan recordatorios y evaluaciones.
+
+7. CALIDAD Y PRUEBAS
+--------------------
+    - Vitest para pruebas unitarias, de integración y E2E.
+    - API E2E contra PostgreSQL real de desarrollo.
+    - Web con Testing Library y jsdom.
+    - TypeScript, ESLint, Prettier y build forman los gates locales.
+    - La suite API comparte una BD de desarrollo y está configurada sin
+      paralelismo de archivos para evitar interferencia entre escenarios.
+    - Falta hacer obligatoria esta validación en CI/CD y añadir Playwright en
+      navegador real, carga, DAST/SAST y pruebas de restore.
+
+8. OPERACIÓN Y DESPLIEGUE
+-------------------------
+Disponible:
+    - docker-compose.dev.yml para desarrollo.
+    - Migraciones ejecutables con:
+      pnpm --filter @ats/api db:migrate
+    - Variables documentadas en .env.example.
+
+Pendiente:
+    - docker-compose.prod.yml o plataforma objetivo.
+    - TLS/reverse proxy, secretos fuera de Git y usuarios de BD de mínimo
+      privilegio.
+    - Backup cifrado, copia externa y restore periódico verificado.
+    - Monitoreo, métricas, alertas y runbook.
+    - Pipeline CI/CD con aprobación para producción.
+
+9. PRÓXIMOS PASOS RECOMENDADOS
+------------------------------
+    1. Congelar alcance y crear staging con datos sintéticos.
+    2. Resolver sesión segura, revocación, MFA administrativo y redacción de PII.
+    3. Definir privacidad, retención y permisos de datos.
+    4. Crear despliegue productivo reproducible y backup/restore probado.
+    5. Ejecutar Playwright, carga y revisión OWASP.
+    6. Resolver o documentar los 67 registros históricos incompletos.
+    7. Realizar UAT con RRHH y obtener aprobación formal.
+    8. Implementar cola persistente, parser asistido, antecedentes y proveedor.
+
+10. COMANDOS DE REFERENCIA
+--------------------------
+    Instalar dependencias: pnpm install --frozen-lockfile
+    Migrar BD:             pnpm --filter @ats/api db:migrate
+    Typecheck:             pnpm typecheck
+    Lint:                  pnpm lint
+    Build:                 pnpm build
+    Formato:               pnpm format:check
+    Tests API:             pnpm -C apps/api test
+    Tests web:             pnpm -C apps/web test
+
+================================================================================
+FIN DEL REPORTE
+================================================================================

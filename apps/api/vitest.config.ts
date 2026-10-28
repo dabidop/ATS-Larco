@@ -5,6 +5,10 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts', 'src/**/*.spec.ts', 'test/**/*.test.ts'],
+    // Los e2e comparten una BD dev real. Ejecutarlos en paralelo permite que
+    // el cleanup de un fichero borre fixtures de otro; la suite debe ser
+    // determinista aunque tarde algo más.
+    fileParallelism: false,
     // Los e2e corren contra la BD dev real de Docker (red compartida) y la
     // suite raíz los ejecuta EN PARALELO con la de web: los hooks `afterAll`
     // hacen varias consultas SQL secuenciales de limpieza y con el default

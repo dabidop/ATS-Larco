@@ -100,6 +100,7 @@ describe('Requerimientos — API CRUD e2e (BD dev docker real)', () => {
   let adminId: string;
   let creadorId: string;
   let otroLiderId: string;
+  let departamentoId: string;
 
   let tokenAdmin: string;
   let tokenCreador: string;
@@ -142,6 +143,11 @@ describe('Requerimientos — API CRUD e2e (BD dev docker real)', () => {
 
     // Abre la conexión LAZY del módulo (mismo patrón que el test de concurrencia).
     await store.repo();
+    const departamentos = (await dataSource.query(
+      'SELECT id FROM departamentos ORDER BY nombre LIMIT 1',
+    )) as Array<{ id: string }>;
+    departamentoId = departamentos[0]?.id ?? '';
+    if (departamentoId === '') throw new Error('No se encontró un departamento para el fixture');
 
     // El admin del seed 002 es el único admin_rrhh real de la BD dev.
     const admins = (await dataSource.query('SELECT id FROM users WHERE email = $1', [
@@ -238,6 +244,9 @@ describe('Requerimientos — API CRUD e2e (BD dev docker real)', () => {
         titulo: 'Analista de Selección Senior',
         jefatura,
         numeroPlazas: 2,
+        urgencia: 'normal',
+        modalidad: 'directa',
+        departamentoId,
         ubicacion: 'Bogotá D.C.',
         fechaRequerida: '2026-12-01',
       },
@@ -486,20 +495,17 @@ describe('Requerimientos — API CRUD e2e (BD dev docker real)', () => {
         .send({ identificacion: { titulo: 'Intento ajeno' } })
         .expect(403);
 
-      expect(response.body.message).toBe(
-        'Solo el creador del requerimiento o un administrador de RRHH pueden modificarlo',
-      );
+      expect(response.body.message).toBe('Solo el creador del requerimiento puede modificarlo');
     });
 
-    it('admin_rrhh NO creador → 200 (puede editar)', async () => {
+    it('admin_rrhh NO creador → 403 (no puede editar solicitudes ajenas)', async () => {
       const response = await request(app.getHttpServer())
         .patch(`/api/requerimientos/${requerimientoB.id}`)
         .set('Authorization', `Bearer ${tokenAdmin}`)
         .send({ justificacion: { justificacion: 'Editado por administración' } })
-        .expect(200);
+        .expect(403);
 
-      expect(response.body.justificacion).toBe('Editado por administración');
-      expect(response.body.createdBy).toBe(creadorId); // la autoría no cambia
+      expect(response.body.message).toBe('Solo el creador del requerimiento puede modificarlo');
     });
 
     it('con estado en el cuerpo → 400 (el DTO no lo acepta)', async () => {

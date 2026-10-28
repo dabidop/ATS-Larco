@@ -54,16 +54,16 @@ import type { MigrationBuilder } from 'node-pg-migrate';
  * tablas nuevas, idénticos al resto del esquema.
  */
 
-/** Coordinadores por departamento, tal como aparecen en la muestra. */
+/** Catálogo inicial: los coordinadores reales se configuran desde la aplicación. */
 const DEPARTAMENTOS: ReadonlyArray<{ nombre: string; coordinador: string }> = [
-  { nombre: 'SISTEMAS', coordinador: 'Juan Munera' },
-  { nombre: 'CONTABILIDAD', coordinador: 'Mary Luz Ortega Jaramillo' },
-  { nombre: 'GESTION HUMANA', coordinador: 'Bibiana Betancur Morales' },
-  { nombre: 'ABASTECIMIENTO', coordinador: 'Ana María García' },
-  { nombre: 'PREVENCION SST', coordinador: 'Estefania Tascon Monsalve' },
-  { nombre: 'OFERTAS', coordinador: 'Natalia Arango' },
-  { nombre: 'PROYECTOS', coordinador: 'Carolina García Calle' },
-  { nombre: 'SERVICIOS', coordinador: 'Mauricio Rivera' },
+  { nombre: 'SISTEMAS', coordinador: 'Por asignar' },
+  { nombre: 'CONTABILIDAD', coordinador: 'Por asignar' },
+  { nombre: 'GESTION HUMANA', coordinador: 'Por asignar' },
+  { nombre: 'ABASTECIMIENTO', coordinador: 'Por asignar' },
+  { nombre: 'PREVENCION SST', coordinador: 'Por asignar' },
+  { nombre: 'OFERTAS', coordinador: 'Por asignar' },
+  { nombre: 'PROYECTOS', coordinador: 'Por asignar' },
+  { nombre: 'SERVICIOS', coordinador: 'Por asignar' },
 ];
 
 export async function up(pgm: MigrationBuilder): Promise<void> {

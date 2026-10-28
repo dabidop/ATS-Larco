@@ -709,9 +709,14 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
       const codigoReq = `REQ-2026-${randomInt(100000, 999999)}`;
       const requerimientos = (await repo.query(
         `INSERT INTO requerimientos
-           (code, created_by, titulo, jefatura, numero_plazas, perfil_profesional, justificacion)
-         VALUES ($1, $2, 'Requerimiento de prueba DELETE', 'Talento Humano', 1,
-                 'Perfil de prueba', 'Justificación de prueba')
+            (code, created_by, titulo, jefatura, numero_plazas, perfil_profesional,
+             experiencia_requerida, nivel_educacion, conocimientos, habilidades,
+             salario_min, salario_max, tipo_contrato, jornada, departamento_id,
+             ubicacion, fecha_requerida, justificacion, modalidad, urgencia)
+          VALUES ($1, $2, 'Requerimiento de prueba DELETE', 'Talento Humano', 1,
+                  'Perfil de prueba', '2 años', 'Profesional', ARRAY['SQL'], ARRAY['Análisis'],
+                  2800000, 3500000, 'Indefinido', 'Diurna', (SELECT id FROM departamentos LIMIT 1),
+                  'Bogotá D.C.', '2026-12-01', 'Justificación de prueba', 'directa', 'normal')
          RETURNING id`,
         [codigoReq, creadorId],
       )) as Array<{ id: string }>;

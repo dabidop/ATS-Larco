@@ -60,8 +60,9 @@ export function TarjetaPostulacion({
     <article
       ref={setNodeRef}
       style={estilo}
-      className={`rounded-lg border p-3 text-sm shadow-sm ${fondoPorFase[postulacion.fase]} ${isDragging ? 'border-emerald-500/70 opacity-70' : 'border-slate-800'
-        }`}
+      className={`rounded-lg border p-3 text-sm shadow-sm ${fondoPorFase[postulacion.fase]} ${
+        isDragging ? 'border-emerald-500/70 opacity-70' : 'border-slate-800'
+      }`}
     >
       <div {...listeners} {...attributes} className={arrastrable ? 'cursor-grab' : undefined}>
         <p className="font-medium text-slate-100">

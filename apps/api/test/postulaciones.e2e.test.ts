@@ -122,6 +122,7 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
 
   let adminId: string;
   let analistaId: string;
+  let departamentoId: string;
 
   let tokenAdmin: string;
   let tokenAnalista: string;
@@ -196,6 +197,11 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
         `No se encontró el usuario ${ADMIN_EMAIL}: ejecuta las migraciones (pnpm --filter @ats/api db:migrate)`,
       );
     }
+    const departamentos = (await database.query(
+      'SELECT id FROM departamentos ORDER BY nombre LIMIT 1',
+    )) as { rows: Array<{ id: string }> };
+    departamentoId = departamentos.rows[0]?.id ?? '';
+    if (departamentoId === '') throw new Error('No se encontró un departamento para el fixture');
 
     // Usuarios de prueba (FK `created_by` → `users(id)`: hacen falta UUIDs reales).
     for (const usuario of USUARIOS_DE_PRUEBA) {
@@ -307,11 +313,24 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
         titulo,
         jefatura: JEFATURA,
         numeroPlazas: 1,
+        urgencia: 'normal',
+        modalidad: 'directa',
+        departamentoId,
         ubicacion: 'Bogotá D.C.',
+        fechaRequerida: '2026-12-01',
       },
-      perfil: { perfilProfesional: 'Profesional de prueba del embudo de selección' },
+      perfil: {
+        perfilProfesional: 'Profesional de prueba del embudo de selección',
+        experienciaRequerida: '2 años de experiencia',
+        nivelEducacion: 'Profesional',
+      },
       conocimientos: { conocimientos: ['SQL'], habilidades: ['Comunicación asertiva'] },
-      condiciones: { salarioMin: 2_800_000, salarioMax: 3_500_000 },
+      condiciones: {
+        salarioMin: 2_800_000,
+        salarioMax: 3_500_000,
+        tipoContrato: 'Indefinido',
+        jornada: 'Diurna',
+      },
       justificacion: { justificacion: 'Prueba del embudo de selección (Fase 5)' },
     };
   }

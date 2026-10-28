@@ -61,9 +61,9 @@ describe('rbac — matriz real de la API', () => {
     expect(puedeTransicionarRequerimientos('becario')).toBe(false);
   });
 
-  it('editar requerimiento: creador, admin_rrhh o superusuario', () => {
-    expect(puedeEditarRequerimiento('admin_rrhh', false)).toBe(true);
-    expect(puedeEditarRequerimiento('superusuario', false)).toBe(true);
+  it('editar requerimiento: únicamente el creador', () => {
+    expect(puedeEditarRequerimiento('admin_rrhh', false)).toBe(false);
+    expect(puedeEditarRequerimiento('superusuario', false)).toBe(false);
     expect(puedeEditarRequerimiento('lider_area', true)).toBe(true);
     expect(puedeEditarRequerimiento('lider_area', false)).toBe(false);
     expect(puedeEditarRequerimiento('analista_seleccion', true)).toBe(true);
@@ -117,11 +117,11 @@ describe('rbac — matriz real de la API', () => {
     expect(puedeGestionarUsuarios(undefined)).toBe(false);
   });
 
-  it('el superusuario hereda TODO el negocio de admin_rrhh (mismos predicados)', () => {
+  it('el superusuario hereda el negocio, excepto la edición de solicitudes ajenas', () => {
     const roles = ['admin_rrhh', 'superusuario'] as const;
     for (const rol of roles) {
       expect(puedeGestionarRequerimientos(rol)).toBe(true);
-      expect(puedeEditarRequerimiento(rol, false)).toBe(true);
+      expect(puedeEditarRequerimiento(rol, false)).toBe(false);
       expect(puedeGestionarCandidatos(rol)).toBe(true);
       expect(puedeEditarCandidato(rol, false)).toBe(true);
       expect(puedeMoverPostulaciones(rol)).toBe(true);

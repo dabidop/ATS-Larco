@@ -36,6 +36,29 @@ export const AppLoggerModule = LoggerModule.forRootAsync({
     return {
       pinoHttp: {
         level: isTest ? 'error' : 'info',
+        // Nunca serializar cabeceras/cuerpo completos: contienen Bearer tokens,
+        // cookies y ocasionalmente PII. Los logs deben ser seguros por defecto.
+        serializers: {
+          req: (request) => ({
+            id: request.id,
+            method: request.method,
+            url: request.url,
+            remoteAddress: request.remoteAddress,
+          }),
+          res: (response) => ({ statusCode: response.statusCode }),
+        },
+        redact: {
+          paths: [
+            'req.headers.authorization',
+            'req.headers.cookie',
+            'req.headers.set-cookie',
+            'req.body.password',
+            'req.body.contrasena',
+            'req.body.cedula',
+            'req.body.telefono',
+          ],
+          censor: '[REDACTED]',
+        },
         ...(isDevelopment
           ? {
               transport: {
@@ -52,7 +75,7 @@ export const AppLoggerModule = LoggerModule.forRootAsync({
         genReqId: (req) => {
           const header = req.headers['x-request-id'];
           const requestId = Array.isArray(header) ? header[0] : header;
-          return requestId && requestId.trim() !== '' ? requestId : randomUUID();
+          return requestId && /^[A-Za-z0-9._:-]{1,128}$/.test(requestId) ? requestId : randomUUID();
         },
         // Nivel según la severidad: 5xx (o error de socket) → error, 4xx → warn.
         customLogLevel: (_req, res, err) => {
