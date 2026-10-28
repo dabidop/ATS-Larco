@@ -5,9 +5,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { mensajeDeError, solicitud } from '../../lib/api';
 import { ROLES_MATRIZ, etiquetaRol, puedeGestionarUsuarios } from '../../lib/rbac';
 import { useSesionStore } from '../../store/sesion';
-import type { Usuario, UsuarioNuevo } from '../../tipos';
+import type { Departamento, Usuario, UsuarioNuevo } from '../../tipos';
 import { CampoTexto } from '../../components/ui/campos';
 import { Spinner } from '../../components/ui/feedback';
+import { useRecurso } from '../../lib/useRecurso';
 import {
   CLASE_BOTON_PRINCIPAL,
   CLASE_CAMPO,
@@ -32,6 +33,7 @@ export function validarAltaUsuario(formulario: {
   email: string;
   password: string;
   rol: string;
+  jefatura: string;
 }): ErroresUsuario {
   const errores: ErroresUsuario = {};
   if (formulario.nombre.trim().length === 0) errores.nombre = 'nombre es obligatorio';
@@ -40,6 +42,12 @@ export function validarAltaUsuario(formulario: {
   }
   if (formulario.password.length < PASSWORD_MINIMA) errores.password = MENSAJE_PASSWORD_CORTA;
   if (formulario.rol.length === 0) errores.rol = 'rol es obligatorio';
+  if (
+    (formulario.rol === 'lider_area' || formulario.rol === 'analista_seleccion') &&
+    formulario.jefatura.trim().length === 0
+  ) {
+    errores.jefatura = 'jefatura es obligatoria para este rol';
+  }
   return errores;
 }
 
@@ -65,6 +73,10 @@ export function PaginaNuevoUsuario() {
   const [errores, setErrores] = useState<ErroresUsuario>({});
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const departamentos = useRecurso<Departamento[]>(
+    () => solicitud<Departamento[]>('/departamentos'),
+    [],
+  );
 
   const cambiar = (campo: CampoFormulario) => (valor: string) => {
     setFormulario((anterior) => ({ ...anterior, [campo]: valor }));
@@ -169,18 +181,27 @@ export function PaginaNuevoUsuario() {
             {errores.rol && <p className="mt-1 text-xs text-rose-400">{errores.rol}</p>}
           </div>
 
-          {formulario.rol === 'lider_area' && (
+          {(formulario.rol === 'lider_area' || formulario.rol === 'analista_seleccion') && (
             <div className="sm:col-span-2">
-              <CampoTexto
-                etiqueta="Jefatura / área"
-                autoComplete="organization"
-                valor={formulario.jefatura}
-                onCambio={cambiar('jefatura')}
-                error={errores.jefatura}
-              />
+              <label htmlFor="alta-jefatura" className={CLASE_ETIQUETA}>
+                Jefatura / área *
+              </label>
+              <select
+                id="alta-jefatura"
+                className={errores.jefatura === undefined ? CLASE_CAMPO : CLASE_CAMPO_CON_ERROR}
+                value={formulario.jefatura}
+                onChange={(evento) => cambiar('jefatura')(evento.target.value)}
+              >
+                <option value="">Selecciona una jefatura</option>
+                {(departamentos.datos ?? []).map((departamento) => (
+                  <option key={departamento.id} value={departamento.nombre}>
+                    {departamento.nombre}
+                  </option>
+                ))}
+              </select>
+              {errores.jefatura && <p className="mt-1 text-xs text-rose-400">{errores.jefatura}</p>}
               <p className="mt-1 text-xs text-slate-500">
-                Un líder solo verá los requerimientos de su jefatura; si queda vacío, verá solo los
-                que él mismo cree.
+                Este usuario solo verá la información correspondiente a esta jefatura.
               </p>
             </div>
           )}

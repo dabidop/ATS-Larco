@@ -88,17 +88,30 @@ export class RequerimientosService {
    * El código `REQ-YYYY-NNN` lo genera el servicio de códigos y el estado
    * arranca SIEMPRE en `pendiente`; `createdBy` llega del JWT y no del cuerpo.
    */
-  async create(dto: CreateRequerimientoDto, createdBy: string): Promise<RequerimientoResponseDto> {
+  async create(dto: CreateRequerimientoDto, user: AuthenticatedUser): Promise<RequerimientoResponseDto> {
     const code = await this.codigoGenerator.siguienteCodigo();
     const repo = await this.store.repo();
 
-    await this.assertDepartamentoExiste(repo, dto.identificacion.departamentoId);
+    // La jefatura del líder es una regla de seguridad, no solo una precarga de
+    // UI. Si el usuario tiene jefatura asignada, se ignora cualquier valor
+    // manipulado en el cuerpo y se usa la jefatura real de su cuenta.
+    const jefaturaDelLider =
+      user.role === 'lider_area' ? await this.jefaturaDe(user.sub) : null;
+    const dtoAplicado =
+      user.role === 'lider_area' && jefaturaDelLider !== null
+        ? {
+            ...dto,
+            identificacion: { ...dto.identificacion, jefatura: jefaturaDelLider },
+          }
+        : dto;
+
+    await this.assertDepartamentoExiste(repo, dtoAplicado.identificacion.departamentoId);
 
     const entidad = repo.create({
       code,
       estado: EstadoRequerimiento.Pendiente,
-      createdBy,
-      ...buildCreateData(dto),
+      createdBy: user.sub,
+      ...buildCreateData(dtoAplicado),
     });
     const guardada = await repo.save(entidad);
 

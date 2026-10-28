@@ -50,8 +50,8 @@ const REQUERIMIENTO_EN_PROCESO = 'en_proceso';
 const REQUERIMIENTO_EXITOSO = 'exitoso';
 
 /** Mensaje de duplicado, compartido por el chequeo previo y el 23505 de BD. */
-const MENSAJE_DUPLICADO = (candidatoId: string): string =>
-  `El candidato ${candidatoId} ya pertenece a un requerimiento: ` +
+const MENSAJE_DUPLICADO = (nombreCandidato: string): string =>
+  `El candidato ${nombreCandidato} ya pertenece a un requerimiento: ` +
   `un candidato solo puede estar en UNO (regla de negocio)`;
 
 /** Forma mínima del error de BD que interesa (pg copia `code`/`constraint`). */
@@ -143,7 +143,7 @@ export class PostulacionesService {
       );
     }
 
-    const mensajeDuplicado = MENSAJE_DUPLICADO(dto.candidatoId);
+    const mensajeDuplicado = MENSAJE_DUPLICADO(`${candidato.nombres} ${candidato.apellidos}`);
     const existente = await this.database.query(
       'SELECT 1 FROM postulaciones WHERE candidato_id = $1',
       [dto.candidatoId],

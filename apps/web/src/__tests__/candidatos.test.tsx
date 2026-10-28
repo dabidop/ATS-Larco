@@ -62,6 +62,28 @@ describe('listado y búsqueda de candidatos', () => {
     );
   });
 
+  it('actualiza la búsqueda por nombre mientras se escribe, sin pulsar Buscar', async () => {
+    const fetchMock = instalarFetch(() => ({
+      cuerpo: fixturePagina([fixtureCandidato()], { total: 1, page: 1, limit: 10 }),
+    }));
+
+    pintar();
+    await screen.findByRole('link', { name: 'María Pérez' });
+    const llamadasIniciales = fetchMock.mock.calls.length;
+
+    fireEvent.change(screen.getByLabelText(/buscar por nombre/i), {
+      target: { value: 'mar' },
+    });
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls
+          .slice(llamadasIniciales)
+          .some(([url]) => String(url).includes('q=mar')),
+      ).toBe(true),
+    );
+  });
+
   it('una cédula mal formada avisa en cliente y NO consulta a la API', async () => {
     const fetchMock = instalarFetch(() => ({
       cuerpo: fixturePagina([fixtureCandidato()], { total: 1, page: 1, limit: 10 }),

@@ -64,8 +64,8 @@ export class DepartamentosController {
 
   /** Catálogo con conteos de candidatos y requerimientos por área. */
   @Get()
-  listar(): Promise<DepartamentoResponseDto[]> {
-    return this.service.listar();
+  listar(@Req() request: AuthenticatedRequest): Promise<DepartamentoResponseDto[]> {
+    return this.service.listar(requireUser(request));
   }
 
   /** Cambia el coordinador del área → item actualizado (404 si no existe). */

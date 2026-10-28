@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { ETIQUETA_ESTADO } from '../../lib/flujo';
-import type { EstadoRequerimiento } from '../../tipos';
+import type { EstadoRequerimiento, UrgenciaRequerimiento } from '../../tipos';
 import { CLASE_BOTON_SECUNDARIO, CLASE_ETIQUETA, CLASE_TARJETA } from './estilos';
 
 /** Badge de color por estado del requerimiento. */
@@ -24,23 +25,63 @@ export function BadgeEstado({ estado }: { estado: EstadoRequerimiento }) {
   );
 }
 
+const ETIQUETA_URGENCIA: Readonly<Record<UrgenciaRequerimiento, string>> = {
+  normal: 'Normal',
+  alta: 'Alta',
+  critica: 'Crítica',
+};
+
+const CLASES_URGENCIA: Readonly<Record<UrgenciaRequerimiento, string>> = {
+  normal: 'border-slate-600 bg-slate-700/40 text-slate-300',
+  alta: 'border-amber-500/50 bg-amber-500/15 text-amber-300',
+  critica: 'border-rose-500/50 bg-rose-500/15 text-rose-300',
+};
+
+/** Badge visual de la prioridad/urgencia de una vacante. */
+export function BadgeUrgencia({ urgencia }: { urgencia: UrgenciaRequerimiento }) {
+  return (
+    <span
+      className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold ${CLASES_URGENCIA[urgencia]}`}
+    >
+      {ETIQUETA_URGENCIA[urgencia]}
+    </span>
+  );
+}
+
 /** Tarjeta de sección con título (las 5 secciones del formulario). */
 export function Tarjeta({
   titulo,
   children,
   extra,
+  colapsable = false,
 }: {
   titulo: string;
   children: ReactNode;
   extra?: ReactNode;
+  colapsable?: boolean;
 }) {
+  const [abierta, setAbierta] = useState(false);
   return (
     <section className={CLASE_TARJETA}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-slate-200">{titulo}</h2>
+        {colapsable ? (
+          <button
+            type="button"
+            className="flex items-center gap-2 text-left text-sm font-semibold text-slate-200 hover:text-white"
+            aria-expanded={abierta}
+            onClick={() => setAbierta((actual) => !actual)}
+          >
+            <span aria-hidden="true" className="text-slate-400">
+              {abierta ? '▾' : '▸'}
+            </span>
+            <span>{titulo}</span>
+          </button>
+        ) : (
+          <h2 className="text-sm font-semibold text-slate-200">{titulo}</h2>
+        )}
         {extra}
       </div>
-      {children}
+      {(!colapsable || abierta) && children}
     </section>
   );
 }

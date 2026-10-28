@@ -36,6 +36,8 @@ export interface UsuarioSesion {
   fullName: string;
   /** Puede ser un rol fuera de la matriz; los predicados lo tratan con cuidado. */
   role: string;
+  /** Jefatura asignada al líder de área; null para cuentas sin asignación. */
+  jefatura?: string | null;
 }
 
 /** Respuesta de `POST /api/auth/login` y `POST /api/auth/refresh`. */

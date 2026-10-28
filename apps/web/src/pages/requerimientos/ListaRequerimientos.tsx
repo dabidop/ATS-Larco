@@ -8,7 +8,7 @@ import { useRecurso } from '../../lib/useRecurso';
 import { useSesionStore } from '../../store/sesion';
 import { ESTADOS_REQUERIMIENTO } from '../../tipos';
 import type { EstadoRequerimiento, Pagina, Requerimiento } from '../../tipos';
-import { BadgeEstado, Paginacion } from '../../components/ui/datos';
+import { BadgeEstado, BadgeUrgencia, Paginacion } from '../../components/ui/datos';
 import { EstadoVacio, MensajeError, Spinner } from '../../components/ui/feedback';
 import { CLASE_BOTON_PRINCIPAL, CLASE_CAMPO, CLASE_ETIQUETA } from '../../components/ui/estilos';
 
@@ -99,6 +99,9 @@ export function PaginaRequerimientos() {
                     Jefatura
                   </th>
                   <th scope="col" className="px-4 py-3">
+                    Prioridad
+                  </th>
+                  <th scope="col" className="px-4 py-3">
                     Estado
                   </th>
                   <th scope="col" className="px-4 py-3">
@@ -119,6 +122,9 @@ export function PaginaRequerimientos() {
                     </td>
                     <td className="px-4 py-3 text-slate-100">{requerimiento.titulo}</td>
                     <td className="px-4 py-3 text-slate-300">{requerimiento.jefatura}</td>
+                    <td className="px-4 py-3">
+                      <BadgeUrgencia urgencia={requerimiento.urgencia} />
+                    </td>
                     <td className="px-4 py-3">
                       <BadgeEstado estado={requerimiento.estado} />
                     </td>

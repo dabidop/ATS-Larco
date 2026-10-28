@@ -50,6 +50,13 @@ export function PaginaCandidatos() {
     setPagina(1);
   };
 
+  /** La búsqueda textual se aplica en cada tecla; la cédula sigue siendo exacta. */
+  const alCambiarNombre = (q: string) => {
+    setValores((anterior) => ({ ...anterior, q }));
+    setConsulta((anterior) => ({ ...anterior, q: q.trim() }));
+    setPagina(1);
+  };
+
   const datos = recurso.datos;
 
   return (
@@ -69,7 +76,7 @@ export function PaginaCandidatos() {
             etiqueta="Buscar por nombre"
             placeholder="Nombre, apellido, ciudad o cargo"
             valor={valores.q}
-            onCambio={(valor) => setValores((anterior) => ({ ...anterior, q: valor }))}
+            onCambio={alCambiarNombre}
           />
         </div>
         <div className="w-full max-w-[180px]">

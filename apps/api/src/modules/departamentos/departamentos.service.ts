@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 
 import { DatabaseService } from '../../database/database.service';
+import type { AuthenticatedUser } from '../../common/guards/auth.guard';
 import type { ActualizarDepartamentoDto } from './dto/actualizar-coordinador.dto';
 import {
   type DepartamentoFilaCruda,
@@ -33,7 +34,16 @@ export class DepartamentosService {
    * `requerimientosAprobados` solo los que están en estado `aprobado` (el tag
    * «N aprob.» de la pantalla de la muestra).
    */
-  async listar(): Promise<DepartamentoResponseDto[]> {
+  async listar(user: AuthenticatedUser): Promise<DepartamentoResponseDto[]> {
+    const area =
+      user.role === 'lider_area' || user.role === 'analista_seleccion'
+        ? await this.jefaturaDe(user.sub)
+        : null;
+    // Las cuentas históricas sin área siguen viendo el catálogo completo hasta
+    // que IT les asigne una jefatura; las cuentas asignadas quedan limitadas a
+    // su única área tanto aquí como en los módulos de negocio.
+    const filtroArea = area === null ? '' : 'WHERE LOWER(d.nombre) = LOWER($1)';
+    const parametros = area === null ? [] : [area];
     const resultado = await this.database.query<DepartamentoFilaCruda>(
       `SELECT d.id,
               d.nombre,
@@ -56,9 +66,19 @@ export class DepartamentosService {
             WHERE departamento_id IS NOT NULL
             GROUP BY departamento_id
          ) r ON r.departamento_id = d.id
-        ORDER BY d.nombre ASC`,
+         ${filtroArea}
+         ORDER BY d.nombre ASC`,
+      parametros,
     );
     return resultado.rows.map(toResponse);
+  }
+
+  private async jefaturaDe(userId: string): Promise<string | null> {
+    const resultado = await this.database.query<{ jefatura: string | null }>(
+      'SELECT jefatura FROM users WHERE id = $1',
+      [userId],
+    );
+    return resultado.rows[0]?.jefatura ?? null;
   }
 
   /**

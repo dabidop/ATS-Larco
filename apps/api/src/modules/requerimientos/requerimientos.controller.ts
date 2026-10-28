@@ -105,7 +105,7 @@ export class RequerimientosController {
     @Body() body: CreateRequerimientoDto,
     @Req() request: AuthenticatedRequest,
   ): Promise<RequerimientoResponseDto> {
-    return this.requerimientos.create(body, requireUser(request).sub);
+    return this.requerimientos.create(body, requireUser(request));
   }
 
   /**

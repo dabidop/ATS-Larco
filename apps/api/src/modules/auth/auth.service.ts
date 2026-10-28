@@ -51,6 +51,8 @@ export interface AuthUser {
   email: string;
   fullName: string;
   role: string;
+  /** Jefatura asignada; se usa para precargar requerimientos de líderes. */
+  jefatura: string | null;
 }
 
 /** Respuesta de `POST /auth/login` y `POST /auth/refresh`. */
@@ -71,11 +73,12 @@ interface UserRow {
   active: boolean;
   /** `roles.code` (p. ej. admin_rrhh). */
   role: string;
+  jefatura: string | null;
 }
 
 /** Búsqueda por email sin distinguir mayúsculas de minúsculas. */
 const SELECT_BY_EMAIL = `
-  SELECT u.id, u.email, u.password_hash, u.full_name, u.active, r.code AS role
+  SELECT u.id, u.email, u.password_hash, u.full_name, u.active, r.code AS role, u.jefatura
   FROM users u
   JOIN roles r ON r.id = u.role_id
   WHERE LOWER(u.email) = LOWER($1)
@@ -83,7 +86,7 @@ const SELECT_BY_EMAIL = `
 
 /** Búsqueda por id (refresh y me: el usuario debe seguir activo). */
 const SELECT_BY_ID = `
-  SELECT u.id, u.email, u.password_hash, u.full_name, u.active, r.code AS role
+  SELECT u.id, u.email, u.password_hash, u.full_name, u.active, r.code AS role, u.jefatura
   FROM users u
   JOIN roles r ON r.id = u.role_id
   WHERE u.id = $1
@@ -91,7 +94,13 @@ const SELECT_BY_ID = `
 
 /** Convierte la fila de BD en el usuario público de la API. */
 function toAuthUser(user: UserRow): AuthUser {
-  return { id: user.id, email: user.email, fullName: user.full_name, role: user.role };
+  return {
+    id: user.id,
+    email: user.email,
+    fullName: user.full_name,
+    role: user.role,
+    jefatura: user.jefatura,
+  };
 }
 
 /** Comprueba que el payload decodificado tiene los tres campos esperados. */

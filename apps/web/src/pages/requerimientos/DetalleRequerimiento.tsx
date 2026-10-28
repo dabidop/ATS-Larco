@@ -297,7 +297,7 @@ export function PaginaDetalleRequerimiento() {
         />
       ) : (
         <>
-          <Tarjeta titulo="1. Identificación y jefatura">
+          <Tarjeta titulo="1. Identificación y jefatura" colapsable>
             <dl className="grid gap-4 sm:grid-cols-2">
               <FilaDato etiqueta="Título" valor={requerimiento.titulo} />
               <FilaDato etiqueta="Jefatura" valor={requerimiento.jefatura} />
@@ -314,7 +314,7 @@ export function PaginaDetalleRequerimiento() {
             </dl>
           </Tarjeta>
 
-          <Tarjeta titulo="2. Perfil profesional">
+          <Tarjeta titulo="2. Perfil profesional" colapsable>
             <dl className="grid gap-4 sm:grid-cols-2">
               <FilaDato
                 etiqueta="Experiencia requerida"
@@ -327,7 +327,7 @@ export function PaginaDetalleRequerimiento() {
             </dl>
           </Tarjeta>
 
-          <Tarjeta titulo="3. Conocimientos y habilidades">
+          <Tarjeta titulo="3. Conocimientos y habilidades" colapsable>
             {requerimiento.conocimientos.length === 0 && requerimiento.habilidades.length === 0 ? (
               <EstadoVacio mensaje="Sin conocimientos ni habilidades registrados." />
             ) : (
@@ -341,7 +341,7 @@ export function PaginaDetalleRequerimiento() {
             )}
           </Tarjeta>
 
-          <Tarjeta titulo="4. Condiciones salariales y contractuales">
+          <Tarjeta titulo="4. Condiciones salariales y contractuales" colapsable>
             <dl className="grid gap-4 sm:grid-cols-2">
               <FilaDato
                 etiqueta="Salario mínimo"
@@ -356,7 +356,7 @@ export function PaginaDetalleRequerimiento() {
             </dl>
           </Tarjeta>
 
-          <Tarjeta titulo="5. Justificación">
+          <Tarjeta titulo="5. Justificación" colapsable>
             <p className="text-sm whitespace-pre-wrap text-slate-100">
               {requerimiento.justificacion}
             </p>

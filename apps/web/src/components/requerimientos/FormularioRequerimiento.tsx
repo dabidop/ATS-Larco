@@ -4,6 +4,7 @@ import type { FormEvent } from 'react';
 import { mensajeDeError, solicitud } from '../../lib/api';
 import { textoALista } from '../../lib/formato';
 import { useRecurso } from '../../lib/useRecurso';
+import { useSesionStore } from '../../store/sesion';
 import {
   MODALIDADES_REQUERIMIENTO,
   URGENCIAS_REQUERIMIENTO,
@@ -243,9 +244,13 @@ export function FormularioRequerimiento({
   textoGuardar?: string;
   onGuardar: (cuerpo: RequerimientoNuevo) => Promise<void>;
 }) {
+  const usuario = useSesionStore((sesion) => sesion.usuario);
+  const esNuevo = inicial === undefined || inicial === null;
+  const esLider = usuario?.role === 'lider_area';
+  const jefaturaAsignada = esLider ? (usuario.jefatura ?? '') : '';
   const [formulario, setFormulario] = useState<EstadoFormularioRequerimiento>(
-    inicial === undefined || inicial === null
-      ? formularioVacio()
+    esNuevo
+      ? { ...formularioVacio(), jefatura: jefaturaAsignada }
       : formularioDesdeRequerimiento(inicial),
   );
   const [errores, setErrores] = useState<ErroresFormulario>({});
@@ -294,12 +299,42 @@ export function FormularioRequerimiento({
             onCambio={cambiar('titulo')}
             error={errores.titulo}
           />
-          <CampoTexto
-            etiqueta="Jefatura *"
-            valor={formulario.jefatura}
-            onCambio={cambiar('jefatura')}
-            error={errores.jefatura}
-          />
+          {esNuevo && (usuario?.role === 'admin_rrhh' || usuario?.role === 'superusuario') ? (
+            <div>
+              <label htmlFor="req-jefatura" className={CLASE_ETIQUETA}>
+                Jefatura *
+              </label>
+              <select
+                id="req-jefatura"
+                value={formulario.jefatura}
+                onChange={(evento) => cambiar('jefatura')(evento.target.value)}
+                className={CLASE_CAMPO}
+              >
+                <option value="">(selecciona una jefatura)</option>
+                {(departamentos.datos ?? []).map((departamento) => (
+                  <option key={departamento.id} value={departamento.nombre}>
+                    {departamento.nombre}
+                  </option>
+                ))}
+              </select>
+              {errores.jefatura && <p className="mt-1 text-xs text-rose-300">{errores.jefatura}</p>}
+            </div>
+          ) : (
+            <div>
+              <CampoTexto
+                etiqueta="Jefatura *"
+                valor={formulario.jefatura}
+                onCambio={cambiar('jefatura')}
+                error={errores.jefatura}
+                disabled={esNuevo && esLider && jefaturaAsignada.length > 0}
+              />
+              {esNuevo && esLider && jefaturaAsignada.length > 0 && (
+                <p className="mt-1 text-xs text-slate-400">
+                  Jefatura asignada automáticamente desde tu cuenta.
+                </p>
+              )}
+            </div>
+          )}
           <CampoTexto
             etiqueta="Número de plazas *"
             inputMode="numeric"

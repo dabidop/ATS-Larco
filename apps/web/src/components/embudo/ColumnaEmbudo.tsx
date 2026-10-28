@@ -38,7 +38,7 @@ export function ColumnaEmbudo({
   return (
     <section
       aria-label={`Columna ${ETIQUETA_FASE[fase]}`}
-      className={`flex w-72 shrink-0 flex-col rounded-xl border p-3 transition ${
+      className={`flex min-w-0 w-full flex-col rounded-xl border p-3 transition ${
         isOver ? 'border-emerald-500/60 bg-emerald-500/5' : 'border-slate-800 bg-slate-950/40'
       }`}
     >

@@ -213,7 +213,7 @@ export function TableroEmbudo() {
 
       {visibles.length > 0 && (
         <DndContext sensors={sensores} onDragEnd={alSoltar}>
-          <div className="flex gap-4 overflow-x-auto pb-2">
+          <div className="grid grid-cols-1 gap-3 pb-2 sm:grid-cols-2 lg:grid-cols-5">
             {FASES_POSTULACION.map((fase) => (
               <ColumnaEmbudo
                 key={fase}
