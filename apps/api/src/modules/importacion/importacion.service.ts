@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 
 import { DatabaseService } from '../../database/database.service';
+import { CryptoService } from '../../common/crypto/crypto.service';
+import { SearchHashService } from '../candidatos/search-hash.service';
 import { type ArchivoSubido, ArchivosCvService } from '../uploads/archivos-cv.service';
 import type { ImportarHvsResponseDto, ResultadoArchivoDto } from './dto/importar-hvs.response';
 import { extraerTextoPdf } from './pdf-texto';
@@ -21,6 +23,12 @@ function esEmailDuplicado(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const e = error as ErrorDePostgres;
   return e.code === '23505' && (e.constraint ?? '').includes('email');
+}
+
+function esCedulaDuplicada(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const e = error as ErrorDePostgres;
+  return e.code === '23505' && (e.constraint ?? '').includes('cedula_hash');
 }
 
 /** Texto amigable de un error para el resultado por archivo. */
@@ -72,6 +80,18 @@ const PALABRAS_CABECERA = new Set([
   'laboral',
   'proyectos',
   'certificaciones',
+  'técnico',
+  'tecnico',
+  'asistente',
+  'administrativa',
+  'administrativo',
+  'bachiller',
+  'ingeniería',
+  'ingenieria',
+  'tecnólogo',
+  'tecnologo',
+  'sistemas',
+  'estudios',
 ]);
 
 /**
@@ -100,6 +120,13 @@ function interpretarNombre(cadena: string): { nombres: string; apellidos: string
   return { nombres: primera, apellidos: resto.join(' ') };
 }
 
+/** Convierte títulos de Canva exportados como letras separadas: `D A V I D`. */
+function compactarTextoCanva(linea: string): string {
+  const tokens = linea.trim().split(/\s+/);
+  if (tokens.length < 4 || !tokens.every((token) => /^\p{L}$/u.test(token))) return linea;
+  return tokens.join('');
+}
+
 /**
  * Extrae el nombre del candidato del HV con tres fuentes, en orden: (1) el
  * título del PDF (muchos editores guardan allí el nombre del titular), (2) las
@@ -107,10 +134,10 @@ function interpretarNombre(cadena: string): { nombres: string; apellidos: string
  * ni prefijos tipo «CV_»/«HV_». Devuelve `null` si ninguna fuente produce un
  * nombre plausible (el archivo se reporta como fallo, sin candidato a medias).
  */
-function extraerNombres(
+export function extraerNombres(
   texto: string,
   titulo: string | undefined,
-  nombreArchivo: string,
+  _nombreArchivo: string,
 ): { nombres: string; apellidos: string } | null {
   if (titulo !== undefined) {
     const desdeTitulo = interpretarNombre(titulo);
@@ -121,24 +148,62 @@ function extraerNombres(
     .split(/\r?\n/)
     .map((linea) => linea.trim())
     .filter((linea) => linea !== '')
-    .slice(0, 20);
+    // Canva suele ubicar el nombre después de varias secciones visuales; no
+    // limitar la búsqueda a las primeras líneas evita perderlo.
+    .slice(0, 200);
   for (const linea of lineas) {
-    const desdeLinea = interpretarNombre(linea);
+    const desdeLinea = interpretarNombre(compactarTextoCanva(linea));
     if (desdeLinea !== null) return desdeLinea;
   }
 
-  const stem = nombreArchivo.replace(/\.[^.]+$/, '');
-  const sinPrefijo = stem
-    .replace(/[_\-.]+/g, ' ')
-    .replace(/^(cv|hv|hoja de vida|curriculum|curriculo)\s+/i, '')
-    .trim();
-  return interpretarNombre(sinPrefijo);
+  // En plantillas Canva el nombre puede salir como dos líneas de letras
+  // separadas. Nunca se usa el nombre del fichero como identidad.
+  for (let i = 0; i < lineas.length - 1; i++) {
+    const actual = compactarTextoCanva(lineas[i] ?? '');
+    const siguiente = compactarTextoCanva(lineas[i + 1] ?? '');
+    const esTextoDeSeccion = [...PALABRAS_CABECERA].some((palabra) =>
+      actual.toLowerCase().includes(palabra.replaceAll(' ', '')),
+    );
+    if (esTextoDeSeccion) continue;
+    if (/^[\p{Lu}]{8,}$/u.test(actual) && /^[\p{Lu}]{5,}$/u.test(siguiente)) {
+      const corte = Math.floor(actual.length / 2);
+      return { nombres: `${actual.slice(0, corte)} ${actual.slice(corte)}`, apellidos: siguiente };
+    }
+  }
+  return null;
 }
 
 /** Primer correo encontrado en el texto (o `null`: el email es opcional). */
-function extraerEmail(texto: string): string | null {
+export function extraerEmail(texto: string): string | null {
   const coincidencia = texto.match(/[\w.%+-]+@[\w.-]+\.[\p{L}]{2,}/u);
   return coincidencia === null ? null : coincidencia[0].toLowerCase();
+}
+
+export function extraerCedula(texto: string): string | null {
+  const coincidencia = texto.match(/(?:c\.?\s*c\.?|c[eé]dula)(?:\s*(?:no\.?|n[uú]mero))?\s*[:#.-]*\s*([\d .-]{6,18})/i);
+  if (coincidencia === null) return null;
+  const cedula = coincidencia[1]?.replace(/\D/g, '') ?? '';
+  return /^\d{6,10}$/.test(cedula) ? cedula : null;
+}
+
+export function extraerTelefono(texto: string): string | null {
+  const coincidencia = texto.match(/(?:\+?57[\s.-]*)?(?:3\d{2}[\s.-]*\d{3}[\s.-]*\d{4})\b/);
+  return coincidencia?.[0]?.trim() ?? null;
+}
+
+const CIUDADES_COLOMBIA = [
+  'Medellín', 'Bogotá', 'Cali', 'Barranquilla', 'Cartagena', 'Sabaneta',
+  'Envigado', 'Itagüí', 'Bello', 'Rionegro', 'Manizales', 'Pereira',
+  'Armenia', 'Santa Marta', 'Villavicencio', 'Bucaramanga', 'Ibagué',
+];
+
+export function extraerCiudad(texto: string): string | null {
+  const conEtiqueta = texto.match(/(?:ciudad|ubicaci[oó]n|residencia)\s*[:-]?\s*([\p{L} .'-]{3,60})/iu);
+  if (conEtiqueta?.[1]) return conEtiqueta[1].trim().split(/[,\n]/)[0]?.trim() ?? null;
+  const normalizado = texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return CIUDADES_COLOMBIA.find((ciudad) =>
+    normalizado.includes(ciudad.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()),
+  ) ?? null;
 }
 
 /**
@@ -163,6 +228,8 @@ export class ImportacionService {
   constructor(
     private readonly database: DatabaseService,
     private readonly archivosCv: ArchivosCvService,
+    private readonly crypto: CryptoService,
+    private readonly searchHash: SearchHashService,
   ) {}
 
   /** Importa el lote de HVs → resumen con un resultado por archivo. */
@@ -228,22 +295,46 @@ export class ImportacionService {
     }
 
     const nombres = extraerNombres(texto, titulo, archivo.originalname);
-    if (nombres === null) {
+    const email = extraerEmail(texto);
+    const cedula = extraerCedula(texto);
+    const telefono = extraerTelefono(texto);
+    const ciudad = extraerCiudad(texto);
+    const faltantes = [
+      nombres === null ? 'nombre y apellidos' : null,
+      cedula === null ? 'cédula' : null,
+      email === null ? 'correo electrónico' : null,
+      telefono === null ? 'teléfono' : null,
+      ciudad === null ? 'ciudad' : null,
+    ].filter((campo): campo is string => campo !== null);
+    if (faltantes.length > 0) {
       return {
         archivo: archivo.originalname,
         ok: false,
-        motivo: 'No se pudo extraer el nombre del candidato del PDF',
+        motivo:
+          `No se pudieron extraer los campos obligatorios: ${faltantes.join(', ')}. ` +
+          'Verifica que el PDF contenga texto seleccionable o realiza una carga manual.',
       };
     }
-    const email = extraerEmail(texto);
 
     let candidatoId: string;
     try {
       const insert = await this.database.query<{ id: string }>(
-        `INSERT INTO candidatos (nombres, apellidos, email, departamento_id, created_by)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO candidatos
+          (nombres, apellidos, email, cedula_cifrada, cedula_hash,
+           telefono_cifrada, ciudad, departamento_id, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING id`,
-        [nombres.nombres, nombres.apellidos, email, departamentoId, actor],
+        [
+          nombres!.nombres,
+          nombres!.apellidos,
+          email,
+          this.crypto.encrypt(cedula!),
+          this.searchHash.hashCedula(cedula!),
+          this.crypto.encrypt(telefono!),
+          ciudad,
+          departamentoId,
+          actor,
+        ],
       );
       const fila = insert.rows[0];
       if (fila === undefined) {
@@ -256,6 +347,13 @@ export class ImportacionService {
           archivo: archivo.originalname,
           ok: false,
           motivo: `Ya existe un candidato con el email ${email ?? ''}`.trim(),
+        };
+      }
+      if (esCedulaDuplicada(error)) {
+        return {
+          archivo: archivo.originalname,
+          ok: false,
+          motivo: `Ya existe un candidato con la cédula ${cedula}`,
         };
       }
       throw error;

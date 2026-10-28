@@ -92,6 +92,8 @@ export function PaginaDetalleCandidato() {
 
   const esCreador = usuario !== null && candidato.createdBy === usuario.id;
   const rol = usuario?.role ?? null;
+  const faltanDatosLaborales =
+    candidato.cargoActual === null || candidato.expectativaSalarial === null;
 
   return (
     <div className="space-y-4">
@@ -115,7 +117,7 @@ export function PaginaDetalleCandidato() {
               }}
               className={CLASE_BOTON_SECUNDARIO}
             >
-              Editar
+              {faltanDatosLaborales ? 'Completar datos' : 'Editar'}
             </button>
           )}
           <Link to="/candidatos" className={CLASE_BOTON_SECUNDARIO}>
@@ -146,7 +148,14 @@ export function PaginaDetalleCandidato() {
           onGuardar={alEditar}
         />
       ) : (
-        <Tarjeta titulo="Datos del candidato">
+        <>
+          {faltanDatosLaborales && puedeEditarCandidato(rol, esCreador) && (
+            <div className="mb-4 rounded-lg border border-amber-700/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
+              Esta hoja de vida no contiene toda la información laboral. Puedes
+              completar manualmente el cargo actual y la expectativa salarial.
+            </div>
+          )}
+          <Tarjeta titulo="Datos del candidato">
           <dl className="grid gap-4 sm:grid-cols-3">
             <FilaDato etiqueta="Cédula" valor={candidato.cedula} />
             <FilaDato etiqueta="Teléfono" valor={candidato.telefono ?? '—'} />
@@ -163,7 +172,8 @@ export function PaginaDetalleCandidato() {
             <FilaDato etiqueta="Última actualización" valor={fechaHora(candidato.updatedAt)} />
             <FilaDato etiqueta="Notas" valor={candidato.notas ?? '—'} />
           </dl>
-        </Tarjeta>
+          </Tarjeta>
+        </>
       )}
 
       <SeccionArchivos candidatoId={id} rol={rol} />

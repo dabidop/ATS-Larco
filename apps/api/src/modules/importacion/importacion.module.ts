@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { UploadsModule } from '../uploads/uploads.module';
+import { CandidatosModule } from '../candidatos/candidatos.module';
 import { ImportacionController } from './importacion.controller';
 import { ImportacionService } from './importacion.service';
 
@@ -14,7 +15,7 @@ import { ImportacionService } from './importacion.service';
  * implementación real.
  */
 @Module({
-  imports: [UploadsModule],
+  imports: [UploadsModule, CandidatosModule],
   controllers: [ImportacionController],
   providers: [ImportacionService],
   exports: [ImportacionService],

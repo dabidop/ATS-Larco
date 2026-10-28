@@ -49,20 +49,19 @@ export function TarjetaPostulacion({
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
   const fondoPorFase: Record<Postulacion['fase'], string> = {
-    preseleccion: 'bg-orange-950/60',
-    antecedentes: 'bg-amber-950/55',
-    entrevistas: 'bg-yellow-950/50',
-    proveedor_externo: 'bg-lime-950/45',
-    contratacion: 'bg-emerald-950/60',
+    preseleccion: 'bg-rose-950/70',
+    antecedentes: 'bg-orange-950/70',
+    entrevistas: 'bg-amber-950/70',
+    proveedor_externo: 'bg-sky-950/70',
+    contratacion: 'bg-emerald-950/70',
   };
 
   return (
     <article
       ref={setNodeRef}
       style={estilo}
-      className={`rounded-lg border p-3 text-sm shadow-sm ${fondoPorFase[postulacion.fase]} ${
-        isDragging ? 'border-emerald-500/70 opacity-70' : 'border-slate-800'
-      }`}
+      className={`rounded-lg border p-3 text-sm shadow-sm ${fondoPorFase[postulacion.fase]} ${isDragging ? 'border-emerald-500/70 opacity-70' : 'border-slate-800'
+        }`}
     >
       <div {...listeners} {...attributes} className={arrastrable ? 'cursor-grab' : undefined}>
         <p className="font-medium text-slate-100">

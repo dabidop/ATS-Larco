@@ -59,6 +59,6 @@ import { SearchHashService } from './search-hash.service';
         }),
     },
   ],
-  exports: [CandidatosStoreService],
+  exports: [CandidatosStoreService, SearchHashService],
 })
 export class CandidatosModule {}

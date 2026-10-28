@@ -17,9 +17,8 @@ import { DatabaseService } from '../src/database/database.service';
  * `POST /api/importacion/hvs`, contra la BD DEV REAL de docker.
  *
  * Los PDFs de prueba se GENERAN EN MEMORIA (un PDF mínimo válido construido a
- * mano, con nombre, cargo y email en su stream de texto): `pdf-parse` extrae el
- * texto y el heurístico del servicio derive nombre y email. Cubre: creación del
- * candidato SIN cédula + CV adjunto + departamento destino, el aislamiento de
+ * mano, con los seis campos obligatorios en su stream de texto). Cubre:
+ * creación del candidato completo + CV adjunto + departamento destino, el aislamiento de
  * fallos por archivo (no-PDF y email duplicado no cancelan el lote), el 404
  * del destino inexistente, el 400 del lote vacío y el RBAC.
  *
@@ -36,6 +35,7 @@ const SUFIJO_UNICO = `${Date.now().toString(36)}-${randomInt(100000, 999999)}`;
 
 /** Email que el heurístico extraerá del PDF (marca de limpieza). */
 const EMAIL_IMPORTADO = `importado-${SUFIJO_UNICO}@correo.test`;
+const CEDULA_IMPORTADA = String(Date.now()).slice(-10);
 
 /**
  * Construye un PDF mínimo VÁLIDO (catálogo/página/contenido/fuente + xref con
@@ -77,7 +77,14 @@ function crearPdf(lineas: string[]): Buffer {
 
 /** El HV canónico del test: nombre en la 1ª línea, cargo y email debajo. */
 function pdfValido(): Buffer {
-  return crearPdf(['Martha Importada Prueba', 'Profesional de Sistemas', EMAIL_IMPORTADO]);
+  return crearPdf([
+    'Martha Importada Prueba',
+    'Profesional de Sistemas',
+    EMAIL_IMPORTADO,
+    '3001234567',
+    'Medellin',
+    `C.C. ${CEDULA_IMPORTADA}`,
+  ]);
 }
 
 describe('Importación masiva de HVs — e2e (BD dev docker real)', () => {
@@ -177,7 +184,7 @@ describe('Importación masiva de HVs — e2e (BD dev docker real)', () => {
       .expect(404);
   });
 
-  it('un PDF válido crea el candidato SIN cédula, con el área destino y el CV adjunto', async () => {
+  it('un PDF válido crea el candidato completo, con el área destino y el CV adjunto', async () => {
     const response = await request(app.getHttpServer())
       .post('/api/importacion/hvs')
       .set('Authorization', `Bearer ${tokenAdmin}`)
@@ -194,8 +201,8 @@ describe('Importación masiva de HVs — e2e (BD dev docker real)', () => {
     candidatoImportadoId = response.body.resultados[0].candidatoId;
     expect(candidatoImportadoId).toBeDefined();
 
-    // El candidato existe con los datos EXTRAÍDOS del PDF y SIN cédula
-    // (la migración 010 la hizo opcional para la importación masiva).
+    // El candidato existe con los datos EXTRAÍDOS del PDF, incluida la PII
+    // cifrada obligatoria para esta vía de alta.
     const candidato = await database.query<{
       nombres: string;
       apellidos: string;
@@ -212,8 +219,8 @@ describe('Importación masiva de HVs — e2e (BD dev docker real)', () => {
     expect(fila?.apellidos).toBe('Importada Prueba');
     expect(fila?.email).toBe(EMAIL_IMPORTADO);
     expect(fila?.departamento_id).toBe(departamentoId);
-    expect(fila?.cedula_cifrada).toBeNull();
-    expect(fila?.cedula_hash).toBeNull();
+    expect(fila?.cedula_cifrada).toMatch(/^v1:/);
+    expect(fila?.cedula_hash).toMatch(/^[0-9a-f]{64}$/);
 
     // El PDF quedó adjunto como CV del candidato (subida vía ArchivosCvService).
     const archivos = await request(app.getHttpServer())
