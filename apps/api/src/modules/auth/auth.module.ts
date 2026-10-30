@@ -8,8 +8,8 @@ import { AuthService } from './auth.service';
 
 /**
  * Módulo de autenticación (Fase 2): login, logout, refresh y me con JWT
- * firmados (HS256) de vigencia configurable (`JWT_TTL_HOURS`, 24 h por
- * defecto).
+ * firmados (HS256) de vigencia corta (`ACCESS_TOKEN_TTL_MINUTES`, 15 min por
+ * defecto); la renovación usa sesión revocable.
  */
 @Module({
   imports: [
@@ -22,7 +22,7 @@ import { AuthService } from './auth.service';
       inject: [ConfigService],
       useFactory: (config: ConfigService<Env, true>) => ({
         secret: config.getOrThrow('JWT_SECRET'),
-        signOptions: { expiresIn: `${config.getOrThrow('JWT_TTL_HOURS')}h` },
+        signOptions: { expiresIn: `${config.getOrThrow('ACCESS_TOKEN_TTL_MINUTES')}m` },
       }),
     }),
   ],

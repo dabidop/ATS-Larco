@@ -47,8 +47,8 @@ export function PaginaLogin() {
         metodo: 'POST',
         cuerpo: { email, password },
       });
-      iniciarSesion(respuesta.accessToken, respuesta.user);
-      // La navegación la resuelve el `Navigate` de arriba al tener token.
+      iniciarSesion('cookie', respuesta.user);
+      // La API fija cookies HttpOnly; el store solo mantiene el estado visual.
     } catch (capturado) {
       if (capturado instanceof ApiError && esErrorDeCredenciales(capturado)) {
         setError('Credenciales inválidas');
@@ -85,7 +85,6 @@ export function PaginaLogin() {
             valor={password}
             onCambio={setPassword}
           />
-
           {error && (
             <p
               role="alert"

@@ -15,6 +15,11 @@ function resolvePinoPrettyTarget(): string {
   return createRequire(__filename).resolve('pino-pretty');
 }
 
+/** Nunca registrar query strings: pueden contener correos, búsquedas o tokens. */
+function rutaSinQuery(url: string | undefined): string {
+  return (url ?? '').split('?')[0] ?? '';
+}
+
 /**
  * Logging estructurado con nestjs-pino (pino + pino-http).
  *
@@ -42,10 +47,17 @@ export const AppLoggerModule = LoggerModule.forRootAsync({
           req: (request) => ({
             id: request.id,
             method: request.method,
-            url: request.url,
+            url: rutaSinQuery(request.url),
             remoteAddress: request.remoteAddress,
           }),
           res: (response) => ({ statusCode: response.statusCode }),
+          // No escribir mensajes/cuerpos/stacks de error: pueden contener
+          // valores de entrada, SQL o PII. Se conserva solo clasificación.
+          err: (error) => ({
+            type: error.constructor?.name ?? 'Error',
+            name: error.name,
+            code: error.code,
+          }),
         },
         redact: {
           paths: [
@@ -56,6 +68,15 @@ export const AppLoggerModule = LoggerModule.forRootAsync({
             'req.body.contrasena',
             'req.body.cedula',
             'req.body.telefono',
+            'req.body.email',
+            'req.body.nombres',
+            'req.body.apellidos',
+            'req.body.ciudad',
+            'req.body.notas',
+            'req.body.secret',
+            'req.body.token',
+            'req.body.refreshToken',
+            'err.message',
           ],
           censor: '[REDACTED]',
         },
@@ -88,9 +109,9 @@ export const AppLoggerModule = LoggerModule.forRootAsync({
           return 'info';
         },
         customSuccessMessage: (req, res, responseTime) =>
-          `${req.method} ${req.url} ${res.statusCode} ${responseTime} ms`,
-        customErrorMessage: (req, res, err) =>
-          `${req.method} ${req.url} ${res.statusCode} ${err.message}`,
+          `${req.method} ${rutaSinQuery(req.url)} ${res.statusCode} ${responseTime} ms`,
+        customErrorMessage: (req, res, _err) =>
+          `${req.method} ${rutaSinQuery(req.url)} ${res.statusCode} error interno`,
       },
     };
   },

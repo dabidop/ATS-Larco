@@ -16,7 +16,7 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 | Frontend     | React 19 + Vite + Tailwind CSS + TypeScript estricto · Zustand · DnD Kit                                                                                     |
 | Backend      | NestJS 11 + Node.js 20+ · módulos: auth, candidatos, embudo, antecedentes, entrevistas, proveedor, historial, uploads, requerimientos, importacion, usuarios |
 | Persistencia | PostgreSQL 16 · pool `pg` para alta concurrencia + TypeORM en _requerimientos_ (esquema híbrido)                                                             |
-| Seguridad    | JWT 24 h · RBAC (admin_rrhh, analista_seleccion, lider_area, superusuario) · AES-256-CBC con IV aleatorio por registro para PII · auditoría por triggers     |
+| Seguridad    | Access JWT corto + refresh opaco rotatorio en cookies HttpOnly · RBAC · AES-256-CBC con IV aleatorio por registro para PII · auditoría por triggers          |
 | Async        | Scrapers Playwright (antecedentes) · trabajos en cola                                                                                                        |
 
 **Stack de herramientas de ingeniería:**
@@ -33,7 +33,7 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 
 ### 🔴 Must — MVP productivo (fases 0–5)
 
-1. **Auth + RBAC**: login JWT 24 h, 4 roles (`admin_rrhh`, `analista_seleccion`, `lider_area`, `superusuario`), guards por endpoint y por ruta del frontend.
+1. **Auth + RBAC**: login con access JWT corto y refresh opaco rotatorio, 4 roles (`admin_rrhh`, `analista_seleccion`, `lider_area`, `superusuario`), guards por endpoint y por ruta del frontend.
 2. **Requerimientos de personal**: formulario en 5 secciones (identificación/jefatura, perfil profesional, conocimientos/habilidades, condiciones salariales/contractuales, justificación); máquina de estados `pendiente → aprobado → en_proceso → cerrado | rechazado`; código atómico anual `REQ-YYYY-NNN`.
 3. **Candidatos**: CRUD con PII cifrada (cédula, teléfono), carga **unitaria** de CV (PDF), almacenamiento con dedup por SHA-256.
 4. **Embudo Kanban**: 5 fases (Preselección, Antecedentes, Entrevistas, Proveedor externo, Contratación), drag-and-drop, validación server-side de transiciones.
@@ -100,7 +100,7 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 
 ### Fase 2 · Seguridad transversal (3–4 días)
 
-- [ ] Auth real: login/logout, JWT 24 h, refresh simple, guards de roles (`admin_rrhh`, `analista_seleccion`, `lider_area`; + `superusuario` desde la migración 008).
+- [x] Auth real: login/logout, access JWT corto, refresh opaco rotatorio y revocable, guards de roles (`admin_rrhh`, `analista_seleccion`, `lider_area`; + `superusuario` desde la migración 008).
 - [ ] Servicio crypto: AES-256-CBC con IV aleatorio de 16 bytes por registro; helpers `encrypt/decrypt` para columnas PII; llave por variable de entorno con rotación planificada.
 - [ ] Auditoría por triggers: quién, qué, cuándo, antes/después (JSONB); revista de que la tabla sea efectivamente inmutable.
 - [ ] Rate limiting en login, helmet/CORS acotados, validación de payloads con class-validator.
@@ -212,7 +212,7 @@ La prueba pedía un **piloto** de un ATS para el área de Gestión Humana. Ahora
 - **Bug corregido en el humo**: la API emitía ETag por defecto y el navegador recibía 304 sin cuerpo tras el redirect del alta → listados vacíos sin error. Solución: `etag: false` + `Cache-Control: no-store`.
 - **Baselines verificados el 28/10/2026**: API **401/401** (32 ficheros), web **116/116** (17 ficheros), shared 2/2; `typecheck`/`lint`/`build`/`format:check` en verde. Se añadieron endpoints de liveness/readiness, redacción de secretos en logs, request IDs seguros, validación de configuración productiva y migraciones 011–012.
 - **Documentación actualizada a la Etapa 9**: `docs/PRUEBA-MANUAL-ATS.txt` (guion con las 5 pruebas, incluye Dashboard/Departamentos/Entrevistas/Importar/Bitácora y los 11 casos de la retroalimentación), `docs/DOCUMENTACION-TECNICA-ATS.txt` y este plan. Además `Reportes Desarrollo/Reporte-Desarrollo-2026-10-27.txt` (reporte general para el equipo; los futuros se guardan en esa carpeta con fecha nueva).
-- **Pendiente antes de producción**: antecedentes/proveedor externo, sesión productiva con revocación/MFA, cola de trabajos y parser asistido, privacidad/retención, pruebas Playwright/carga/seguridad, backup-restore de BD y CV, `docker-compose.prod.yml` o plataforma objetivo, CI/CD, runbook y **prueba manual del usuario** con el guion de `docs/PRUEBA-MANUAL-ATS.txt`.
+- **Pendiente antes de producción**: antecedentes/proveedor externo, sesión productiva con revocación, cola de trabajos y parser asistido, privacidad/retención, pruebas Playwright/carga/seguridad, backup-restore de BD y CV, `docker-compose.prod.yml` o plataforma objetivo, CI/CD, runbook y **prueba manual del usuario** con el guion de `docs/PRUEBA-MANUAL-ATS.txt`.
 - **Regla funcional incorporada**: todos los campos del formulario de requerimientos son obligatorios en nuevas altas; la migración `013` bloquea nuevas filas incompletas y deja identificados los registros históricos del piloto que deben completarse.
 
 ---

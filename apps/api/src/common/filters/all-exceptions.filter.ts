@@ -31,7 +31,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = http.getRequest<Request>();
 
     const { statusCode, message, error } = this.toHttpError(exception);
-    const path = request.url ?? request.originalUrl ?? request.path ?? 'unknown';
+    const path =
+      (request.url ?? request.originalUrl ?? request.path ?? 'unknown').split('?')[0] ?? 'unknown';
 
     if (statusCode >= 500) {
       this.logger.error(

@@ -3,31 +3,27 @@ import { create } from 'zustand';
 import type { UsuarioSesion } from '../tipos';
 
 /**
- * Almacén de sesión (Zustand) con persistencia en `localStorage`.
+ * Almacén de sesión (Zustand). En producción el token vive únicamente en una
+ * cookie HttpOnly; el valor `cookie` es un marcador visual, no una credencial.
  *
  * CLAVE DE PERSISTENCIA: `ats.sesion.v1` — el prefijo evita colisiones con
  * otras apps servidas en el mismo origen y el `.v1` permite invalidar todo lo
  * guardado si algún día cambia la forma del valor.
  *
- * DECISIÓN DE MVP — token en `localStorage`:
+ * Compatibilidad legacy — los tests/integraciones pueden pasar un Bearer:
  *  - A FAVOR: la sesión sobrevive a un refresco de página (si no, cada F5
  *    obligaría a volver a `/login`), que es lo que espera un usuario de una
  *    herramienta interna de RRHH.
- *  - EN CONTRA: `localStorage` es legible por cualquier script de la página,
- *    de modo que un ataque XSS podría exfiltrar el JWT. La alternativa
- *    robusta (cookie `HttpOnly; Secure; SameSite`) exige que la API emita la
- *    cookie además del `accessToken` del body, y eso está fuera del alcance
- *    de esta fase.
- *  - Mitigación asumida y documentada: la API es la ÚNICA fuente de permisos
+ *  - La API es la ÚNICA fuente de permisos
  *    (guards `AuthGuard` + `RolesGuard`); en el cliente solo se decide qué
  *    botones se muestran, nunca qué operaciones se permiten. Si el token se
  *    filtra, caduca por `JWT_TTL_HOURS` y el 401 lo descarta.
  */
 
-/** Clave de `localStorage` donde se guarda `{ token, usuario }`. */
-export const CLAVE_SESION = 'ats.sesion.v1';
+/** Clave de estado visual; nunca debe contener un JWT en producción. */
+export const CLAVE_SESION = 'ats.sesion.v2';
 
-/** Forma mínima guardada en `localStorage`. */
+/** Estado visual guardado; `token` solo es el marcador `cookie` en producción. */
 interface SesionGuardada {
   token: string;
   usuario: UsuarioSesion;
@@ -79,9 +75,9 @@ export interface EstadoSesion {
   /** JWT de la API o `null` si no hay sesión. Se envía como `Bearer`. */
   token: string | null;
   usuario: UsuarioSesion | null;
-  /** Guarda token + usuario en memoria y en `localStorage`. */
+  /** Guarda el marcador de sesión + usuario en memoria y almacenamiento local. */
   iniciarSesion: (token: string, usuario: UsuarioSesion) => void;
-  /** Descarta la sesión en memoria y en `localStorage` (idempotente). */
+  /** Descarta el estado visual en memoria y almacenamiento local (idempotente). */
   cerrarSesion: () => void;
 }
 

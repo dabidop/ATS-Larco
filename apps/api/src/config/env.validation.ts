@@ -57,6 +57,11 @@ export const envSchema = z.object({
       .max(72, 'JWT_TTL_HOURS debe estar entre 1 y 72')
       .default(24),
   ),
+  /** Vigencia corta del access token; el refresh vive en cookie HttpOnly. */
+  ACCESS_TOKEN_TTL_MINUTES: z.preprocess(
+    (value) => (value === undefined || value === null || value === '' ? undefined : value),
+    z.coerce.number().int().min(5).max(1440).default(15),
+  ),
   /**
    * Clave de cifrado AES-256-CBC para PII: 32 bytes exactos en base64.
    * Obligatoria; un valor vacío se trata como AUSENTE y detiene el arranque
@@ -145,6 +150,9 @@ export function validateEnv(config: Record<string, unknown>): Env {
     }
     if (data.SUPER_INITIAL_EMAIL === 'it@larco.co') {
       errores.push('SUPER_INITIAL_EMAIL debe parametrizarse en producción');
+    }
+    if (data.ACCESS_TOKEN_TTL_MINUTES > 60) {
+      errores.push('ACCESS_TOKEN_TTL_MINUTES no puede superar 60 en producción');
     }
     if (errores.length > 0) {
       throw new Error(

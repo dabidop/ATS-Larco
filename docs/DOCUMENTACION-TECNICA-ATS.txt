@@ -67,10 +67,10 @@
 
   pnpm-workspace.yaml → apps/api, apps/web, packages/shared.
 
-  apps/api/
-     db/migrations/          001_initial_schema … 013_requerimientos_campos_obligatorios (TS)
+     apps/api/
+      db/migrations/          001_initial_schema … 015_rotacion_refresh (TS)
     src/
-      config/               env validada con zod, JWT (JWT_TTL_HOURS=24)
+      config/               env validada con zod, JWT corto
       common/
         crypto/             crypto.service (AES-256-CBC), password.util (scrypt)
         decorators/         @Public, @Roles
@@ -79,7 +79,8 @@
       database/             DatabaseService (pool pg global)
       health/               GET /api/health (público)
       modules/
-        auth/               login/logout/refresh/me, rate limit 5/min en login
+        auth/               login/logout/refresh/me, cookies HttpOnly y sesiones
+                            revocables
         requerimientos/     CRUD, máquina de estados (requerimientos-flujo),
                             código atómico (codigo-generator), store TypeORM
         candidatos/         CRUD, PII cifrada, historial desde audit_log
@@ -110,7 +111,7 @@
     components/entrevistas/ DialogoAgendar (asistente de 3 pasos)
     components/layout/      Header (8 secciones), LogoLarco (wordmark CSS),
                             Layout, RutaProtegida
-    store/                  sesion.ts (token en localStorage), tablero.ts
+    store/                  sesion.ts (marcador visual en localStorage), tablero.ts
                             (optimista con rollback + SOLO AVANZA + cupo)
     lib/                    api.ts (solicitud<T> + subirFormulario multipart),
                             rbac.ts (predicados de botones), flujo.ts
@@ -195,12 +196,13 @@
   guardan como texto en requerimientos.
 
   Aplicar migraciones: pnpm --filter @ats/api db:migrate
-   (las 12 están versionadas; registro en la tabla pgmigrations;
+    (las migraciones están versionadas; registro en la tabla pgmigrations;
   la 002 crea roles y admin, la 008 crea el rol superusuario y siembra
   it@larco.co con la contraseña de SUPER_INITIAL_PASSWORD, la 009 crea
   departamentos/entrevistas y la 010 hace opcional la cédula en
-   importación, la 011 añade jefatura y auditoría de DELETE y la 012 elimina
-   coordinadores personales de demostración).
+    importación, la 011 añade jefatura y auditoría de DELETE, la 012 elimina
+    coordinadores personales de demostración, la 013 obliga campos del
+    requerimiento y la 014 creó sesiones revocables.
 
 ================================================================================
 4. MÁQUINAS DE ESTADOS
@@ -261,7 +263,7 @@
   POST /auth/login                          público · 5/min por IP ·
        responde {accessToken, tokenType, expiresIn, user{email, fullName,
        role}}
-  POST /auth/logout · POST /auth/refresh · GET /auth/me   autenticados
+  POST /auth/logout · GET /auth/me   autenticados; refresh usa refresh cookie + CSRF
 
   POST /requerimientos                      @Roles(admin_rrhh, superusuario,
        lider_area)
@@ -364,11 +366,13 @@
     scrypt$16384$8$1$salt_b64$hash_b64 (verificado en la tabla users).
     OJO: PowerShell interpola $16384 en cadenas dobles — generar hashes con
     un .js temporal, no con comillas dobles.
-  • JWT: HS256, TTL 24 h (JWT_TTL_HOURS=24), payload {sub, email, role} +
-    iat/exp y jti de emisión; un payload sin esos 3 campos (p. ej.
-    {sub, rol, ver}) → 401. Sin claim de versión ni revocación por usuario.
-    La web guarda {token, usuario} en localStorage (decisión MVP documentada
-    en store/sesion.ts).
+  • JWT: HS256, access TTL corto (ACCESS_TOKEN_TTL_MINUTES, 15 min por defecto),
+    payload {sub, email, role, sid} + iat/exp y jti. La web usa cookies
+    HttpOnly; el refresh es opaco, se almacena hasheado en auth_sessions y en el
+    historial de tokens de refresh, y se rota atómicamente con detección de
+    reutilización. El access token puede expirar antes de renovar la sesión.
+    rota/revoca en logout. SameSite=Strict + X-CSRF-Token protegen escrituras.
+    Bearer queda solo como compatibilidad controlada con integraciones antiguas.
   • RBAC: AuthGuard global + RolesGuard (@Roles) + comprobaciones de
     servicio (creador-o-admin, matriz de transiciones). 4 roles;
     superusuario hereda TODO lo de admin_rrhh y es el único que pasa el
@@ -392,8 +396,9 @@
     application/pdf validado; la cédula es opcional SOLO en este DTO (el
     alta manual sigue exigiéndola).
   • Validación de entorno (zod, al arrancar): JWT_SECRET ≥32 caracteres,
-    CRYPTO_KEY_* = exactamente 32 bytes en base64, JWT_TTL 1–72 h. La app
-    NO arranca si algo falta.
+    CRYPTO_KEY_* = exactamente 32 bytes en base64, access TTL 5–1440 min
+    (máximo 60 en producción).
+    La app NO arranca si algo falta.
 
 ================================================================================
 7. FRONTEND (rutas, estado, componentes)
@@ -449,7 +454,7 @@
   El dashboard las pinta en el orden recibido (la API garantiza las 5).
 
   Estado:
-    store/sesion.ts   sesión Zustand persistida en localStorage {token, usuario}
+    store/sesion.ts   marcador visual de sesión Zustand persistido en localStorage {token, usuario}
     store/tablero.ts  entidades normalizadas + orden; fetch PRIMERO y luego
                       store; movimiento optimista con ROLLBACK y snapshot del
                       historial; validación local de SOLO AVANZA y de CUPO

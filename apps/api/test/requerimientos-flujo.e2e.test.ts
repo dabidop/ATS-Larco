@@ -522,7 +522,12 @@ describe('Requerimientos — máquina de estados e2e (BD dev docker real)', () =
     });
 
     it('el PATCH de un admin deja changed_by = admin (GUC también en edición)', async () => {
-      const id = await crear('Auditoría del editor en PATCH');
+      const alta = await request(app.getHttpServer())
+        .post('/api/requerimientos')
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send(cuerpoValido('Auditoría del editor en PATCH'))
+        .expect(201);
+      const id = alta.body.id as string;
 
       await request(app.getHttpServer())
         .patch(`/api/requerimientos/${id}`)

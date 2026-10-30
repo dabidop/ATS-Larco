@@ -1,4 +1,5 @@
 import { estadoSesion, useSesionStore } from '../store/sesion';
+import type { UsuarioSesion } from '../tipos';
 
 /**
  * Cliente HTTP mínimo de la SPA: `fetch` nativo, SIN axios.
@@ -13,11 +14,9 @@ import { estadoSesion, useSesionStore } from '../store/sesion';
  * (excepciones lanzadas) o un ARRAY de strings (ValidationPipe de Nest). Ambos
  * casos se normalizan a un único texto en `ApiError`.
  *
- * SESIÓN: si el backend responde 401 (token caducado o inválido), se descarta
- * la sesión local; el guard `RutaProtegida` redirige a `/login` conservando la
- * ruta original en `location.state`. En `/login` no hay token en el store, así
- * que el 401 de credenciales incorrectas NO cierra nada (solo muestra el
- * mensaje). Los guards de la API son la verdad: aquí solo se adjunta el token.
+ * SESIÓN: el navegador usa cookies HttpOnly emitidas por la API. El marcador
+ * `cookie` del store no es una credencial y solo permite mantener la UI. El
+ * Bearer se conserva únicamente para compatibilidad con integraciones/tests.
  */
 
 /** Base común de todas las rutas de la API. */
@@ -48,11 +47,21 @@ function rutaAbsoluta(ruta: string): string {
 }
 
 /** Cabeceras: JSON cuando hay cuerpo y `Bearer` cuando existe sesión. */
+function leerCookie(nombre: string): string | null {
+  const parte = document.cookie
+    .split(';')
+    .map((valor) => valor.trim())
+    .find((valor) => valor.startsWith(`${nombre}=`));
+  return parte === undefined ? null : decodeURIComponent(parte.slice(nombre.length + 1));
+}
+
 function cabeceras(incluirJson: boolean): Record<string, string> {
   const cabecerasFinales: Record<string, string> = { Accept: 'application/json' };
   if (incluirJson) cabecerasFinales['Content-Type'] = 'application/json';
   const { token } = estadoSesion();
-  if (token !== null) cabecerasFinales.Authorization = `Bearer ${token}`;
+  if (token !== null && token !== 'cookie') cabecerasFinales.Authorization = `Bearer ${token}`;
+  const csrf = leerCookie('ats_csrf');
+  if (csrf !== null) cabecerasFinales['X-CSRF-Token'] = csrf;
   return cabecerasFinales;
 }
 
@@ -120,14 +129,46 @@ async function lanzarFetch(ruta: string, init: RequestInit): Promise<Response> {
   }
 }
 
+/** Renueva la sesión una sola vez usando únicamente las cookies HttpOnly + CSRF. */
+async function renovarSesion(): Promise<boolean> {
+  const csrf = leerCookie('ats_csrf');
+  if (csrf === null) return false;
+  try {
+    const respuesta = await lanzarFetch(rutaAbsoluta('/auth/refresh'), {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'X-CSRF-Token': csrf },
+      credentials: 'include',
+    });
+    if (!respuesta.ok) return false;
+    const cuerpo = (await respuesta.json()) as { user?: UsuarioSesion };
+    if (cuerpo.user === undefined) return false;
+    useSesionStore.getState().iniciarSesion('cookie', cuerpo.user);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Reintenta una petición una vez si el access cookie expiró. */
+async function fetchConRefresh(ruta: string, init: RequestInit): Promise<Response> {
+  const respuesta = await lanzarFetch(ruta, init);
+  const esRutaAuth = ruta.includes('/auth/login') || ruta.includes('/auth/refresh');
+  if (respuesta.status !== 401 || esRutaAuth || estadoSesion().token === null) {
+    return respuesta;
+  }
+  if (!(await renovarSesion())) return respuesta;
+  return lanzarFetch(ruta, init);
+}
+
 /** GET/POST/PATCH genérico en JSON. `ruta` es relativa a `/api`. */
 export async function solicitud<T>(ruta: string, opciones: OpcionesSolicitud = {}): Promise<T> {
   const metodo = opciones.metodo ?? 'GET';
   const hayCuerpo = opciones.cuerpo !== undefined;
-  const respuesta = await lanzarFetch(rutaAbsoluta(ruta), {
+  const respuesta = await fetchConRefresh(rutaAbsoluta(ruta), {
     method: metodo,
     headers: cabeceras(hayCuerpo),
     body: hayCuerpo ? JSON.stringify(opciones.cuerpo) : undefined,
+    credentials: 'include',
   });
 
   if (!respuesta.ok) throw await errorDesdeRespuesta(respuesta);
@@ -157,10 +198,11 @@ export async function subirArchivo<T>(ruta: string, archivo: File): Promise<T> {
  * `subirArchivo`, NO se fija `Content-Type`: el navegador añade el boundary.
  */
 export async function subirFormulario<T>(ruta: string, datos: FormData): Promise<T> {
-  const respuesta = await lanzarFetch(rutaAbsoluta(ruta), {
+  const respuesta = await fetchConRefresh(rutaAbsoluta(ruta), {
     method: 'POST',
     headers: cabeceras(false),
     body: datos,
+    credentials: 'include',
   });
   if (!respuesta.ok) throw await errorDesdeRespuesta(respuesta);
   try {
@@ -179,9 +221,10 @@ export async function subirFormulario<T>(ruta: string, datos: FormData): Promise
  * download>` temporal.
  */
 export async function descargar(ruta: string, nombreFichero: string): Promise<void> {
-  const respuesta = await lanzarFetch(rutaAbsoluta(ruta), {
+  const respuesta = await fetchConRefresh(rutaAbsoluta(ruta), {
     method: 'GET',
     headers: cabeceras(false),
+    credentials: 'include',
   });
   if (!respuesta.ok) throw await errorDesdeRespuesta(respuesta);
 
@@ -200,8 +243,8 @@ export async function descargar(ruta: string, nombreFichero: string): Promise<vo
 }
 
 /**
- * Best-effort de `POST /api/auth/logout` (la API solo registra el evento: el
- * JWT es stateless). El cierre local NO depende de esta llamada.
+ * Revoca la sesión HttpOnly en el servidor. El cierre local NO depende de esta
+ * llamada para que también funcione si la red ya no está disponible.
  */
 export async function cerrarSesionEnServidor(): Promise<void> {
   try {

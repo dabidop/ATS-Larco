@@ -89,7 +89,7 @@ Los siguientes puntos deben completarse antes de una puesta en producción:
       inicial y siempre debe ser revisada por una persona.
     - Notificaciones por correo, recordatorios y evaluaciones de entrevistas.
     - Reportes avanzados, exportación a Excel/CSV e indicadores ejecutivos.
-    - Sesiones más seguras, revocación inmediata y MFA para cuentas administrativas.
+      en producción.
     - Copias de seguridad y pruebas de restauración.
     - Instalación productiva, HTTPS, monitoreo, alertas y procedimiento de soporte.
     - Política de privacidad, conservación y eliminación de datos personales.

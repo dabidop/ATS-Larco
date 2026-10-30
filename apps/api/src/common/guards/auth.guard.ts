@@ -2,6 +2,11 @@ import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
+import { ConfigService } from '@nestjs/config';
+
+import type { Env } from '../../config/env.validation';
+import { DatabaseService } from '../../database/database.service';
+import { ACCESS_COOKIE, CSRF_COOKIE } from '../../modules/auth/auth.service';
 
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
@@ -11,6 +16,7 @@ export interface AuthenticatedUser {
   email: string;
   /** Código de rol (`roles.code`); puede no estar contemplado en el RBAC actual. */
   role: string;
+  sid?: string;
 }
 
 /** Request de Express ampliado con el usuario verificado por `AuthGuard`. */
@@ -22,6 +28,20 @@ export interface AuthenticatedRequest extends Request {
 function extraerTokenBearer(authorization: string | undefined): string | undefined {
   const match = /^Bearer\s+(\S+)$/i.exec(authorization ?? '');
   return match?.[1];
+}
+
+function cookie(request: Request, name: string): string | undefined {
+  const header = request.headers.cookie ?? '';
+  const pair = header
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`));
+  if (pair === undefined) return undefined;
+  try {
+    return decodeURIComponent(pair.slice(name.length + 1));
+  } catch {
+    return undefined;
+  }
 }
 
 /** Comprueba que el payload decodificado tiene los tres claims de negocio. */
@@ -59,9 +79,11 @@ export class AuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly jwtService: JwtService,
+    private readonly database: DatabaseService,
+    private readonly config: ConfigService<Env, true>,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     // Rutas públicas (@Public): pasan sin verificar nada.
     const esPublica =
       this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -74,7 +96,8 @@ export class AuthGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
 
-    const token = extraerTokenBearer(request.headers.authorization);
+    const cookieToken = cookie(request, ACCESS_COOKIE);
+    const token = cookieToken ?? extraerTokenBearer(request.headers.authorization);
     if (token === undefined) {
       throw new UnauthorizedException('No autenticado: se requiere un token Bearer válido');
     }
@@ -92,7 +115,33 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('No autenticado: token inválido o expirado');
     }
 
-    request.user = { sub: payload.sub, email: payload.email, role: payload.role };
+    if (this.config.get('NODE_ENV') !== 'test') {
+      if (!payload.sid) throw new UnauthorizedException('No autenticado: sesión inválida');
+      const { rows } = await this.database.query<{ id: string }>(
+        `SELECT s.id FROM auth_sessions s
+         JOIN users u ON u.id = s.user_id
+         WHERE s.id = $1 AND s.user_id = $2 AND u.active
+           AND s.revoked_at IS NULL AND s.expires_at > now()`,
+        [payload.sid, payload.sub],
+      );
+      if (rows[0] === undefined) throw new UnauthorizedException('No autenticado: sesión revocada');
+
+      // SameSite=Strict es la primera barrera; el token CSRF evita también
+      // solicitudes forjadas desde otro contexto del mismo sitio.
+      if (cookieToken !== undefined && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+        const csrfHeader = request.headers['x-csrf-token'];
+        const csrfCookie = cookie(request, CSRF_COOKIE);
+        if (
+          typeof csrfHeader !== 'string' ||
+          csrfCookie === undefined ||
+          csrfHeader !== csrfCookie
+        ) {
+          throw new UnauthorizedException('CSRF inválido');
+        }
+      }
+    }
+
+    request.user = { sub: payload.sub, email: payload.email, role: payload.role, sid: payload.sid };
     return true;
   }
 }

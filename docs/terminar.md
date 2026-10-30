@@ -20,9 +20,9 @@
 1. El gate de formato ya fue corregido y pasa localmente; todavía no existe CI que lo haga obligatorio.
 2. No existe `docker-compose.prod.yml`, pipeline CI/CD, gestión de secretos, TLS, estrategia de backup/restore ni runbook operativo.
 3. La documentación técnica y el plan dicen que la migración llega a 010 y describen algunos estados/limitaciones anteriores; el código ya tiene la 011 y el resultado de pruebas actual es distinto. Debe existir una única fuente de verdad.
-4. La sesión web guarda el JWT en `localStorage` (`apps/web/src/store/sesion.ts`). Un XSS permitiría exfiltrarlo.
-5. `AuthGuard` valida firma y expiración sin consultar BD: una cuenta desactivada conserva acceso hasta la expiración del token (por defecto 24 h). `refresh` sí consulta BD, pero no existe revocación, rotación ni lista de sesiones.
-6. El logger HTTP debe comprobarse y configurarse para **no registrar `Authorization`, cookies, PII ni cuerpos**. En la salida de pruebas se observan cabeceras de autorización en el objeto de request del log de error; esto es un riesgo crítico si ocurre en producción.
+4. La sesión web conserva en `localStorage` únicamente un marcador visual y los datos públicos del usuario; los tokens permanecen en cookies emitidas por la API.
+5. La sesión productiva usa access/refresh en cookies `HttpOnly`, sesiones persistidas y revocables, rotación atómica con detección de reutilización, CSRF y access token corto. Las migraciones 014 y 015 almacenan sesiones y el historial de refresh.
+6. El logger HTTP redacciona cabeceras, cookies, cuerpos sensibles, mensajes de error y nombres de archivo potencialmente personales. Deben conservarse pruebas de regresión que impidan registrar `Authorization`, PII o CV.
 7. La importación crea candidato y archivo en operaciones separadas; si falla el segundo paso puede quedar archivo huérfano o una eliminación compensatoria incompleta. Debe hacerse idempotente y con estado de job/reconciliación.
 8. Ya existen endpoints separados de liveness/readiness, pero aún no hay métricas ni alertas.
 9. Los módulos de antecedentes y proveedor externo siguen siendo andamiaje sin lógica funcional; no deben presentarse como capacidades disponibles.
@@ -34,12 +34,11 @@
 
 ### P0.1 Seguridad de autenticación y sesión
 
-- Sustituir el JWT en `localStorage` por cookie `HttpOnly`, `Secure`, `SameSite` apropiada y protección CSRF; o documentar/aprobar formalmente una alternativa equivalente.
-- Implementar access token corto (5–15 min), refresh token opaco en BD, rotación, revocación por logout, usuario, dispositivo y cambio de contraseña, detección de reutilización y límite de sesiones.
+- Mantener cookies `HttpOnly`, `Secure`, `SameSite` apropiadas y protección CSRF; verificar el comportamiento en navegador real detrás de TLS.
+- Completar límite de sesiones por usuario/dispositivo y el procedimiento operativo para revocar sesiones.
 - Validar el usuario activo y una versión de sesión en cada request sensible, o reducir explícitamente la ventana de revocación a minutos.
 - Restringir algoritmo/issuer/audience del JWT y separar secretos por ambiente. Planificar rotación de `JWT_SECRET`, `CRYPTO_KEY` y `CEDULA_SEARCH_KEY` con procedimiento probado.
 - Aplicar política de contraseña robusta, expiración/recuperación segura, bloqueo progresivo y registro de eventos de autenticación sin secretos.
-- Añadir MFA para `superusuario` y, como mínimo, para cuentas administrativas.
 
 ### P0.2 Protección de datos personales
 
@@ -104,7 +103,6 @@
 ## 4. P2 — evolución posterior al lanzamiento
 
 - Portal del candidato, consentimiento/autoservicio y actualización de datos.
-- SSO corporativo/OIDC, SCIM y MFA centralizado.
 - Integración con correo/calendario, ERP/payroll y proveedores externos mediante contratos versionados.
 - Multiempresa/multitenancy solo si aparece el requisito; no introducirlo prematuramente.
 - Alta disponibilidad, PostgreSQL administrado, almacenamiento de objetos con antivirus y CDN solo cuando la escala lo justifique.
@@ -127,7 +125,7 @@ El sistema solo se declara productivo cuando:
 - todos los gates de CI están verdes y las vulnerabilidades críticas/altas tienen tratamiento aprobado;
 - existe staging reproducible y el despliegue fue ensayado desde cero;
 - UAT está firmado y no hay defectos bloqueantes o de seguridad;
-- sesión, revocación, MFA administrativo, privacidad y redacción de logs están verificadas;
+- sesión, revocación, privacidad y redacción de logs están verificadas;
 - backup y restore de PostgreSQL **y CV** fueron ejecutados con evidencia, cumpliendo RPO/RTO acordados;
 - TLS, monitoreo, alertas, runbook, soporte y reversa están disponibles;
 - las migraciones, seeds, secretos y datos reales están separados por ambiente;

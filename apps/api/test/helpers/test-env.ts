@@ -18,6 +18,8 @@ process.env.CORS_ORIGIN ??= 'http://localhost:5173';
 // y TTL de 24 h para poder asertar expiresIn = 86400 de forma estable.
 process.env.JWT_SECRET ??= 'test-jwt-secret-0123456789abcdef0123456789abcdef';
 process.env.JWT_TTL_HOURS ??= '24';
+// Mantiene la expectativa histórica de 24 h solo en tests; producción usa 15 min.
+process.env.ACCESS_TOKEN_TTL_MINUTES ??= '1440';
 // Clave de cifrado PII solo para tests (la validación zod la exige: 32 bytes
 // en base64). Determinista para que los tests sean reproducibles; NUNCA
 // usar fuera de tests. CRYPTO_KEY_PREVIOUS_BASE64 queda ausente a propósito.

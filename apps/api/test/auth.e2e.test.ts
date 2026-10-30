@@ -48,6 +48,65 @@ interface FakeUser {
  * `AuthService` (búsqueda por email y por id) sin tocar PostgreSQL.
  */
 function createFakeDatabase(users: FakeUser[]): DatabaseService {
+  const sessions = new Map<string, { userId: string; revoked: boolean; expiresAt: Date }>();
+  const refreshTokens = new Map<string, { id: string; sessionId: string; usedAt: Date | null }>();
+
+  const client = {
+    query: async (text: string, params: unknown[]) => {
+      if (text.includes('INSERT INTO auth_sessions')) {
+        sessions.set(String(params[0]), {
+          userId: String(params[1]),
+          revoked: false,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        });
+        return { rows: [] };
+      }
+      if (text.includes('INSERT INTO auth_session_refresh_tokens')) {
+        refreshTokens.set(String(params[2]), {
+          id: String(params[0]),
+          sessionId: String(params[1]),
+          usedAt: null,
+        });
+        return { rows: [] };
+      }
+      if (text.includes('FROM auth_session_refresh_tokens')) {
+        const token = refreshTokens.get(String(params[0]));
+        const session = token === undefined ? undefined : sessions.get(token.sessionId);
+        const user =
+          session === undefined ? undefined : users.find((item) => item.id === session.userId);
+        return {
+          rows:
+            token !== undefined && session !== undefined && user !== undefined
+              ? [
+                  {
+                    ...user,
+                    token_id: token.id,
+                    session_id: token.sessionId,
+                    used_at: token.usedAt,
+                    revoked_at: session.revoked ? new Date() : null,
+                    expires_at: session.expiresAt,
+                  },
+                ]
+              : [],
+        };
+      }
+      if (text.includes('SET used_at = now()')) {
+        const token = [...refreshTokens.values()].find((value) => value.id === String(params[0]));
+        if (token !== undefined) token.usedAt = new Date();
+        return { rows: [] };
+      }
+      if (text.includes('UPDATE auth_sessions SET refresh_token_hash')) return { rows: [] };
+      if (text.includes('SET last_used_at = now()')) return { rows: [] };
+      if (text.includes('SET revoked_at')) {
+        const session = sessions.get(String(params[0]));
+        if (session !== undefined) session.revoked = true;
+        return { rows: [] };
+      }
+      return { rows: [] };
+    },
+    release: () => {},
+  };
+
   return {
     pool: {} as Pool,
     query: async (text: string, params: unknown[]) => {
@@ -63,6 +122,7 @@ function createFakeDatabase(users: FakeUser[]): DatabaseService {
       }
       return { rows: [] };
     },
+    withTransaction: async (work: (value: typeof client) => Promise<unknown>) => work(client),
     onModuleDestroy: async () => {},
   } as unknown as DatabaseService;
 }
@@ -241,10 +301,21 @@ describe('Auth (e2e)', () => {
 
   it('POST /api/auth/refresh → 200 con accessToken nuevo; 401 sin token o con token inválido', async () => {
     const login = await postLogin({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }).expect(200);
+    const cookies = (
+      Array.isArray(login.headers['set-cookie'])
+        ? login.headers['set-cookie']
+        : [login.headers['set-cookie']]
+    ) as string[];
+    const refreshCookie = cookies.find((cookie) => cookie.startsWith('ats_refresh='));
+    const csrfCookie = cookies.find((cookie) => cookie.startsWith('ats_csrf='));
+    expect(refreshCookie).toBeDefined();
+    expect(csrfCookie).toBeDefined();
+    const csrf = csrfCookie?.split(';')[0]?.split('=')[1];
 
     const refreshed = await request(app.getHttpServer())
       .post('/api/auth/refresh')
-      .set('Authorization', `Bearer ${login.body.accessToken}`)
+      .set('Cookie', [refreshCookie!, csrfCookie!])
+      .set('X-CSRF-Token', csrf!)
       .expect(200);
 
     expect(refreshed.body.accessToken).not.toBe(login.body.accessToken);
@@ -260,7 +331,15 @@ describe('Auth (e2e)', () => {
     await request(app.getHttpServer()).post('/api/auth/refresh').expect(401);
     await request(app.getHttpServer())
       .post('/api/auth/refresh')
-      .set('Authorization', 'Bearer token-basura')
+      .set('Cookie', ['ats_refresh=token-basura', `ats_csrf=${csrf}`])
+      .set('X-CSRF-Token', csrf!)
+      .expect(401);
+
+    // El token anterior queda consumido: reutilizarlo revoca la sesión.
+    await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .set('Cookie', [refreshCookie!, csrfCookie!])
+      .set('X-CSRF-Token', csrf!)
       .expect(401);
   });
 

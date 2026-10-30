@@ -42,7 +42,8 @@ export interface UsuarioSesion {
 
 /** Respuesta de `POST /api/auth/login` y `POST /api/auth/refresh`. */
 export interface RespuestaLogin {
-  accessToken: string;
+  /** Solo existe en respuestas de compatibilidad; el navegador usa cookie HttpOnly. */
+  accessToken?: string;
   tokenType: 'Bearer';
   expiresIn: number;
   user: UsuarioSesion;

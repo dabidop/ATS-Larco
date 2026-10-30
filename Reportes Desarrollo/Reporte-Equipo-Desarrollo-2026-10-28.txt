@@ -97,7 +97,10 @@ antes de validar definitivamente la restricción.
 -----------------------------
 
 Implementado:
-    - Autenticación JWT con duración configurable.
+    - Access JWT de corta duración y cookies HttpOnly para access/refresh.
+    - Sesiones persistidas en auth_sessions, refresh opaco hasheado, rotación y
+      revocación en logout/desactivación.
+    - Protección CSRF mediante cookie no HttpOnly + encabezado X-CSRF-Token.
     - RBAC para admin_rrhh, analista_seleccion, lider_area y superusuario.
     - Contraseñas protegidas con scrypt.
     - Cédula y teléfono cifrados en la aplicación; HMAC para búsqueda exacta de
@@ -106,13 +109,11 @@ Implementado:
     - Validación de magic bytes y tamaño máximo para archivos.
     - Auditoría mediante triggers de PostgreSQL; la tabla de auditoría rechaza
       UPDATE y DELETE.
-    - Redacción de secretos y datos sensibles en logs, request IDs seguros y
-      endpoints de health liveness/readiness.
+    - Redacción de secretos, PII, cuerpos y errores en logs, request IDs seguros
+      y endpoints de health liveness/readiness.
     - Configuración de producción validada para evitar valores demo por defecto.
 
 Limitaciones y riesgos antes de producción:
-    - El JWT se almacena actualmente en localStorage del navegador.
-    - No existe todavía revocación/rotación completa de sesiones ni MFA.
     - No hay CI/CD obligatorio, escaneo integral ni despliegue productivo
       reproducible en el repositorio.
     - No hay estrategia probada de backup/restore para PostgreSQL y CVs.
@@ -180,7 +181,6 @@ Pendiente:
 9. PRÓXIMOS PASOS RECOMENDADOS
 ------------------------------
     1. Congelar alcance y crear staging con datos sintéticos.
-    2. Resolver sesión segura, revocación, MFA administrativo y redacción de PII.
     3. Definir privacidad, retención y permisos de datos.
     4. Crear despliegue productivo reproducible y backup/restore probado.
     5. Ejecutar Playwright, carga y revisión OWASP.

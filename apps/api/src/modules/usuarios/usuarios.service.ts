@@ -322,6 +322,17 @@ export class UsuariosService {
         throw new ConflictException(`El usuario ${id} dejó de existir tras la actualización`);
       }
 
+      // Desactivar, cambiar rol o contraseña invalida inmediatamente todas las
+      // sesiones existentes del usuario. El AuthGuard también comprueba
+      // `users.active`, pero la revocación explícita evita dejar basura activa.
+      if (dto.activo === false || dto.rol !== undefined || passwordHash !== undefined) {
+        await cliente.query(
+          `UPDATE auth_sessions SET revoked_at = now()
+           WHERE user_id = $1 AND revoked_at IS NULL`,
+          [id],
+        );
+      }
+
       // Relectura dentro de la transacción: devuelve los valores ya
       // materializados en BD (rol resuelto, `active`, `updated_at` del trigger).
       return toUsuarioResponse(await this.cargarUsuarioCon(cliente, id));

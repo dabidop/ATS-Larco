@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 
 import { DatabaseService } from '../../database/database.service';
@@ -12,6 +13,11 @@ interface ErrorDePostgres {
   code?: string;
   constraint?: string;
   message?: string;
+}
+
+/** Identificador no reversible para diagnosticar un archivo sin registrar su nombre. */
+function identificadorArchivoSeguro(nombre: string): string {
+  return createHash('sha256').update(nombre).digest('hex').slice(0, 16);
 }
 
 /**
@@ -313,7 +319,7 @@ export class ImportacionService {
       // El detalle REAL va al log del servidor (diagnóstico); el cliente ve un
       // mensaje genérico en español sin filtros internos de pdf.js.
       this.logger.warn(
-        `No se pudo leer el PDF «${archivo.originalname}»: ${mensajeDeError(error)}`,
+        `No se pudo leer un PDF (archivo ${identificadorArchivoSeguro(archivo.originalname)}): ${mensajeDeError(error)}`,
       );
       return {
         archivo: archivo.originalname,
