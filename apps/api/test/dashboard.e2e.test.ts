@@ -185,6 +185,14 @@ describe('Dashboard — resumen operativo e2e (BD dev docker real)', () => {
       expect(requerimientos[clave]).toBeGreaterThanOrEqual(0);
     }
     expect(requerimientos.total).toBeGreaterThanOrEqual(1);
+
+    expect(response.body.conversionPorRequerimiento).toBeInstanceOf(Array);
+    const conversion = response.body.conversionPorRequerimiento.find(
+      (fila: { requerimientoId: string }) => fila.requerimientoId === idsFixture.requerimiento,
+    );
+    expect(conversion).toMatchObject({ postulaciones: 1, contratados: 0, tasaContratacion: 0 });
+    expect(conversion).not.toHaveProperty('candidatoId');
+    expect(conversion).not.toHaveProperty('email');
   });
 
   it('con lider_area → 200 (rol incluido en la matriz del dashboard)', async () => {

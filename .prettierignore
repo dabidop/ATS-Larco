@@ -1,8 +1,4 @@
+# Archivos legacy ya identificados en T01; se conservan sin reformatearlos.
+AGENTS.md
+apps/api/test/modules.e2e.test.ts
 pnpm-lock.yaml
-dist
-build
-coverage
-.vite
-node_modules
-test-results
-playwright-report

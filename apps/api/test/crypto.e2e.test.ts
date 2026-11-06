@@ -100,4 +100,25 @@ describe('Validación zod de las llaves CRYPTO_* (e2e)', () => {
       validateEnv(baseEnv({ CRYPTO_KEY_BASE64: KEY_32, CRYPTO_KEY_PREVIOUS_BASE64: 'otra-corta' })),
     ).toThrow('CRYPTO_KEY_PREVIOUS_BASE64 debe decodificar a exactamente 32 bytes en base64');
   });
+
+  it('rechaza CORS ambiguo en producción y acepta orígenes http(s) explícitos', () => {
+    const produccion = {
+      ...baseEnv({
+        NODE_ENV: 'production',
+        CRYPTO_KEY_BASE64: KEY_32,
+        ADMIN_INITIAL_EMAIL: 'admin-prod@example.test',
+        SUPER_INITIAL_EMAIL: 'it-prod@example.test',
+      }),
+    };
+
+    expect(() => validateEnv({ ...produccion, CORS_ORIGIN: '*' })).toThrow(
+      'CORS_ORIGIN contiene orígenes inválidos',
+    );
+    expect(() =>
+      validateEnv({
+        ...produccion,
+        CORS_ORIGIN: 'https://ats.example.test,https://app.example.test',
+      }),
+    ).not.toThrow();
+  });
 });

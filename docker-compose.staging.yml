@@ -1,0 +1,63 @@
+# Staging/producción detrás de un reverse proxy TLS externo.
+# No publica puertos al host: el gateway HTTPS debe conectarse a `web:80`.
+name: ats-staging
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env.staging
+    volumes:
+      - pgdata_staging:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file: .env.staging
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      UPLOAD_DIR: /app/storage/CVs
+    expose:
+      - '3000'
+    volumes:
+      - cv_staging:/app/storage/CVs
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    expose:
+      - '80'
+    depends_on:
+      api:
+        condition: service_healthy
+
+  migrate:
+    profiles: [migration]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: builder
+    env_file: .env.staging
+    environment:
+      NODE_ENV: production
+    command: pnpm --filter @ats/api db:migrate
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata_staging:
+  cv_staging:

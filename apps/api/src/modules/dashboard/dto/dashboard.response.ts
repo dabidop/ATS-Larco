@@ -42,12 +42,23 @@ export interface DashboardRequerimientosDto {
   criticos: number;
 }
 
+/** Conversión agregada por requerimiento, sin nombres ni PII de candidatos. */
+export interface DashboardConversionDto {
+  requerimientoId: string;
+  codigo: string;
+  titulo: string;
+  postulaciones: number;
+  contratados: number;
+  tasaContratacion: number;
+}
+
 /** Respuesta de `GET /api/dashboard`. */
 export interface DashboardResponseDto {
   embudo: DashboardEmbudoDto;
   /** Las 5 fases SIEMPRE en orden de avance, incluso con cantidad 0. */
   porFase: DashboardFaseDto[];
   requerimientos: DashboardRequerimientosDto;
+  conversionPorRequerimiento: DashboardConversionDto[];
 }
 
 /** Fila cruda de la consulta de embudo. */

@@ -117,14 +117,22 @@ export class AuthGuard implements CanActivate {
 
     if (this.config.get('NODE_ENV') !== 'test') {
       if (!payload.sid) throw new UnauthorizedException('No autenticado: sesión inválida');
-      const { rows } = await this.database.query<{ id: string }>(
-        `SELECT s.id FROM auth_sessions s
-         JOIN users u ON u.id = s.user_id
-         WHERE s.id = $1 AND s.user_id = $2 AND u.active
-           AND s.revoked_at IS NULL AND s.expires_at > now()`,
+      const { rows } = await this.database.query<{ id: string; email: string; role: string }>(
+        `SELECT s.id, u.email, r.code AS role
+           FROM auth_sessions s
+          JOIN users u ON u.id = s.user_id
+          JOIN roles r ON r.id = u.role_id
+          WHERE s.id = $1 AND s.user_id = $2 AND u.active
+            AND s.revoked_at IS NULL AND s.expires_at > now()`,
         [payload.sid, payload.sub],
       );
       if (rows[0] === undefined) throw new UnauthorizedException('No autenticado: sesión revocada');
+
+      // El JWT identifica la sesión, pero no es la fuente de verdad del rol:
+      // un cambio de rol debe surtir efecto en la siguiente solicitud, sin
+      // esperar a que expire el access token.
+      payload.email = rows[0].email;
+      payload.role = rows[0].role;
 
       // SameSite=Strict es la primera barrera; el token CSRF evita también
       // solicitudes forjadas desde otro contexto del mismo sitio.

@@ -282,8 +282,34 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       await cliente.query('DELETE FROM postulaciones WHERE requerimiento_id = ANY($1::uuid[])', [
         requerimientos,
       ]);
+      await cliente.query(
+        `DELETE FROM postulaciones
+          WHERE requerimiento_id IN (
+            SELECT id FROM requerimientos
+             WHERE created_by IN (
+               SELECT id FROM users WHERE email = ANY($1::text[])
+             )
+          )`,
+        [USUARIOS_DE_PRUEBA.map((usuario) => usuario.email)],
+      );
       await cliente.query('DELETE FROM candidatos WHERE apellidos = $1', [APELLIDOS_MARCA]);
+      // También limpia fixtures de una ejecución interrumpida cuyo apellido no
+      // alcanzó a persistirse, pero cuyo creador sí es exclusivo de esta suite.
+      await cliente.query(
+        `DELETE FROM candidatos
+          WHERE created_by IN (
+            SELECT id FROM users WHERE email = ANY($1::text[])
+          )`,
+        [USUARIOS_DE_PRUEBA.map((usuario) => usuario.email)],
+      );
       await cliente.query('DELETE FROM requerimientos WHERE jefatura = $1', [JEFATURA]);
+      await cliente.query(
+        `DELETE FROM requerimientos
+          WHERE created_by IN (
+            SELECT id FROM users WHERE email = ANY($1::text[])
+          )`,
+        [USUARIOS_DE_PRUEBA.map((usuario) => usuario.email)],
+      );
       // `audit_log.changed_by` es FK con ON DELETE SET NULL: borrar usuarios
       // provocaría un UPDATE sobre `audit_log`, que su trigger de inmutabilidad
       // rechaza. Se deshabilita SOLO dentro de esta transacción. Las filas de

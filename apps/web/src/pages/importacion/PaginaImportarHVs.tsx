@@ -4,7 +4,12 @@ import type { FormEvent } from 'react';
 import { mensajeDeError, solicitud, subirFormulario } from '../../lib/api';
 import { tamanoArchivo } from '../../lib/formato';
 import { useRecurso } from '../../lib/useRecurso';
-import type { Departamento, ResumenImportacion } from '../../tipos';
+import type {
+  Departamento,
+  PrevisualizacionArchivo,
+  PrevisualizacionImportacion,
+  ResumenImportacion,
+} from '../../tipos';
 import { EstadoVacio, MensajeError, Spinner } from '../../components/ui/feedback';
 import { CLASE_BOTON_PRINCIPAL, CLASE_CAMPO, CLASE_ETIQUETA } from '../../components/ui/estilos';
 
@@ -31,6 +36,10 @@ export function PaginaImportarHVs() {
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [resumen, setResumen] = useState<ResumenImportacion | null>(null);
+  const [previsualizacion, setPrevisualizacion] = useState<PrevisualizacionImportacion | null>(
+    null,
+  );
+  const [revisiones, setRevisiones] = useState<PrevisualizacionArchivo[]>([]);
 
   const departamentos = useRecurso<Departamento[]>(
     () => solicitud<Departamento[]>('/departamentos'),
@@ -40,6 +49,7 @@ export function PaginaImportarHVs() {
   /** Validación local del lote: PDF, ≤5 MB y ≤50 (mismos límites del server). */
   const alElegir = (lista: FileList | null) => {
     setResumen(null);
+    setPrevisualizacion(null);
     setError(null);
     if (lista === null) {
       setArchivos([]);
@@ -80,17 +90,68 @@ export function PaginaImportarHVs() {
     }
     const datos = new FormData();
     for (const archivo of archivos) datos.append('archivos', archivo);
-    datos.append('departamentoId', departamentoId);
 
     setEnviando(true);
     setError(null);
     setResumen(null);
     try {
-      const resultado = await subirFormulario<ResumenImportacion>('/importacion/hvs', datos);
-      setResumen(resultado);
-      setArchivos([]);
+      const resultado = await subirFormulario<PrevisualizacionImportacion>(
+        '/importacion/hvs/previsualizar',
+        datos,
+      );
+      setPrevisualizacion(resultado);
+      setRevisiones(resultado.resultados);
     } catch (capturado) {
       setError(mensajeDeError(capturado, 'No se pudo importar el lote de HVs'));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const actualizarRevision = (indice: number, campo: string, valor: string) => {
+    setRevisiones((actuales) =>
+      actuales.map((fila) =>
+        fila.indice !== indice || fila.sugerencias === undefined
+          ? fila
+          : {
+              ...fila,
+              sugerencias: { ...fila.sugerencias, [campo]: valor },
+            },
+      ),
+    );
+  };
+
+  const confirmar = async () => {
+    if (previsualizacion === null || departamentoId === '') return;
+    const datos = new FormData();
+    for (const archivo of archivos) datos.append('archivos', archivo);
+    datos.append('departamentoId', departamentoId);
+    datos.append(
+      'revisiones',
+      JSON.stringify(
+        revisiones.map((fila) => ({
+          indice: fila.indice,
+          nombres: fila.sugerencias?.nombres ?? '',
+          apellidos: fila.sugerencias?.apellidos ?? '',
+          email: fila.sugerencias?.email ?? null,
+          telefono: fila.sugerencias?.telefono ?? null,
+          ciudad: fila.sugerencias?.ciudad ?? null,
+          habilidades: fila.sugerencias?.habilidades ?? [],
+        })),
+      ),
+    );
+    setEnviando(true);
+    setError(null);
+    try {
+      const resultado = await subirFormulario<ResumenImportacion>(
+        '/importacion/hvs/confirmar',
+        datos,
+      );
+      setResumen(resultado);
+      setArchivos([]);
+      setPrevisualizacion(null);
+    } catch (capturado) {
+      setError(mensajeDeError(capturado, 'No se pudo confirmar el lote de HVs'));
     } finally {
       setEnviando(false);
     }
@@ -158,16 +219,64 @@ export function PaginaImportarHVs() {
         <div className="flex items-center gap-3">
           <button
             type="submit"
-            disabled={enviando || archivos.length === 0}
+            disabled={enviando || archivos.length === 0 || previsualizacion !== null}
             className={CLASE_BOTON_PRINCIPAL}
           >
             {enviando
-              ? 'Importando…'
-              : `Importar ${archivos.length || ''} HV${archivos.length === 1 ? '' : 's'}`}
+              ? 'Analizando…'
+              : `Previsualizar ${archivos.length || ''} HV${archivos.length === 1 ? '' : 's'}`}
           </button>
+          {previsualizacion !== null && (
+            <button
+              type="button"
+              disabled={enviando || departamentoId === ''}
+              onClick={() => void confirmar()}
+              className={CLASE_BOTON_PRINCIPAL}
+            >
+              {enviando ? 'Confirmando…' : 'Confirmar y crear candidatos'}
+            </button>
+          )}
           {enviando && <Spinner texto="Procesando el lote… no cierres la página" />}
         </div>
       </form>
+
+      {previsualizacion !== null && (
+        <section className="space-y-3 rounded-xl border border-amber-700/50 bg-slate-900 p-5">
+          <h2 className="text-sm font-semibold text-slate-200">Revisa los datos extraídos</h2>
+          <p className="text-xs text-slate-400">
+            Son sugerencias del texto del PDF. Edita los campos antes de confirmar; todavía no se ha
+            creado ningún candidato.
+          </p>
+          {revisiones
+            .filter((fila) => fila.ok && fila.sugerencias !== undefined)
+            .map((fila) => (
+              <div key={fila.indice} className="space-y-2 rounded-lg border border-slate-800 p-3">
+                <p className="text-sm font-medium text-slate-200">{fila.archivo}</p>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {(['nombres', 'apellidos', 'email', 'telefono', 'ciudad'] as const).map(
+                    (campo) => (
+                      <label key={campo} className="text-xs text-slate-400">
+                        {campo}
+                        <input
+                          className={CLASE_CAMPO}
+                          value={fila.sugerencias?.[campo] ?? ''}
+                          onChange={(evento) =>
+                            actualizarRevision(fila.indice, campo, evento.target.value)
+                          }
+                        />
+                      </label>
+                    ),
+                  )}
+                </div>
+                <p className="text-xs text-slate-400">
+                  Habilidades detectadas:{' '}
+                  {fila.sugerencias?.habilidades.join(', ') ||
+                    'ninguna; puedes indicarlas en la ficha después'}
+                </p>
+              </div>
+            ))}
+        </section>
+      )}
 
       {resumen !== null && (
         <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-5">

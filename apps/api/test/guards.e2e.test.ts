@@ -44,19 +44,27 @@ function createFakeDatabase(adminHash: string): DatabaseService {
     role: ADMIN_ROLE,
   };
 
+  const query = async (text: string, params: unknown[]) => {
+    if (text.includes('LOWER(u.email)')) {
+      const email = String(params[0] ?? '').toLowerCase();
+      return { rows: email === admin.email.toLowerCase() ? [admin] : [] };
+    }
+    if (text.includes('u.id = $1')) {
+      const id = String(params[0] ?? '');
+      return { rows: id === admin.id ? [admin] : [] };
+    }
+    if (text.includes('INSERT INTO auth_sessions')) return { rows: [] };
+    if (text.includes('INSERT INTO auth_session_refresh_tokens')) return { rows: [] };
+    return { rows: [] };
+  };
+
   return {
     pool: {} as Pool,
-    query: async (text: string, params: unknown[]) => {
-      if (text.includes('LOWER(u.email)')) {
-        const email = String(params[0] ?? '').toLowerCase();
-        return { rows: email === admin.email.toLowerCase() ? [admin] : [] };
-      }
-      if (text.includes('u.id = $1')) {
-        const id = String(params[0] ?? '');
-        return { rows: id === admin.id ? [admin] : [] };
-      }
-      return { rows: [] };
-    },
+    query,
+    // El login crea sesión + refresh token en una transacción; el doble la
+    // simula ejecutando el trabajo sobre el mismo `query` sin verdadera atomicidad.
+    withTransaction: async (work: (client: unknown) => Promise<unknown>) =>
+      work({ query, release: () => undefined }),
     onModuleDestroy: async () => {},
   } as unknown as DatabaseService;
 }

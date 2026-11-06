@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type { PoolClient } from 'pg';
 
 import { DatabaseService } from '../../database/database.service';
@@ -32,6 +33,12 @@ export interface ArchivoSubido {
   originalname: string;
   /** Contenido COMPLETO del fichero (≤ 5 MB, límite del interceptor). */
   buffer: Buffer;
+}
+
+export interface ResultadoRetencionCv {
+  candidatosEvaluados: number;
+  filasRetiradas: number;
+  blobsRetirados: number;
 }
 
 /** Mensaje de rechazo cuando los magic bytes no corresponden a un CV permitido. */
@@ -139,6 +146,51 @@ export class ArchivosCvService {
     }
   }
 
+  /**
+   * Adjunta un CV usando una transacción PG que ya abrió el caso de uso padre.
+   * El fichero se escribe antes del INSERT: si la BD revierte, puede quedar un
+   * blob huérfano, pero nunca una fila que apunte a un fichero inexistente.
+   * Tampoco se borra el blob en caso de error: puede estar compartido.
+   */
+  async subirEnTransaccion(
+    cliente: PoolClient,
+    candidatoId: string,
+    archivo: ArchivoSubido,
+    createdBy: string,
+  ): Promise<ArchivoCvResponseDto> {
+    const candidato = await cliente.query('SELECT 1 FROM candidatos WHERE id = $1', [candidatoId]);
+    if (candidato.rowCount === 0) {
+      throw new NotFoundException(`No existe un candidato con id ${candidatoId}`);
+    }
+
+    const tipo = detectarTipo(archivo.buffer);
+    if (tipo === null) {
+      throw new BadRequestException(MENSAJE_TIPO_NO_PERMITIDO);
+    }
+
+    const { sha256 } = await this.almacenamiento.guardar(archivo.buffer);
+    try {
+      await cliente.query(`SELECT set_config('app.current_user_id', $1, true)`, [createdBy]);
+      const fila = await this.insertarFila(cliente, {
+        candidatoId,
+        sha256,
+        filenameOriginal: archivo.originalname,
+        mimeType: MIME_POR_TIPO[tipo],
+        sizeBytes: archivo.buffer.length,
+        createdBy,
+      });
+      if (fila === undefined) {
+        throw new Error('El INSERT sobre archivos_cv no devolvió ninguna fila');
+      }
+      return toResponse(fila);
+    } catch (error) {
+      if (esViolacionUnica(error, UNIQUE_CANDIDATO_SHA)) {
+        throw new ConflictException('El archivo ya está adjunto a este candidato');
+      }
+      throw error;
+    }
+  }
+
   /** Metadatos de TODOS los archivos del candidato (más recientes primero). */
   async listar(candidatoId: string): Promise<ArchivoCvResponseDto[]> {
     await this.verificarQueExisteElCandidato(candidatoId);
@@ -186,7 +238,70 @@ export class ArchivosCvService {
       throw new InternalServerErrorException('Archivo corrupto en almacenamiento');
     }
 
-    return { archivo: toResponse(fila), contenido: await this.almacenamiento.leer(fila.sha256) };
+    const contenido = await this.almacenamiento.leer(fila.sha256);
+    const sha256Real = createHash('sha256').update(contenido).digest('hex');
+    if (sha256Real !== fila.sha256) {
+      throw new InternalServerErrorException('Archivo corrupto en almacenamiento');
+    }
+
+    return { archivo: toResponse(fila), contenido };
+  }
+
+  /**
+   * Retira CVs de candidatos cuyas postulaciones están todas descartadas y
+   * cuyo descarte más reciente supera la retención indicada. Los contratados
+   * y cualquier candidato con una postulación activa quedan fuera.
+   *
+   * La BD se limpia primero en una transacción. Después se eliminan solo los
+   * blobs sin referencias restantes; si el disco falla, queda un huérfano
+   * seguro para reintento, nunca una fila apuntando a un fichero inexistente.
+   * Este método es mantenimiento explícito, no un endpoint HTTP.
+   */
+  async retirarCvDescartadosAntesDe(fechaLimite: Date): Promise<ResultadoRetencionCv> {
+    const sha256s = await this.database.withTransaction(async (cliente) => {
+      const candidatos = await cliente.query<{ candidato_id: string }>(
+        `SELECT p.candidato_id
+           FROM postulaciones p
+          GROUP BY p.candidato_id
+         HAVING bool_and(p.estado = 'descartado')
+            AND max(p.updated_at) <= $1`,
+        [fechaLimite],
+      );
+      const ids = candidatos.rows.map((fila) => fila.candidato_id);
+      if (ids.length === 0) {
+        return { ids, sha256s: [] as string[], filas: 0 };
+      }
+
+      const borradas = await cliente.query<{ sha256: string }>(
+        `DELETE FROM archivos_cv
+          WHERE candidato_id = ANY($1::uuid[])
+        RETURNING sha256`,
+        [ids],
+      );
+      return {
+        ids,
+        sha256s: borradas.rows.map((fila) => fila.sha256),
+        filas: borradas.rowCount ?? 0,
+      };
+    });
+
+    const hashesUnicos = [...new Set(sha256s.sha256s)];
+    let blobsRetirados = 0;
+    for (const sha256 of hashesUnicos) {
+      const referencia = await this.database.query(
+        'SELECT 1 FROM archivos_cv WHERE sha256 = $1 LIMIT 1',
+        [sha256],
+      );
+      if ((referencia.rowCount ?? 0) === 0 && (await this.almacenamiento.retirar(sha256))) {
+        blobsRetirados += 1;
+      }
+    }
+
+    return {
+      candidatosEvaluados: sha256s.ids.length,
+      filasRetiradas: sha256s.sha256s.length,
+      blobsRetirados,
+    };
   }
 
   /** 404 con mensaje claro si el candidato no existe. */

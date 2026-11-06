@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import type { Env } from '../../config/env.validation';
@@ -33,9 +33,9 @@ function esErrorDeFs(error: unknown, codigo: string): boolean {
  *    hash bien formado. Las rutas NUNCA se devuelven al cliente: la API solo
  *    expone metadatos y el hash.
  *
- * RETENCIÓN (decisión de diseño): el candidato NO tiene endpoint `DELETE`
- * (trazabilidad, ver `CandidatosController`) y, cuando lo tenga, esta capa
- * TAMPOCO borra ficheros: los bytes subidos se CONSERVAN de forma
+ * RETENCIÓN (decisión de diseño): el endpoint `DELETE` de candidatos es solo
+ * para capturas erróneas y esta capa TAMPOCO borra ficheros en caliente: los
+ * bytes subidos se CONSERVAN de forma
  * independiente de las filas. Motivo: varios candidatos pueden compartir el
  * mismo fichero (dedup), así que un borrado por fila pondría en riesgo los
  * archivos de OTROS candidatos; además `audit_log` (inmutable) conserva los
@@ -116,6 +116,23 @@ export class AlmacenamientoService {
   /** Lee el fichero completo. Si no está, `fs` lanza `ENOENT` (→ 500 arriba). */
   async leer(sha256: string): Promise<Buffer> {
     return readFile(this.ruta(sha256));
+  }
+
+  /**
+   * Retira un blob que ya no tiene referencias en BD. Si otro proceso ya lo
+   * retiró, el resultado sigue siendo correcto; cualquier otro fallo se eleva
+   * para que el mantenimiento pueda reintentarse sin ocultar permisos rotos.
+   */
+  async retirar(sha256: string): Promise<boolean> {
+    try {
+      await unlink(this.ruta(sha256));
+      return true;
+    } catch (error) {
+      if (esErrorDeFs(error, 'ENOENT')) {
+        return false;
+      }
+      throw error;
+    }
   }
 
   /**

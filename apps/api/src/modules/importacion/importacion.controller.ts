@@ -16,6 +16,8 @@ import type { AuthenticatedRequest, AuthenticatedUser } from '../../common/guard
 import { ArchivoSubido } from '../uploads/archivos-cv.service';
 import { LimiteTamanoInterceptor } from '../uploads/limite-tamano.interceptor';
 import type { ImportarHvsResponseDto } from './dto/importar-hvs.response';
+import type { PrevisualizacionHvsResponseDto } from './dto/importar-hvs.response';
+import { ConfirmarHvsDto } from './dto/confirmar-hvs.dto';
 import { ImportarHvsDto } from './dto/importar-hvs.dto';
 import { ImportacionService } from './importacion.service';
 
@@ -82,5 +84,48 @@ export class ImportacionController {
   ): Promise<ImportarHvsResponseDto> {
     const usuario = requireUser(request);
     return this.service.importar(archivos ?? [], dto.departamentoId, usuario.sub);
+  }
+
+  /** Extrae sugerencias sin crear candidatos ni escribir CVs en el almacén. */
+  @Post('hvs/previsualizar')
+  @HttpCode(HttpStatus.OK)
+  @Roles('admin_rrhh', 'superusuario', 'analista_seleccion')
+  @UseInterceptors(
+    LimiteTamanoInterceptor,
+    FilesInterceptor('archivos', LIMITE_ARCHIVOS, {
+      limits: { fileSize: LIMITE_TAMANO_CV, files: LIMITE_ARCHIVOS },
+      defParamCharset: 'utf8',
+    }),
+  )
+  previsualizarHvs(
+    @Req() request: AuthenticatedRequest,
+    @UploadedFiles() archivos?: ArchivoSubido[],
+  ): Promise<PrevisualizacionHvsResponseDto> {
+    requireUser(request);
+    return this.service.previsualizar(archivos ?? []);
+  }
+
+  /** Crea candidatos únicamente con la revisión explícita recibida. */
+  @Post('hvs/confirmar')
+  @HttpCode(HttpStatus.OK)
+  @Roles('admin_rrhh', 'superusuario', 'analista_seleccion')
+  @UseInterceptors(
+    LimiteTamanoInterceptor,
+    FilesInterceptor('archivos', LIMITE_ARCHIVOS, {
+      limits: { fileSize: LIMITE_TAMANO_CV, files: LIMITE_ARCHIVOS },
+      defParamCharset: 'utf8',
+    }),
+  )
+  confirmarHvs(
+    @Body() dto: ConfirmarHvsDto,
+    @Req() request: AuthenticatedRequest,
+    @UploadedFiles() archivos?: ArchivoSubido[],
+  ): Promise<ImportarHvsResponseDto> {
+    return this.service.confirmar(
+      archivos ?? [],
+      dto.departamentoId,
+      dto.revisiones,
+      requireUser(request).sub,
+    );
   }
 }

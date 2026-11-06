@@ -236,6 +236,25 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
     // candidato que servirá de "colisión" de cédula en el PATCH.
     candidatoPrincipal = await crearFixture('Zoraida', CEDULA_PRINCIPAL, TOKEN_Q);
     await crearFixture('Baltasar', CEDULA_COLISION, 'OtroNombre');
+
+    await repo.query("UPDATE users SET jefatura = 'SISTEMAS' WHERE email = $1", [EMAIL_LIDER]);
+    const departamentos = (await repo.query(
+      `SELECT nombre, id FROM departamentos WHERE nombre IN ('SISTEMAS', 'CONTABILIDAD')`,
+    )) as Array<{ nombre: string; id: string }>;
+    const sistemas = departamentos.find((fila) => fila.nombre === 'SISTEMAS')?.id;
+    const contabilidad = departamentos.find((fila) => fila.nombre === 'CONTABILIDAD')?.id;
+    if (sistemas === undefined || contabilidad === undefined) {
+      throw new Error('No se encontraron los departamentos sintéticos de T05');
+    }
+    await repo.query('UPDATE candidatos SET departamento_id = $1 WHERE id = $2', [
+      sistemas,
+      candidatoPrincipal.id,
+    ]);
+    await repo.query('UPDATE candidatos SET departamento_id = $1 WHERE ciudad = $2 AND id <> $3', [
+      contabilidad,
+      MARCA,
+      candidatoPrincipal.id,
+    ]);
   });
 
   afterAll(async () => {
@@ -500,6 +519,48 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
         .query({ cedula: 'abc' })
         .set('Authorization', `Bearer ${tokenAnalista}`)
         .expect(400);
+    });
+  });
+
+  describe('Alcance de lectura por departamento', () => {
+    it('todos los roles del módulo ven PII; lider_area solo ve su departamento', async () => {
+      const ficha = await request(app.getHttpServer())
+        .get(`/api/candidatos/${candidatoPrincipal.id}`)
+        .set('Authorization', `Bearer ${tokenLider}`)
+        .expect(200);
+
+      expect(ficha.body).toMatchObject({ cedula: CEDULA_PRINCIPAL, telefono: null });
+
+      const area = (await repo.query('SELECT departamento_id FROM candidatos WHERE id = $1', [
+        candidatoPrincipal.id,
+      ])) as Array<{ departamento_id: string }>;
+      const listado = await request(app.getHttpServer())
+        .get('/api/candidatos')
+        .query({ q: SUFIJO_UNICO, departamentoId: area[0]?.departamento_id })
+        .set('Authorization', `Bearer ${tokenLider}`)
+        .expect(200);
+      expect(listado.body.items).toHaveLength(1);
+      expect(listado.body.items[0].id).toBe(candidatoPrincipal.id);
+
+      const fueraDelArea = (await repo.query(
+        'SELECT id FROM candidatos WHERE ciudad = $1 AND id <> $2 LIMIT 1',
+        [MARCA, candidatoPrincipal.id],
+      )) as Array<{ id: string }>;
+      const otroId = fueraDelArea[0]?.id;
+      expect(otroId).toBeDefined();
+
+      await request(app.getHttpServer())
+        .get(`/api/candidatos/${otroId}`)
+        .set('Authorization', `Bearer ${tokenLider}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`/api/candidatos/${candidatoPrincipal.id}/historial`)
+        .set('Authorization', `Bearer ${tokenLider}`)
+        .expect(200);
+      await request(app.getHttpServer())
+        .get(`/api/candidatos/${otroId}/historial`)
+        .set('Authorization', `Bearer ${tokenLider}`)
+        .expect(403);
     });
   });
 

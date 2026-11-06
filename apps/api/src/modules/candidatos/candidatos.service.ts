@@ -377,7 +377,7 @@ export class CandidatosService {
    *  - `cedula`: búsqueda EXACTA; se convierte a `cedula_hash` (HMAC) y se
    *    compara con la columna de hash, SIN descifrar `cedula_cifrada`.
    */
-  async list(query: ListCandidatosQueryDto): Promise<CandidatosPageDto> {
+  async list(query: ListCandidatosQueryDto, user: AuthenticatedUser): Promise<CandidatosPageDto> {
     const repo = await this.store.repo();
     const qb = repo.createQueryBuilder('c');
 
@@ -396,6 +396,7 @@ export class CandidatosService {
         departamentoId: query.departamentoId,
       });
     }
+    this.aplicarAlcanceDeLectura(qb, user);
 
     qb.orderBy('c.createdAt', 'DESC');
     qb.skip((query.page - 1) * query.limit).take(query.limit);
@@ -410,13 +411,35 @@ export class CandidatosService {
   }
 
   /** Detalle por id; 404 con mensaje claro si no existe. Devuelve PII descifrada. */
-  async findById(id: string): Promise<CandidatoResponseDto> {
+  async findById(id: string, user: AuthenticatedUser): Promise<CandidatoResponseDto> {
     const repo = await this.store.repo();
     const entidad = await repo.findOneBy({ id });
     if (entidad === null) {
       throw new NotFoundException(`No existe un candidato con id ${id}`);
     }
+    await this.assertPuedeVer(entidad.id, user);
     return toResponse(entidad, this.crypto);
+  }
+
+  /** Comprueba el alcance de lectura del módulo antes de devolver PII o CV. */
+  async assertPuedeVer(id: string, user: AuthenticatedUser): Promise<void> {
+    if (user.role !== 'lider_area') return;
+
+    const repo = await this.store.repo();
+    const filas = (await repo.query(
+      `SELECT 1
+         FROM candidatos c
+         JOIN departamentos d ON d.id = c.departamento_id
+         JOIN users u ON u.id = $2
+        WHERE c.id = $1
+          AND u.active
+          AND u.jefatura IS NOT NULL
+          AND lower(btrim(u.jefatura)) = lower(btrim(d.nombre))`,
+      [id, user.sub],
+    )) as unknown[];
+    if (filas.length === 0) {
+      throw new ForbiddenException('El candidato no pertenece al departamento del líder');
+    }
   }
 
   /**
@@ -592,13 +615,14 @@ export class CandidatosService {
    * 404 si el candidato no existe: se comprueba ANTES de leer el log para no
    * devolver un historial vacío ante un id que jamás existió.
    */
-  async historial(id: string): Promise<EntradaHistorialDto[]> {
+  async historial(id: string, user: AuthenticatedUser): Promise<EntradaHistorialDto[]> {
     const repo = await this.store.repo();
 
     const candidato = await repo.findOneBy({ id });
     if (candidato === null) {
       throw new NotFoundException(`No existe un candidato con id ${id}`);
     }
+    await this.assertPuedeVer(candidato.id, user);
 
     const filas = (await repo.query(
       `SELECT a.id::text AS id,
@@ -617,6 +641,24 @@ export class CandidatosService {
     )) as FilaAuditoriaCruda[];
 
     return filas.map((fila) => mapearEntradaHistorial(fila));
+  }
+
+  private aplicarAlcanceDeLectura(
+    qb: ReturnType<Repository<Candidato>['createQueryBuilder']>,
+    user: AuthenticatedUser,
+  ): void {
+    if (user.role !== 'lider_area') return;
+    qb.andWhere(
+      `c.departamento_id IN (
+         SELECT d.id
+           FROM departamentos d
+           JOIN users u ON u.id = :usuarioId
+          WHERE u.active
+            AND u.jefatura IS NOT NULL
+            AND lower(btrim(u.jefatura)) = lower(btrim(d.nombre))
+       )`,
+      { usuarioId: user.sub },
+    );
   }
 
   /**

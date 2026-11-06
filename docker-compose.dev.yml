@@ -45,13 +45,14 @@ services:
       CRYPTO_KEY_BASE64: ${CRYPTO_KEY_BASE64:-}
       CRYPTO_KEY_PREVIOUS_BASE64: ${CRYPTO_KEY_PREVIOUS_BASE64:-}
       CEDULA_SEARCH_KEY: ${CEDULA_SEARCH_KEY:-}
-      UPLOAD_DIR: /app/data/uploads
+      UPLOAD_DIR: /app/storage/CVs
     command: pnpm --filter @ats/api dev
     ports:
       - '${API_PORT:-3000}:3000'
     volumes:
       - ./apps/api:/app/apps/api
       - ./packages/shared:/app/packages/shared
+      - ./storage:/app/storage
       - apidata:/app/data
       - /app/node_modules
       - /app/apps/api/node_modules

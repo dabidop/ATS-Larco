@@ -26,7 +26,7 @@ export class DashboardService {
 
   /** Embudo + por-fase + requerimientos, en una única respuesta coherente. */
   async resumen(): Promise<DashboardResponseDto> {
-    const [embudo, porFila, requerimientos] = await Promise.all([
+    const [embudo, porFila, requerimientos, conversionPorRequerimiento] = await Promise.all([
       this.leerEmbudo(),
       this.database.query<FaseFilaCruda>(
         `SELECT fase, count(*)::int AS cantidad
@@ -35,6 +35,7 @@ export class DashboardService {
           GROUP BY fase`,
       ),
       this.leerRequerimientos(),
+      this.leerConversionPorRequerimiento(),
     ]);
 
     const totalActivas = porFila.rows.reduce((suma, fila) => suma + fila.cantidad, 0);
@@ -43,6 +44,7 @@ export class DashboardService {
       embudo,
       porFase: armarPorFase(porFila.rows, totalActivas),
       requerimientos,
+      conversionPorRequerimiento,
     };
   }
 
@@ -90,5 +92,43 @@ export class DashboardService {
       enProceso: fila?.en_proceso ?? 0,
       criticos: fila?.criticos ?? 0,
     };
+  }
+
+  /**
+   * Conversión = contratados / postulaciones del requerimiento.
+   * El denominador incluye postulaciones en cualquier estado para que la tasa
+   * sea reproducible y no dependa de que el requerimiento siga abierto.
+   */
+  private async leerConversionPorRequerimiento(): Promise<
+    DashboardResponseDto['conversionPorRequerimiento']
+  > {
+    const resultado = await this.database.query<{
+      requerimiento_id: string;
+      codigo: string;
+      titulo: string;
+      postulaciones: number;
+      contratados: number;
+    }>(
+      `SELECT r.id AS requerimiento_id,
+              r.code AS codigo,
+              r.titulo,
+              count(p.id)::int AS postulaciones,
+              count(*) FILTER (WHERE p.estado = 'contratado')::int AS contratados
+         FROM requerimientos r
+         LEFT JOIN postulaciones p ON p.requerimiento_id = r.id
+        GROUP BY r.id, r.code, r.titulo
+        ORDER BY r.created_at DESC, r.id ASC`,
+    );
+    return resultado.rows.map((fila) => ({
+      requerimientoId: fila.requerimiento_id,
+      codigo: fila.codigo,
+      titulo: fila.titulo,
+      postulaciones: fila.postulaciones,
+      contratados: fila.contratados,
+      tasaContratacion:
+        fila.postulaciones === 0
+          ? 0
+          : Math.round((fila.contratados / fila.postulaciones) * 10000) / 10000,
+    }));
   }
 }

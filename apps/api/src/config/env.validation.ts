@@ -142,8 +142,17 @@ export function validateEnv(config: Record<string, unknown>): Env {
   const data = result.data;
   if (data.NODE_ENV === 'production') {
     const errores: string[] = [];
-    if (!data.CORS_ORIGIN || parseCorsOrigins(data.CORS_ORIGIN).length === 0) {
+    const corsOrigins = parseCorsOrigins(data.CORS_ORIGIN);
+    if (corsOrigins.length === 0) {
       errores.push('CORS_ORIGIN es obligatorio en producción');
+    } else {
+      const orígenesInválidos = corsOrigins.filter((origin) => !esOrigenCorsSeguro(origin));
+      if (orígenesInválidos.length > 0) {
+        errores.push(
+          `CORS_ORIGIN contiene orígenes inválidos: ${orígenesInválidos.join(', ')}; ` +
+            'use únicamente URLs http(s) explícitas',
+        );
+      }
     }
     if (data.ADMIN_INITIAL_EMAIL === 'admin@larco.co') {
       errores.push('ADMIN_INITIAL_EMAIL debe parametrizarse en producción');
@@ -169,4 +178,22 @@ export function parseCorsOrigins(csv: string | undefined): string[] {
     .split(',')
     .map((origin) => origin.trim())
     .filter((origin) => origin !== '');
+}
+
+/** CORS productivo: origen absoluto http(s), sin comodín ni credenciales embebidas. */
+function esOrigenCorsSeguro(origin: string): boolean {
+  if (origin === '*') return false;
+  try {
+    const url = new URL(origin);
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      url.username === '' &&
+      url.password === '' &&
+      url.pathname === '/' &&
+      url.search === '' &&
+      url.hash === ''
+    );
+  } catch {
+    return false;
+  }
 }

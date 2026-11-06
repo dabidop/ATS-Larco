@@ -410,12 +410,22 @@ export interface DashboardRequerimientos {
   criticos: number;
 }
 
+export interface DashboardConversion {
+  requerimientoId: string;
+  codigo: string;
+  titulo: string;
+  postulaciones: number;
+  contratados: number;
+  tasaContratacion: number;
+}
+
 /** Respuesta de `GET /api/dashboard`. */
 export interface Dashboard {
   embudo: DashboardEmbudo;
   /** Las 5 fases SIEMPRE en orden de avance, incluso con cantidad 0. */
   porFase: DashboardFase[];
   requerimientos: DashboardRequerimientos;
+  conversionPorRequerimiento: DashboardConversion[];
 }
 
 /** Estados del ENUM `estado_entrevista` (migración 009). */
@@ -514,4 +524,26 @@ export interface ResumenImportacion {
   creados: number;
   fallidos: number;
   resultados: ResultadoImportacion[];
+}
+
+export interface SugerenciaImportacion {
+  nombres: string | null;
+  apellidos: string | null;
+  email: string | null;
+  telefono: string | null;
+  ciudad: string | null;
+  habilidades: string[];
+}
+
+export interface PrevisualizacionArchivo {
+  archivo: string;
+  indice: number;
+  ok: boolean;
+  sugerencias?: SugerenciaImportacion;
+  motivo?: string;
+}
+
+export interface PrevisualizacionImportacion {
+  procesados: number;
+  resultados: PrevisualizacionArchivo[];
 }

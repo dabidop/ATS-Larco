@@ -172,6 +172,12 @@ describe('Candidatos — historial de audit_log e2e (BD dev docker real)', () =>
       return id;
     };
     creadorId = idDe(EMAIL_ANALISTA);
+    await repo.query("UPDATE users SET jefatura = 'SISTEMAS' WHERE email = $1", [
+      USUARIOS_DE_PRUEBA[1].email,
+    ]);
+    const departamentos = (await repo.query(
+      `SELECT id FROM departamentos WHERE nombre = 'SISTEMAS' LIMIT 1`,
+    )) as Array<{ id: string }>;
 
     // Tokens firmados con el MISMO secreto que la app (JwtService global).
     tokenAnalista = jwt.sign({
@@ -197,6 +203,7 @@ describe('Candidatos — historial de audit_log e2e (BD dev docker real)', () =>
         cedula: CEDULA,
         telefono: TELEFONO,
         ciudad: CIUDAD_ORIGINAL,
+        departamentoId: departamentos[0]?.id,
         cargoActual: 'Ingeniero de Datos',
         expectativaSalarial: 4_500_000,
       })

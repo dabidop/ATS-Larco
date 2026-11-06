@@ -37,6 +37,11 @@ WORKDIR /app
 # Copiamos el artefacto empaquetado (solo deps de producción)
 COPY --from=builder /out .
 
+# El volumen de CV se monta sobre esta ruta en staging/producción. La API
+# corre como `node`, por lo que el directorio debe ser escribible sin elevar
+# privilegios al arrancar el contenedor.
+RUN mkdir -p /app/storage/CVs && chown -R node:node /app/storage
+
 # Puerto de la aplicación
 EXPOSE 3000
 

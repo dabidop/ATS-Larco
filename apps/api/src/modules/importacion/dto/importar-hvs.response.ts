@@ -9,6 +9,30 @@ export interface ResultadoArchivoDto {
   motivo?: string;
 }
 
+/** Campos sugeridos por el parser; nunca se consideran confirmados por sí solos. */
+export interface SugerenciaImportacionDto {
+  nombres: string | null;
+  apellidos: string | null;
+  email: string | null;
+  telefono: string | null;
+  ciudad: string | null;
+  habilidades: string[];
+}
+
+/** Resultado de la revisión de un archivo antes de crear el candidato. */
+export interface PrevisualizacionArchivoDto {
+  archivo: string;
+  indice: number;
+  ok: boolean;
+  sugerencias?: SugerenciaImportacionDto;
+  motivo?: string;
+}
+
+export interface PrevisualizacionHvsResponseDto {
+  procesados: number;
+  resultados: PrevisualizacionArchivoDto[];
+}
+
 /**
  * Respuesta de `POST /api/importacion/hvs` (Etapa 9): un resumen del lote con
  * UN resultado por archivo. La importación es POR ARCHIVO (no transaccional en

@@ -12,7 +12,6 @@ import type { Env } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { AppLoggerModule } from './logging/logger.module';
-import { AntecedentesModule } from './modules/antecedentes/antecedentes.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CandidatosModule } from './modules/candidatos/candidatos.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
@@ -21,7 +20,6 @@ import { EmbudoModule } from './modules/embudo/embudo.module';
 import { EntrevistasModule } from './modules/entrevistas/entrevistas.module';
 import { HistorialModule } from './modules/historial/historial.module';
 import { ImportacionModule } from './modules/importacion/importacion.module';
-import { ProveedorModule } from './modules/proveedor/proveedor.module';
 import { RequerimientosModule } from './modules/requerimientos/requerimientos.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
@@ -47,7 +45,6 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
  * | POST /api/auth/logout                 | autenticado (cualquier rol)           |
  * | POST /api/auth/refresh                | autenticado (cualquier rol)           |
  * | GET /api/auth/me                      | autenticado (cualquier rol)           |
- * | GET /api/auth|candidatos|embudo|antecedentes|proveedor/ping | autenticado (sin @Roles) |
  * | GET /api/requerimientos/ping          | @Roles('admin_rrhh', 'superusuario', 'lider_area') |
  * | GET /api/uploads/ping                 | @Roles('admin_rrhh', 'analista_seleccion', 'superusuario') |
  * | GET|POST|PATCH /api/entrevistas...    | @Roles('analista_seleccion', 'admin_rrhh', 'superusuario') |
@@ -105,9 +102,7 @@ const THROTTLE_LIMIT = 100;
     AuthModule,
     CandidatosModule,
     EmbudoModule,
-    AntecedentesModule,
     EntrevistasModule,
-    ProveedorModule,
     HistorialModule,
     UploadsModule,
     RequerimientosModule,

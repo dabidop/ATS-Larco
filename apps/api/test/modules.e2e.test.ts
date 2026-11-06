@@ -18,8 +18,6 @@ const MODULE_PREFIXES = [
   'auth',
   'candidatos',
   'embudo',
-  'antecedentes',
-  'proveedor',
   'uploads',
   'requerimientos',
 ] as const;

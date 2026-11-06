@@ -197,7 +197,8 @@ export class AuthService {
         [hashToken(refreshToken)],
       );
       const token = rows[0];
-      if (token === undefined) throw new UnauthorizedException(NOT_AUTHENTICATED_MESSAGE);
+      // Token desconocido: no hay sesión que tocar y se responde 401 fuera.
+      if (token === undefined) return null;
 
       const sessionInvalid =
         token.used_at !== null ||
@@ -207,12 +208,13 @@ export class AuthService {
       if (sessionInvalid) {
         // Un token usado de nuevo es evidencia de reutilización; se revoca la
         // familia completa para que ningún token emitido por esa sesión siga
-        // siendo válido.
+        // siendo válido. La revocación se CONFIRMA (COMMIT) aquí y el 401 se
+        // lanza DESPUÉS: lanzarlo dentro haría un ROLLBACK que la desharía.
         await client.query(
           'UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, now()) WHERE id = $1',
           [token.session_id],
         );
-        throw new UnauthorizedException(NOT_AUTHENTICATED_MESSAGE);
+        return null;
       }
 
       const nextRefreshToken = randomBytes(32).toString('base64url');
@@ -243,6 +245,7 @@ export class AuthService {
       };
     });
 
+    if (rotation === null) throw new UnauthorizedException(NOT_AUTHENTICATED_MESSAGE);
     return this.issueAccessResponse(rotation.user, rotation.sessionId, rotation.refreshToken);
   }
 

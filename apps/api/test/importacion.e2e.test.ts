@@ -1,16 +1,19 @@
 import './helpers/dev-db-env'; // ANTES que test-env: carga el .env raíz (BD dev docker)
 import './helpers/test-env';
 
-import { randomInt, randomUUID } from 'node:crypto';
+import { createHash, randomInt, randomUUID } from 'node:crypto';
+import { rm } from 'node:fs/promises';
 
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { AppModule } from '../src/app.module';
 import { DatabaseService } from '../src/database/database.service';
+import { AlmacenamientoService } from '../src/modules/uploads/almacenamiento.service';
+import { ArchivosCvService } from '../src/modules/uploads/archivos-cv.service';
 
 /**
  * Importación masiva de HVs — Etapa 9 (retroalimentación):
@@ -36,6 +39,10 @@ const SUFIJO_UNICO = `${Date.now().toString(36)}-${randomInt(100000, 999999)}`;
 /** Email que el heurístico extraerá del PDF (marca de limpieza). */
 const EMAIL_IMPORTADO = `importado-${SUFIJO_UNICO}@correo.test`;
 const CEDULA_IMPORTADA = String(Date.now()).slice(-10);
+const EMAIL_FALLO_ADJUNTO = `fallo-adjunto-${SUFIJO_UNICO}@correo.test`;
+const CEDULA_FALLO_ADJUNTO = `${randomInt(1000000, 9999999)}`;
+const EMAIL_SIN_CAMPOS = `sin-campos-${SUFIJO_UNICO}@correo.test`;
+const EMAIL_CONFIRMADA = `confirmada-${SUFIJO_UNICO}@correo.test`;
 
 /**
  * Construye un PDF mínimo VÁLIDO (catálogo/página/contenido/fuente + xref con
@@ -77,13 +84,30 @@ function crearPdf(lineas: string[]): Buffer {
 
 /** El HV canónico del test: nombre en la 1ª línea, cargo y email debajo. */
 function pdfValido(): Buffer {
+  return pdfConDatos(EMAIL_IMPORTADO, CEDULA_IMPORTADA);
+}
+
+function pdfConDatos(email: string, cedula: string): Buffer {
   return crearPdf([
     'Martha Importada Prueba',
     'Profesional de Sistemas',
-    EMAIL_IMPORTADO,
+    email,
     '3001234567',
     'Medellin',
-    `C.C. ${CEDULA_IMPORTADA}`,
+    `C.C. ${cedula}`,
+  ]);
+}
+
+function pdfSinCamposDeContacto(): Buffer {
+  return crearPdf(['Martha Importada Sin Campos', EMAIL_SIN_CAMPOS]);
+}
+
+function pdfConHabilidades(): Buffer {
+  return crearPdf([
+    'Martha Importada Revisable',
+    EMAIL_CONFIRMADA,
+    'TypeScript React PostgreSQL',
+    'Medellin',
   ]);
 }
 
@@ -91,6 +115,8 @@ describe('Importación masiva de HVs — e2e (BD dev docker real)', () => {
   let app: INestApplication;
   let jwt: JwtService;
   let database: DatabaseService;
+  let archivosCv: ArchivosCvService;
+  let almacenamiento: AlmacenamientoService;
 
   let tokenAdmin: string;
   let tokenLider: string;
@@ -119,6 +145,8 @@ describe('Importación masiva de HVs — e2e (BD dev docker real)', () => {
 
     jwt = app.get(JwtService);
     database = app.get(DatabaseService, { strict: false });
+    archivosCv = app.get(ArchivosCvService);
+    almacenamiento = app.get(AlmacenamientoService);
 
     const admins = await database.query<{ id: string }>('SELECT id FROM users WHERE email = $1', [
       ADMIN_EMAIL,
@@ -152,7 +180,15 @@ describe('Importación masiva de HVs — e2e (BD dev docker real)', () => {
       // La marca de limpieza es el email único incrustado en el PDF: borra los
       // candidatos importados (los CV caen con CASCADE) sin tocar nada ajeno.
       await database
-        .query('DELETE FROM candidatos WHERE email = $1', [EMAIL_IMPORTADO])
+        .query(
+          `DELETE FROM candidatos
+             WHERE email = ANY($1::text[])
+                OR email LIKE $2`,
+          [
+            [EMAIL_IMPORTADO, EMAIL_SIN_CAMPOS, EMAIL_FALLO_ADJUNTO, EMAIL_CONFIRMADA],
+            `t12-lote-${SUFIJO_UNICO}-%@correo.test`,
+          ],
+        )
         .catch(() => undefined);
     }
   });
@@ -231,6 +267,124 @@ describe('Importación masiva de HVs — e2e (BD dev docker real)', () => {
     expect(archivos.body[0].filenameOriginal).toBe('hv-martha-importada.pdf');
   });
 
+  it('previsualiza campos y habilidades sin crear; confirma solo la revisión editada', async () => {
+    const archivo = pdfConHabilidades();
+    const preview = await request(app.getHttpServer())
+      .post('/api/importacion/hvs/previsualizar')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .attach('archivos', archivo, { filename: 'hv-revisable.pdf', contentType: 'application/pdf' })
+      .expect(200);
+
+    expect(preview.body.resultados[0]).toMatchObject({
+      ok: true,
+      sugerencias: {
+        nombres: 'Martha',
+        apellidos: 'Importada Revisable',
+        habilidades: ['TypeScript', 'React', 'PostgreSQL'],
+      },
+    });
+    expect(
+      (await database.query('SELECT id FROM candidatos WHERE email = $1', [EMAIL_CONFIRMADA])).rows,
+    ).toHaveLength(0);
+
+    const revisiones = JSON.stringify([
+      {
+        indice: 0,
+        nombres: 'María Editada',
+        apellidos: 'Confirmada Manualmente',
+        email: EMAIL_CONFIRMADA,
+        telefono: null,
+        ciudad: 'Bogotá',
+        habilidades: ['TypeScript', 'React'],
+      },
+    ]);
+    const confirmacion = await request(app.getHttpServer())
+      .post('/api/importacion/hvs/confirmar')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .field('departamentoId', departamentoId)
+      .field('revisiones', revisiones)
+      .attach('archivos', archivo, { filename: 'hv-revisable.pdf', contentType: 'application/pdf' })
+      .expect(200);
+
+    expect(confirmacion.body).toMatchObject({ procesados: 1, creados: 1, fallidos: 0 });
+    const fila = await database.query<{ nombres: string; apellidos: string; ciudad: string }>(
+      'SELECT nombres, apellidos, ciudad FROM candidatos WHERE email = $1',
+      [EMAIL_CONFIRMADA],
+    );
+    expect(fila.rows[0]).toEqual({
+      nombres: 'María Editada',
+      apellidos: 'Confirmada Manualmente',
+      ciudad: 'Bogotá',
+    });
+  });
+
+  it('un PDF sin cédula, teléfono ni ciudad conserva esos campos como NULL', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/importacion/hvs')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .field('departamentoId', departamentoId)
+      .attach('archivos', pdfSinCamposDeContacto(), {
+        filename: 'hv-sin-campos.pdf',
+        contentType: 'application/pdf',
+      })
+      .expect(200);
+
+    expect(response.body).toMatchObject({ procesados: 1, creados: 1, fallidos: 0 });
+    const candidato = await database.query<{
+      cedula_cifrada: string | null;
+      cedula_hash: string | null;
+      telefono_cifrada: string | null;
+      ciudad: string | null;
+    }>(
+      'SELECT cedula_cifrada, cedula_hash, telefono_cifrada, ciudad FROM candidatos WHERE email = $1',
+      [EMAIL_SIN_CAMPOS],
+    );
+    expect(candidato.rows[0]).toEqual({
+      cedula_cifrada: null,
+      cedula_hash: null,
+      telefono_cifrada: null,
+      ciudad: null,
+    });
+  });
+
+  it('mide lote máximo de 50 PDFs sintéticos sin cola ni OCR', async () => {
+    const baseCedula = 8000000000 + (Date.now() % 100000000);
+    const archivos = Array.from({ length: 50 }, (_, indice) => ({
+      buffer: pdfConDatos(
+        `t12-lote-${SUFIJO_UNICO}-${indice}@correo.test`,
+        String(baseCedula + indice),
+      ),
+      filename: `t12-lote-${indice}.pdf`,
+    }));
+    const memoriaAntes = process.memoryUsage().rss;
+    const inicio = performance.now();
+    let peticion = request(app.getHttpServer())
+      .post('/api/importacion/hvs')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .field('departamentoId', departamentoId);
+    for (const archivo of archivos) {
+      peticion = peticion.attach('archivos', archivo.buffer, {
+        filename: archivo.filename,
+        contentType: 'application/pdf',
+      });
+    }
+    const response = await peticion.expect(200);
+    const duracionMs = Math.round(performance.now() - inicio);
+    const memoriaDespues = process.memoryUsage().rss;
+    console.info(
+      JSON.stringify({
+        medicion: 'T12-importacion-50-pdf',
+        procesados: response.body.procesados,
+        creados: response.body.creados,
+        duracionMs,
+        rssAntesMiB: Math.round((memoriaAntes / 1024 / 1024) * 10) / 10,
+        rssDespuesMiB: Math.round((memoriaDespues / 1024 / 1024) * 10) / 10,
+        deltaRssMiB: Math.round(((memoriaDespues - memoriaAntes) / 1024 / 1024) * 10) / 10,
+      }),
+    );
+    expect(response.body).toMatchObject({ procesados: 50, creados: 50, fallidos: 0 });
+  });
+
   it('un archivo no-PDF y un email duplicado fallan POR ARCHIVO sin cancelar el lote', async () => {
     const response = await request(app.getHttpServer())
       .post('/api/importacion/hvs')
@@ -263,5 +417,80 @@ describe('Importación masiva de HVs — e2e (BD dev docker real)', () => {
       [EMAIL_IMPORTADO],
     );
     expect(duplicados.rows[0]?.total).toBe(1);
+  });
+
+  it('un PDF ilegible se reporta sin crear candidato', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/importacion/hvs')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .field('departamentoId', departamentoId)
+      .attach('archivos', Buffer.from('%PDF-1.4\n%%EOF', 'latin1'), {
+        filename: 'hv-ilegible.pdf',
+        contentType: 'application/pdf',
+      })
+      .expect(200);
+
+    expect(response.body).toMatchObject({ procesados: 1, creados: 0, fallidos: 1 });
+    expect(response.body.resultados[0].ok).toBe(false);
+  });
+
+  it('revierte candidato si falla el adjunto, incluso después de escribir el blob', async () => {
+    const archivo = pdfConDatos(EMAIL_FALLO_ADJUNTO, CEDULA_FALLO_ADJUNTO);
+    const sha256 = createHash('sha256').update(archivo).digest('hex');
+    const guardarOriginal = almacenamiento.guardar.bind(almacenamiento);
+    const guardar = vi.spyOn(almacenamiento, 'guardar').mockImplementation(async (buffer) => {
+      const resultado = await guardarOriginal(buffer);
+      throw new Error(`fallo sintético después del fichero ${resultado.sha256}`);
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/api/importacion/hvs')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .field('departamentoId', departamentoId)
+      .attach('archivos', archivo, {
+        filename: 'hv-fallo-adjunto.pdf',
+        contentType: 'application/pdf',
+      })
+      .expect(200);
+
+    expect(response.body).toMatchObject({ procesados: 1, creados: 0, fallidos: 1 });
+    expect(String(response.body.resultados[0].motivo)).toContain('No se pudo adjuntar el CV');
+    const candidatos = await database.query('SELECT id FROM candidatos WHERE email = $1', [
+      EMAIL_FALLO_ADJUNTO,
+    ]);
+    expect(candidatos.rows).toHaveLength(0);
+    expect(await almacenamiento.existe(sha256)).toBe(true);
+
+    guardar.mockRestore();
+    await rm(almacenamiento.ruta(sha256), { force: true });
+  });
+
+  it('un fallo de la fila del CV no elimina un blob existente', async () => {
+    const archivo = pdfValido();
+    const sha256 = createHash('sha256').update(archivo).digest('hex');
+    expect(await almacenamiento.existe(sha256)).toBe(true);
+    const subir = vi
+      .spyOn(archivosCv, 'subirEnTransaccion')
+      .mockRejectedValueOnce(new Error('fallo sintético entre fichero y fila'));
+
+    const email = `fallo-fila-${SUFIJO_UNICO}@correo.test`;
+    const response = await request(app.getHttpServer())
+      .post('/api/importacion/hvs')
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .field('departamentoId', departamentoId)
+      .attach('archivos', pdfConDatos(email, `${randomInt(1000000, 9999999)}`), {
+        filename: 'hv-fallo-fila.pdf',
+        contentType: 'application/pdf',
+      })
+      .expect(200);
+
+    expect(response.body.creados).toBe(0);
+    expect(
+      await database.query('SELECT id FROM candidatos WHERE email = $1', [email]),
+    ).toMatchObject({
+      rows: [],
+    });
+    expect(await almacenamiento.existe(sha256)).toBe(true);
+    subir.mockRestore();
   });
 });

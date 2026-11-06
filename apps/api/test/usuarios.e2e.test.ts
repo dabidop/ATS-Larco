@@ -10,9 +10,10 @@
  * Aislamiento:
  *  - Tokens JWT firmados con el `JwtService` global (mismo `JWT_SECRET`); el
  *    `sub` es un UUID REAL (FK `audit_log.changed_by` → `users(id)`).
- *  - El superusuario bajo prueba es `it@larco.co` (migración 008): el ÚNICO
- *    superusuario activo de la BD dev, que es exactamente el estado que exige
- *    el invariante de "último superusuario".
+ *  - El superusuario bajo prueba es `it@larco.co` (migración 008). Por orden
+ *    de dirección, la BD dev tiene DOS superusuarios activos: `it@larco.co` y
+ *    `dalvarez@larco.co`. El invariante de "último superusuario" se ejercita
+ *    dejando TEMPORALMENTE al objetivo como único (y restaurando después).
  *  - Los demás usuarios se CREAN en `beforeAll` (emails `e2e-usuarios-*`) y se
  *    BORRAN en `afterAll` dentro de UNA transacción que deshabilita
  *    `audit_log_no_mutation` (patrón de `postulaciones.e2e.test.ts`): borrar
@@ -52,7 +53,7 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
   let database: DatabaseService;
   let jwt: JwtService;
 
-  /** UUID real del único superusuario activo (`it@larco.co`). */
+  /** UUID real del superusuario bajo prueba (`it@larco.co`). */
   let superusuarioId: string;
   let adminId: string;
   let analistaId: string;
@@ -96,6 +97,47 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
       [excluidoId],
     );
     return r.rows[0]?.total ?? 0;
+  }
+
+  /**
+   * Ejecuta `trabajo` con `objetivoId` como el ÚNICO superusuario activo.
+   *
+   * La BD dev tiene VARIOS superusuarios activos (orden de dirección:
+   * `it@larco.co` y `dalvarez@larco.co`), así que sin este arranque la regla
+   * «debe permanecer al menos un superusuario» no podría ejercerse: atacar a
+   * uno no dejaría al sistema sin IT y el PATCH devolvería 200. Los demás se
+   * demueven temporalmente a `admin_rrhh` y se restauran SIEMPRE (también si
+   * la petición falla).
+   */
+  async function conUnSoloSuperusuarioActivo<T>(
+    objetivoId: string,
+    trabajo: () => Promise<T>,
+  ): Promise<T> {
+    const otros = await query<{ id: string; role_id: string }>(
+      `SELECT u.id, u.role_id
+         FROM users u JOIN roles r ON r.id = u.role_id
+        WHERE r.code = 'superusuario' AND u.active AND u.id <> $1`,
+      [objetivoId],
+    );
+    if (otros.rows.length === 0) return trabajo();
+
+    const admin = await query<{ id: string }>(`SELECT id FROM roles WHERE code = 'admin_rrhh'`);
+    const adminRoleId = admin.rows[0]?.id;
+    if (adminRoleId === undefined) {
+      throw new Error('No existe el rol admin_rrhh: ejecuta las migraciones (002)');
+    }
+
+    await query(`UPDATE users SET role_id = $2 WHERE id = ANY($1::uuid[])`, [
+      otros.rows.map((fila) => fila.id),
+      adminRoleId,
+    ]);
+    try {
+      return await trabajo();
+    } finally {
+      for (const otro of otros.rows) {
+        await query('UPDATE users SET role_id = $2 WHERE id = $1', [otro.id, otro.role_id]);
+      }
+    }
   }
 
   beforeAll(async () => {
@@ -400,18 +442,26 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
       expect(response.body.total).toBeGreaterThanOrEqual(response.body.items.length);
     });
 
-    it('filtra por `rol=superusuario` (devuelve al IT, el único activo)', async () => {
+    it('filtra por `rol=superusuario` (incluye al IT entre los activos)', async () => {
       const response = await request(app.getHttpServer())
         .get('/api/usuarios?rol=superusuario')
         .set('Authorization', `Bearer ${tokenSuper}`)
         .expect(200);
 
-      expect(response.body.items).toHaveLength(1);
-      expect(response.body.items[0]).toMatchObject({
+      // Orden de dirección: hay DOS superusuarios activos (it@larco.co y
+      // dalvarez@larco.co); el filtro debe devolverlos con el rol correcto.
+      expect(response.body.items.length).toBeGreaterThanOrEqual(2);
+      const it = response.body.items.find(
+        (usuario: { email: string }) => usuario.email === EMAIL_SUPERUSUARIO,
+      );
+      expect(it).toMatchObject({
         email: EMAIL_SUPERUSUARIO,
         rol: 'superusuario',
         activo: true,
       });
+      for (const usuario of response.body.items) {
+        expect(usuario.rol).toBe('superusuario');
+      }
     });
 
     it('400 si limit > 100 o page < 1', async () => {
@@ -571,39 +621,44 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
     });
 
     it('409 «Debe permanecer al menos un superusuario activo» al desactivar al ÚLTIMO superusuario', async () => {
-      // `superusuarioId` (it@larco.co) es el ÚNICO superusuario activo; lo
-      // ataca un actor AJENO (por eso no salta la regla de auto-desactivación).
-      expect(await otrosSuperusuariosActivos(superusuarioId)).toBe(0);
+      // Puede haber VARIOS superusuarios activos; el helper deja TEMPORALMENTE
+      // al `superusuarioId` (it@larco.co) como único y lo ataca un actor AJENO
+      // (por eso no salta la regla de auto-desactivación).
+      await conUnSoloSuperusuarioActivo(superusuarioId, async () => {
+        expect(await otrosSuperusuariosActivos(superusuarioId)).toBe(0);
 
-      const response = await request(app.getHttpServer())
-        .patch(`/api/usuarios/${superusuarioId}`)
-        .set('Authorization', `Bearer ${tokenSuperAjeno}`)
-        .send({ activo: false })
-        .expect(409);
+        const response = await request(app.getHttpServer())
+          .patch(`/api/usuarios/${superusuarioId}`)
+          .set('Authorization', `Bearer ${tokenSuperAjeno}`)
+          .send({ activo: false })
+          .expect(409);
 
-      expect(response.body.message).toBe('Debe permanecer al menos un superusuario activo');
+        expect(response.body.message).toBe('Debe permanecer al menos un superusuario activo');
 
-      // La regla se verifica ANTES de escribir: la cuenta sigue intacta.
-      const enBd = await query<{ active: boolean }>('SELECT active FROM users WHERE id = $1', [
-        superusuarioId,
-      ]);
-      expect(enBd.rows[0]?.active).toBe(true);
+        // La regla se verifica ANTES de escribir: la cuenta sigue intacta.
+        const enBd = await query<{ active: boolean }>('SELECT active FROM users WHERE id = $1', [
+          superusuarioId,
+        ]);
+        expect(enBd.rows[0]?.active).toBe(true);
+      });
     });
 
     it('409 «Debe permanecer al menos un superusuario activo» al quitarle el ROL al último superusuario', async () => {
-      const response = await request(app.getHttpServer())
-        .patch(`/api/usuarios/${superusuarioId}`)
-        .set('Authorization', `Bearer ${tokenSuperAjeno}`)
-        .send({ rol: 'admin_rrhh' })
-        .expect(409);
+      await conUnSoloSuperusuarioActivo(superusuarioId, async () => {
+        const response = await request(app.getHttpServer())
+          .patch(`/api/usuarios/${superusuarioId}`)
+          .set('Authorization', `Bearer ${tokenSuperAjeno}`)
+          .send({ rol: 'admin_rrhh' })
+          .expect(409);
 
-      expect(response.body.message).toBe('Debe permanecer al menos un superusuario activo');
+        expect(response.body.message).toBe('Debe permanecer al menos un superusuario activo');
 
-      const enBd = await query<{ role_id: string }>(
-        `SELECT u.role_id FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1 AND r.code = 'superusuario'`,
-        [superusuarioId],
-      );
-      expect(enBd.rowCount).toBe(1);
+        const enBd = await query<{ role_id: string }>(
+          `SELECT u.role_id FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1 AND r.code = 'superusuario'`,
+          [superusuarioId],
+        );
+        expect(enBd.rowCount).toBe(1);
+      });
     });
 
     it('404 si el id no existe; 403 para admin_rrhh', async () => {

@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import helmet from 'helmet';
 import type { NextFunction, Request, Response } from 'express';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { parseCorsOrigins, type Env } from './config/env.validation';
+import { DatabaseService } from './database/database.service';
 
 /** Solo aceptamos IDs de correlación cortos y seguros para evitar log injection. */
 function requestIdSeguro(value: unknown): string | undefined {
@@ -65,6 +66,10 @@ async function bootstrap(): Promise<void> {
   // logs internos de Nest) y descarga los logs bufferizados del arranque.
   app.useLogger(app.get(Logger));
 
+  // Integridad RBAC: avisa en el arranque si la BD se quedó sin ningún
+  // superusuario activo (ver `avisarSiNoHaySuperusuario`).
+  await avisarSiNoHaySuperusuario(app);
+
   const port = config.getOrThrow('PORT');
   await app.listen(port);
   app.get(Logger).log(`API escuchando en http://localhost:${port}/api/health`, 'Bootstrap');
@@ -75,3 +80,50 @@ bootstrap().catch((error: unknown) => {
   console.error('[api] No se pudo iniciar la API:', error);
   process.exitCode = 1;
 });
+
+/**
+ * Comprueba al arrancar que existe al menos un `superusuario` ACTIVO.
+ *
+ * Por qué: si el rol se pierde en BD (p. ej. una edición manual, o un `down`
+ * accidental), el sistema entra en un bloqueo del que no se sale por la
+ * interfaz — `UsuariosService` impide quitar el rol al ÚLTIMO superusuario,
+ * así que ya no queda nadie que pueda repararlo desde `/usuarios`. El síntoma
+ * es confuso: `it@larco.co` inicia sesión, pero el menú oculta «Bitácora» y
+ * «Usuarios» y la API responde 403.
+ *
+ * No es fatal (un despliegue debe seguir sirviendo negocio), pero deja un
+ * ERROR en el log del arranque con la reparación exacta.
+ */
+async function avisarSiNoHaySuperusuario(app: INestApplication): Promise<void> {
+  try {
+    const database = app.get(DatabaseService, { strict: false });
+    const { rows } = await database.query<{ total: number }>(
+      `SELECT count(*)::int AS total
+         FROM users u
+         JOIN roles r ON r.id = u.role_id
+        WHERE r.code = 'superusuario' AND u.active`,
+    );
+    if ((rows[0]?.total ?? 0) > 0) return;
+
+    app
+      .get(Logger)
+      .error(
+        [
+          'No hay NINGÚN superusuario (IT) activo: la Bitácora y la gestión de',
+          'usuarios quedan inaccesibles y no se pueden recuperar desde la UI.',
+          'Reparación: pnpm --filter @ats/api db:migrate (migración 016) o',
+          "UPDATE users SET role_id=(SELECT id FROM roles WHERE code='superusuario')",
+          " WHERE email='it@larco.co';",
+        ].join(' '),
+        'RbacIntegridad',
+      );
+  } catch (error) {
+    // La comprobación es diagnóstica: nunca debe impedir el arranque.
+    app
+      .get(Logger)
+      .warn(
+        `No se pudo verificar que exista un superusuario activo: ${String(error)}`,
+        'RbacIntegridad',
+      );
+  }
+}

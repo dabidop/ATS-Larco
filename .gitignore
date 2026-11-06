@@ -43,3 +43,9 @@ data/uploads-test/
 # cubre apps/api/data/ (los tests corren con CWD=apps/api); se ignora el
 # directorio de datos completo de la app.
 apps/api/data/
+
+# Almacenamiento local del ATS (los CV y respaldos no se versionan).
+/storage/CVs/*
+!/storage/CVs/.gitkeep
+/storage/backups/*
+!/storage/backups/.gitkeep

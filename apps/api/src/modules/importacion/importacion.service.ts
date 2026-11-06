@@ -5,7 +5,13 @@ import { DatabaseService } from '../../database/database.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
 import { SearchHashService } from '../candidatos/search-hash.service';
 import { type ArchivoSubido, ArchivosCvService } from '../uploads/archivos-cv.service';
-import type { ImportarHvsResponseDto, ResultadoArchivoDto } from './dto/importar-hvs.response';
+import type { RevisionImportacionDto } from './dto/confirmar-hvs.dto';
+import type {
+  ImportarHvsResponseDto,
+  PrevisualizacionArchivoDto,
+  PrevisualizacionHvsResponseDto,
+  ResultadoArchivoDto,
+} from './dto/importar-hvs.response';
 import { extraerTextoPdf } from './pdf-texto';
 
 /** Códigos que `node-postgres` copia del ErrorResponse de PostgreSQL. */
@@ -240,6 +246,29 @@ export function extraerCiudad(texto: string): string | null {
   );
 }
 
+/** Habilidades que se pueden afirmar solo cuando aparecen literalmente en el texto. */
+const HABILIDADES_CONTRASTABLES: readonly [RegExp, string][] = [
+  [/\btypescript\b/i, 'TypeScript'],
+  [/\bjavascript\b/i, 'JavaScript'],
+  [/\breact(?:\.js)?\b/i, 'React'],
+  [/\bnode(?:\.js)?\b/i, 'Node.js'],
+  [/\bpostgres(?:ql)?\b/i, 'PostgreSQL'],
+  [/\bsql\b/i, 'SQL'],
+  [/\bpython\b/i, 'Python'],
+  [/\bexcel\b/i, 'Excel'],
+  [/\bliderazgo\b/i, 'Liderazgo'],
+  [/\bcomunicaci[oó]n\b/i, 'Comunicación'],
+  [/\btrabajo en equipo\b/i, 'Trabajo en equipo'],
+  [/\ban[aá]lisis de datos\b/i, 'Análisis de datos'],
+  [/\bgesti[oó]n de proyectos\b/i, 'Gestión de proyectos'],
+];
+
+export function extraerHabilidades(texto: string): string[] {
+  return HABILIDADES_CONTRASTABLES.filter(([patron]) => patron.test(texto)).map(
+    ([, nombre]) => nombre,
+  );
+}
+
 /**
  * Casos de uso de la IMPORTACIÓN MASIVA de HVs (Etapa 9, retroalimentación).
  *
@@ -265,6 +294,103 @@ export class ImportacionService {
     private readonly crypto: CryptoService,
     private readonly searchHash: SearchHashService,
   ) {}
+
+  /** Previsualiza sin crear candidatos ni guardar archivos. */
+  async previsualizar(archivos: ArchivoSubido[]): Promise<PrevisualizacionHvsResponseDto> {
+    const resultados: PrevisualizacionArchivoDto[] = [];
+    for (const [indice, archivo] of archivos.entries()) {
+      if (!esPdf(archivo.buffer)) {
+        resultados.push({
+          archivo: archivo.originalname,
+          indice,
+          ok: false,
+          motivo: 'El archivo no es un PDF válido (se importan solo HV en PDF)',
+        });
+        continue;
+      }
+      try {
+        const extraido = await extraerTextoPdf(archivo.buffer);
+        const nombres = extraerNombres(extraido.texto, extraido.titulo, archivo.originalname);
+        if (nombres === null) {
+          resultados.push({
+            archivo: archivo.originalname,
+            indice,
+            ok: false,
+            motivo: 'No se pudieron sugerir nombre y apellidos; corrige los datos manualmente',
+          });
+          continue;
+        }
+        resultados.push({
+          archivo: archivo.originalname,
+          indice,
+          ok: true,
+          sugerencias: {
+            ...nombres,
+            email: extraerEmail(extraido.texto),
+            telefono: extraerTelefono(extraido.texto),
+            ciudad: extraerCiudad(extraido.texto),
+            habilidades: extraerHabilidades(extraido.texto),
+          },
+        });
+      } catch (error) {
+        this.logger.warn(
+          `No se pudo previsualizar un PDF (archivo ${identificadorArchivoSeguro(archivo.originalname)}): ${mensajeDeError(error)}`,
+        );
+        resultados.push({
+          archivo: archivo.originalname,
+          indice,
+          ok: false,
+          motivo: 'No se pudo leer el texto del PDF (¿está protegido o dañado?)',
+        });
+      }
+    }
+    return { procesados: archivos.length, resultados };
+  }
+
+  /** Confirma el lote usando únicamente los valores editados por el usuario. */
+  async confirmar(
+    archivos: ArchivoSubido[],
+    departamentoId: string,
+    revisionesJson: string,
+    actor: string,
+  ): Promise<ImportarHvsResponseDto> {
+    let revisiones: RevisionImportacionDto[];
+    try {
+      const parseado: unknown = JSON.parse(revisionesJson);
+      if (!Array.isArray(parseado)) throw new Error('debe ser una lista');
+      revisiones = parseado as RevisionImportacionDto[];
+    } catch {
+      throw new BadRequestException('revisiones debe ser una lista JSON válida');
+    }
+    if (revisiones.length !== archivos.length) {
+      throw new BadRequestException('Debe existir una revisión por cada archivo');
+    }
+    await this.assertDepartamentoExiste(departamentoId);
+    const resultados: ResultadoArchivoDto[] = [];
+    for (const [indice, archivo] of archivos.entries()) {
+      const revision = revisiones.find((item) => item.indice === indice);
+      if (
+        revision === undefined ||
+        revision.nombres.trim() === '' ||
+        revision.apellidos.trim() === ''
+      ) {
+        resultados.push({
+          archivo: archivo.originalname,
+          ok: false,
+          motivo: 'La revisión debe confirmar nombres y apellidos',
+        });
+        continue;
+      }
+      resultados.push(await this.importarUno(archivo, departamentoId, actor, revision));
+    }
+    const creados = resultados.filter((resultado) => resultado.ok).length;
+    return {
+      procesados: archivos.length,
+      creados,
+      fallidos: archivos.length - creados,
+      resultados,
+    };
+  }
 
   /** Importa el lote de HVs → resumen con un resultado por archivo. */
   async importar(
@@ -300,6 +426,7 @@ export class ImportacionService {
     archivo: ArchivoSubido,
     departamentoId: string,
     actor: string,
+    revision?: RevisionImportacionDto,
   ): Promise<ResultadoArchivoDto> {
     if (!esPdf(archivo.buffer)) {
       return {
@@ -328,18 +455,22 @@ export class ImportacionService {
       };
     }
 
-    const nombres = extraerNombres(texto, titulo, archivo.originalname);
-    const email = extraerEmail(texto);
+    const nombresExtraidos = extraerNombres(texto, titulo, archivo.originalname);
+    const nombres =
+      revision === undefined
+        ? nombresExtraidos
+        : {
+            nombres: revision.nombres.trim(),
+            apellidos: revision.apellidos.trim(),
+          };
+    const email = revision === undefined ? extraerEmail(texto) : revision.email?.trim() || null;
     const cedula = extraerCedula(texto);
-    const telefono = extraerTelefono(texto);
-    const ciudad = extraerCiudad(texto);
-    const faltantes = [
-      nombres === null ? 'nombre y apellidos' : null,
-      cedula === null ? 'cédula' : null,
-      email === null ? 'correo electrónico' : null,
-      telefono === null ? 'teléfono' : null,
-      ciudad === null ? 'ciudad' : null,
-    ].filter((campo): campo is string => campo !== null);
+    const telefono =
+      revision === undefined ? extraerTelefono(texto) : revision.telefono?.trim() || null;
+    const ciudad = revision === undefined ? extraerCiudad(texto) : revision.ciudad?.trim() || null;
+    const faltantes = [nombres === null ? 'nombre y apellidos' : null].filter(
+      (campo): campo is string => campo !== null,
+    );
     if (faltantes.length > 0) {
       return {
         archivo: archivo.originalname,
@@ -352,29 +483,32 @@ export class ImportacionService {
 
     let candidatoId: string;
     try {
-      const insert = await this.database.query<{ id: string }>(
-        `INSERT INTO candidatos
-          (nombres, apellidos, email, cedula_cifrada, cedula_hash,
-           telefono_cifrada, ciudad, departamento_id, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         RETURNING id`,
-        [
-          nombres!.nombres,
-          nombres!.apellidos,
-          email,
-          this.crypto.encrypt(cedula!),
-          this.searchHash.hashCedula(cedula!),
-          this.crypto.encrypt(telefono!),
-          ciudad,
-          departamentoId,
-          actor,
-        ],
-      );
-      const fila = insert.rows[0];
-      if (fila === undefined) {
-        throw new Error('El INSERT sobre candidatos no devolvió ninguna fila');
-      }
-      candidatoId = fila.id;
+      candidatoId = await this.database.withTransaction(async (cliente) => {
+        const insert = await cliente.query<{ id: string }>(
+          `INSERT INTO candidatos
+            (nombres, apellidos, email, cedula_cifrada, cedula_hash,
+             telefono_cifrada, ciudad, departamento_id, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           RETURNING id`,
+          [
+            nombres!.nombres,
+            nombres!.apellidos,
+            email,
+            cedula === null ? null : this.crypto.encrypt(cedula),
+            cedula === null ? null : this.searchHash.hashCedula(cedula),
+            telefono === null ? null : this.crypto.encrypt(telefono),
+            ciudad,
+            departamentoId,
+            actor,
+          ],
+        );
+        const fila = insert.rows[0];
+        if (fila === undefined) {
+          throw new Error('El INSERT sobre candidatos no devolvió ninguna fila');
+        }
+        await this.archivosCv.subirEnTransaccion(cliente, fila.id, archivo, actor);
+        return fila.id;
+      });
     } catch (error) {
       if (esEmailDuplicado(error)) {
         return {
@@ -390,16 +524,6 @@ export class ImportacionService {
           motivo: `Ya existe un candidato con la cédula ${cedula}`,
         };
       }
-      throw error;
-    }
-
-    try {
-      await this.archivosCv.subir(candidatoId, archivo, actor);
-    } catch (error) {
-      // Todo-o-nada POR ARCHIVO: sin CV adjunto no hay candidato importado.
-      await this.database
-        .query('DELETE FROM candidatos WHERE id = $1', [candidatoId])
-        .catch(() => undefined);
       return {
         archivo: archivo.originalname,
         ok: false,

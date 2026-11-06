@@ -40,6 +40,10 @@ function porcentaje(tasa: number): string {
   return `${(tasa * 100).toFixed(1)}%`;
 }
 
+function porcentajeContratacion(tasa: number): string {
+  return `${(tasa * 100).toFixed(1)}%`;
+}
+
 export function PaginaDashboard() {
   const recurso = useRecurso<Dashboard>(() => solicitud<Dashboard>('/dashboard'), []);
 
@@ -55,7 +59,7 @@ export function PaginaDashboard() {
     );
   }
 
-  const { embudo, porFase, requerimientos } = recurso.datos;
+  const { embudo, porFase, requerimientos, conversionPorRequerimiento } = recurso.datos;
   const maximoFase = Math.max(1, ...porFase.map((fase) => fase.cantidad));
 
   return (
@@ -130,6 +134,49 @@ export function PaginaDashboard() {
           color="text-violet-400"
         />
         <TarjetaCifra etiqueta="Críticos" valor={requerimientos.criticos} color="text-rose-400" />
+      </section>
+
+      <section aria-label="Conversión a contratado por requerimiento" className={CLASE_TARJETA}>
+        <h2 className="mb-2 text-sm font-semibold text-slate-200">
+          Conversión a contratado por requerimiento
+        </h2>
+        <p className="mb-4 text-xs text-slate-500">
+          Contratados ÷ postulaciones registradas; los requerimientos sin postulaciones muestran 0%.
+        </p>
+        {conversionPorRequerimiento.length === 0 ? (
+          <p className="text-sm text-slate-500">No hay requerimientos registrados.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[36rem] text-left text-sm">
+              <thead className="border-b border-slate-800 text-xs text-slate-500">
+                <tr>
+                  <th className="px-2 py-2">Requerimiento</th>
+                  <th className="px-2 py-2">Postulaciones</th>
+                  <th className="px-2 py-2">Contratados</th>
+                  <th className="px-2 py-2">Conversión</th>
+                </tr>
+              </thead>
+              <tbody>
+                {conversionPorRequerimiento.map((fila) => (
+                  <tr
+                    key={fila.requerimientoId}
+                    className="border-b border-slate-800/70 last:border-0"
+                  >
+                    <td className="px-2 py-2 text-slate-300">
+                      <span className="font-medium text-slate-200">{fila.codigo}</span>
+                      <span className="ml-2 text-xs text-slate-500">{fila.titulo}</span>
+                    </td>
+                    <td className="px-2 py-2 text-slate-300">{fila.postulaciones}</td>
+                    <td className="px-2 py-2 text-amber-300">{fila.contratados}</td>
+                    <td className="px-2 py-2 font-semibold text-emerald-300">
+                      {porcentajeContratacion(fila.tasaContratacion)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   );

@@ -2,7 +2,7 @@ import './helpers/dev-db-env'; // ANTES que test-env: carga el .env raíz (BD de
 import './helpers/test-env';
 
 import { createHash, randomInt, randomUUID } from 'node:crypto';
-import { readdir, readFile, rm } from 'node:fs/promises';
+import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { INestApplication, ValidationPipe } from '@nestjs/common';
@@ -16,6 +16,7 @@ import { AppModule } from '../src/app.module';
 import type { Candidato } from '../src/modules/candidatos/candidato.entity';
 import { CandidatosStoreService } from '../src/modules/candidatos/candidatos-store.service';
 import { AlmacenamientoService } from '../src/modules/uploads/almacenamiento.service';
+import { ArchivosCvService } from '../src/modules/uploads/archivos-cv.service';
 
 /**
  * Archivos de CV — Fase 4, parte 2: subida con validación de MAGIC BYTES, dedup
@@ -125,6 +126,7 @@ describe('Archivos de CV — subida, dedup y descarga e2e (BD dev docker real)',
 
   /** Almacén real de la app: da el directorio ABSOLUTO de subidas para el diff. */
   let almacenamiento: AlmacenamientoService;
+  let archivosCv: ArchivosCvService;
   let directorioSubidas: string;
   /** Ficheros que había en el almacén ANTES de la suite (nunca se tocan). */
   let ficherosIniciales = new Set<string>();
@@ -175,6 +177,7 @@ describe('Archivos de CV — subida, dedup y descarga e2e (BD dev docker real)',
     store = app.get(CandidatosStoreService, { strict: false });
     repo = await store.repo();
     almacenamiento = app.get(AlmacenamientoService, { strict: false });
+    archivosCv = app.get(ArchivosCvService);
     directorioSubidas = almacenamiento.directorio;
     ficherosIniciales = new Set(await ficherosEnAlmacen());
 
@@ -225,6 +228,24 @@ describe('Archivos de CV — subida, dedup y descarga e2e (BD dev docker real)',
     candidatoTercero = await crearFixture('Gaspar', CEDULA_TERCERO);
     // Este NUNCA recibe archivos: su listado debe ser un `[]` de 200.
     candidatoVacio = await crearFixture('Melchor', CEDULA_VACIO);
+
+    await repo.query("UPDATE users SET jefatura = 'SISTEMAS' WHERE email = $1", [EMAIL_LIDER]);
+    const departamentos = (await repo.query(
+      `SELECT nombre, id FROM departamentos WHERE nombre IN ('SISTEMAS', 'CONTABILIDAD')`,
+    )) as Array<{ nombre: string; id: string }>;
+    const sistemas = departamentos.find((fila) => fila.nombre === 'SISTEMAS')?.id;
+    const contabilidad = departamentos.find((fila) => fila.nombre === 'CONTABILIDAD')?.id;
+    if (sistemas === undefined || contabilidad === undefined) {
+      throw new Error('No se encontraron los departamentos sintéticos de T05');
+    }
+    await repo.query('UPDATE candidatos SET departamento_id = $1 WHERE id = $2', [
+      sistemas,
+      candidatoPrincipal.id,
+    ]);
+    await repo.query('UPDATE candidatos SET departamento_id = $1 WHERE id = $2', [
+      contabilidad,
+      candidatoSegundo.id,
+    ]);
   });
 
   afterAll(async () => {
@@ -704,6 +725,18 @@ describe('Archivos de CV — subida, dedup y descarga e2e (BD dev docker real)',
       expect(response.headers['content-length']).toBe(String(contenidoPrincipal.length));
     });
 
+    it('lider_area descarga el CV de su departamento y recibe 403 fuera de él', async () => {
+      await descargar(candidatoPrincipal.id, archivoPrincipal.id, tokenLider).expect(200);
+
+      const otrosArchivos = (await repo.query(
+        'SELECT id FROM archivos_cv WHERE candidato_id = $1 LIMIT 1',
+        [candidatoSegundo.id],
+      )) as Array<{ id: string }>;
+      const otroArchivo = otrosArchivos[0]?.id;
+      expect(otroArchivo).toBeDefined();
+      await descargar(candidatoSegundo.id, otroArchivo ?? '', tokenLider).expect(403);
+    });
+
     it('sirve un nombre ACENTUADO con el fallback ASCII y el UTF-8 percent-encoded', async () => {
       // Busca el archivo acentuado del principal para leer su `filename_original`
       // desde la propia BD (no se endurece el orden de los tests).
@@ -753,6 +786,20 @@ describe('Archivos de CV — subida, dedup y descarga e2e (BD dev docker real)',
       expect(response.body.message).toContain('No existe el archivo');
     });
 
+    it('rechaza un CV alterado aunque el fichero conserve el nombre SHA-256', async () => {
+      const ruta = almacenamiento.ruta(archivoPrincipal.sha256);
+      await writeFile(ruta, Buffer.from('contenido alterado sintético'));
+
+      const response = await descargar(
+        candidatoPrincipal.id,
+        archivoPrincipal.id,
+        tokenAnalista,
+      ).expect(500);
+
+      expect(response.body.message).toBe('Archivo corrupto en almacenamiento');
+      await writeFile(ruta, contenidoPrincipal);
+    });
+
     it('devuelve 500 «Archivo corrupto en almacenamiento» si la fila existe y el fichero no', async () => {
       // Se simula un borrado EXTERNO del fichero: la fila sigue apuntando a un
       // sha256 que ya no está en disco. Es una inconsistencia del SERVIDOR, no
@@ -778,6 +825,58 @@ describe('Archivos de CV — subida, dedup y descarga e2e (BD dev docker real)',
   });
 
   // ───────────────────────── autenticación ─────────────────────────
+
+  it('retira CVs de postulaciones descartadas y conserva los compartidos', async () => {
+    const contenidoRetencion = pdfDePrueba(`retencion-${SUFIJO_UNICO}`);
+    const subida = await subir(
+      candidatoVacio.id,
+      {
+        buffer: contenidoRetencion,
+        filename: 'retencion.pdf',
+        contentType: 'application/pdf',
+      },
+      tokenAnalista,
+    ).expect(201);
+    const archivoId = String(subida.body.id);
+    const sha256 = String(subida.body.sha256);
+    await subir(
+      candidatoTercero.id,
+      {
+        buffer: contenidoRetencion,
+        filename: 'retencion-compartida.pdf',
+        contentType: 'application/pdf',
+      },
+      tokenAnalista,
+    ).expect(201);
+
+    const requerimientos = (await repo.query(
+      `SELECT id FROM requerimientos WHERE estado = 'en_proceso' LIMIT 1`,
+    )) as Array<{ id: string }>;
+    expect(requerimientos[0]).toBeDefined();
+    const postulacion = (await repo.query(
+      `INSERT INTO postulaciones (candidato_id, requerimiento_id, created_by)
+       VALUES ($1, $2, $3) RETURNING id`,
+      [candidatoVacio.id, requerimientos[0]?.id, creadorId],
+    )) as Array<{ id: string }>;
+    await repo.query(
+      `UPDATE postulaciones
+          SET estado = 'descartado', motivo_descarte = 'prueba T08'
+        WHERE id = $1`,
+      [postulacion[0]?.id],
+    );
+
+    const resultado = await archivosCv.retirarCvDescartadosAntesDe(new Date(Date.now() + 1000));
+    expect(resultado.candidatosEvaluados).toBeGreaterThanOrEqual(1);
+    expect(resultado.filasRetiradas).toBeGreaterThanOrEqual(1);
+    expect(await almacenamiento.existe(sha256)).toBe(true);
+    const filas = await repo.query('SELECT id FROM archivos_cv WHERE id = $1', [archivoId]);
+    expect(filas).toHaveLength(0);
+    const referenciaCompartida = await repo.query(
+      'SELECT id FROM archivos_cv WHERE candidato_id = $1 AND sha256 = $2',
+      [candidatoTercero.id, sha256],
+    );
+    expect(referenciaCompartida).toHaveLength(1);
+  });
 
   it('sin token → 401 en los tres endpoints de archivos', async () => {
     const url = `/api/candidatos/${candidatoPrincipal.id}/archivos`;

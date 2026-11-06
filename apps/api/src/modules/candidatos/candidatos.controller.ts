@@ -138,14 +138,20 @@ export class CandidatosController {
 
   /** Listado paginado con filtros `q` (parcial) y `cedula` (exacta) — cualquier rol. */
   @Get()
-  async list(@Query() query: ListCandidatosQueryDto): Promise<CandidatosPageDto> {
-    return this.candidatos.list(query);
+  async list(
+    @Query() query: ListCandidatosQueryDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<CandidatosPageDto> {
+    return this.candidatos.list(query, requireUser(request));
   }
 
   /** Detalle por id (uuid); 400 si el id no es uuid y 404 si no existe. */
   @Get(':id')
-  async findOne(@Param('id', UUID_PARAM) id: string): Promise<CandidatoResponseDto> {
-    return this.candidatos.findById(id);
+  async findOne(
+    @Param('id', UUID_PARAM) id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<CandidatoResponseDto> {
+    return this.candidatos.findById(id, requireUser(request));
   }
 
   /**
@@ -165,8 +171,11 @@ export class CandidatosController {
    * `cedula_hash` ni se lista: el historial JAMÁS descifra.
    */
   @Get(':id/historial')
-  async historial(@Param('id', UUID_PARAM) id: string): Promise<EntradaHistorialDto[]> {
-    return this.candidatos.historial(id);
+  async historial(
+    @Param('id', UUID_PARAM) id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<EntradaHistorialDto[]> {
+    return this.candidatos.historial(id, requireUser(request));
   }
 
   /** Actualización parcial: solo creador, `admin_rrhh` o `superusuario` (decisión en el servicio). */
@@ -242,7 +251,11 @@ export class CandidatosController {
 
   /** Metadatos de los archivos del candidato, más recientes primero (cualquier rol). */
   @Get(':id/archivos')
-  async listFiles(@Param('id', UUID_PARAM) id: string): Promise<ArchivoCvResponseDto[]> {
+  async listFiles(
+    @Param('id', UUID_PARAM) id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ArchivoCvResponseDto[]> {
+    await this.candidatos.assertPuedeVer(id, requireUser(request));
     return this.archivos.listar(id);
   }
 
@@ -265,7 +278,9 @@ export class CandidatosController {
   async downloadFile(
     @Param('id', UUID_PARAM) id: string,
     @Param('archivoId', UUID_PARAM) archivoId: string,
+    @Req() request: AuthenticatedRequest,
   ): Promise<StreamableFile> {
+    await this.candidatos.assertPuedeVer(id, requireUser(request));
     const { archivo, contenido } = await this.archivos.descargar(id, archivoId);
     return new StreamableFile(contenido, {
       type: archivo.mimeType,
