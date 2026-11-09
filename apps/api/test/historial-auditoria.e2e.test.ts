@@ -144,26 +144,26 @@ describe('Bitácora de auditoría — historial e2e (BD dev docker real)', () =>
       (registro: { accion: string }) => registro.accion === 'INSERT',
     );
     expect(entrada).toBeDefined();
-    expect(entrada.tabla).toBe('candidatos');
-    expect(entrada.registroId).toBe(candidatoId);
+    expect(entrada.tabla).toBe('Candidatos');
+    expect(entrada.registro).toContain(NOMBRES_PRUEBA);
 
-    // El actor se resuelve desde users (id crudo + email).
-    expect(entrada.actor.id).toBe(superId);
+    // El actor se muestra con nombre y correo, nunca con el UUID interno.
+    expect(entrada.actor.nombre).toContain('Super');
     expect(entrada.actor.email).toBe(SUPER_EMAIL);
 
     // Diff: el nombre NO cifrado sale EN CLARO; la PII cifrada sale PROTEGIDA.
     const campos = new Map<string, { despues?: unknown }>(
       entrada.cambios.map((cambio: { campo: string; despues?: unknown }) => [cambio.campo, cambio]),
     );
-    expect(campos.get('nombres')?.despues).toBe(NOMBRES_PRUEBA);
-    const telefonoCifrado = campos.get('telefono_cifrada');
+    expect(campos.get('Nombres')?.despues).toBe(NOMBRES_PRUEBA);
+    const telefonoCifrado = campos.get('Teléfono');
     expect(telefonoCifrado).toBeDefined();
-    expect(String(telefonoCifrado?.despues)).toBe('[PROTEGIDO]');
+    expect(String(telefonoCifrado?.despues)).toBe('Dato protegido');
     // La cédula SÍ se creó cifrada (AES-256-CBC): la bitácora la muestra como
     // `[PROTEGIDO]`, nunca en claro ni como valor cifrado crudo.
-    const cedulaCifrada = campos.get('cedula_cifrada');
+    const cedulaCifrada = campos.get('Cédula');
     expect(cedulaCifrada).toBeDefined();
-    expect(String(cedulaCifrada?.despues)).toBe('[PROTEGIDO]');
+    expect(String(cedulaCifrada?.despues)).toBe('Dato protegido');
   });
 
   it('filtra por actor y rango de fechas, y pagina con límite', async () => {
@@ -174,7 +174,7 @@ describe('Bitácora de auditoría — historial e2e (BD dev docker real)', () =>
       .expect(200);
     expect(porActor.body.total).toBeGreaterThanOrEqual(1);
     for (const entrada of porActor.body.entradas) {
-      expect(entrada.actor.id).toBe(superId);
+      expect(entrada.actor.email).toBe(SUPER_EMAIL);
     }
 
     // Rango de fechas: `desde` en el pasado rec incluye; `hasta` imposible excluye.

@@ -190,7 +190,7 @@ describe('tablero Kanban (acciones de movimiento)', () => {
     reiniciarStore();
   });
 
-  it('solo existe «▶ avanzar» a la fase SIGUIENTE (sin ◀: el embudo no retrocede)', async () => {
+  it('muestra avanzar y devolver una sola fase adyacente', async () => {
     pintarTablero('analista_seleccion');
 
     // Ana en Recepción y Análisis de HV (índice 0): SOLO ▶ a Validación de Antecedentes.
@@ -200,15 +200,14 @@ describe('tablero Kanban (acciones de movimiento)', () => {
     ).toBeInTheDocument();
     expect(within(ana).queryByRole('button', { name: /◀/ })).not.toBeInTheDocument();
 
-    // Luis en Validación de Antecedentes: ▶ a Entrevistas y Psicotécnicas; SIN ◀.
+    // Luis en Validación de Antecedentes: puede avanzar o devolver una etapa.
     const luis = screen.getByText('Luis Martínez').closest('article') as HTMLElement;
     expect(
       within(luis).getByRole('button', { name: 'Mover a Entrevistas y Psicotécnicas' }),
     ).toBeInTheDocument();
-    expect(within(luis).queryByRole('button', { name: /◀/ })).not.toBeInTheDocument();
     expect(
       within(luis).queryByRole('button', { name: 'Mover a Recepción y Análisis de HV' }),
-    ).toBeNull();
+    ).toBeInTheDocument();
   });
 
   it('pulsar ▶ llama al store y el servidor recibe el PATCH con la fase destino', async () => {
@@ -226,6 +225,7 @@ describe('tablero Kanban (acciones de movimiento)', () => {
     fireEvent.click(
       within(ana).getByRole('button', { name: 'Mover a Validación de Antecedentes' }),
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
 
     await waitFor(() => {
       const llamada = fetchMock.mock.calls.find(
@@ -365,7 +365,7 @@ describe('tablero Kanban (panel de historial)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Historial' }));
 
     const panel = await screen.findByRole('complementary', { name: /Historial de María Pérez/ });
-    expect(within(panel).getByText('Cambio')).toBeInTheDocument();
+    expect(within(panel).getByText('Modificación')).toBeInTheDocument();
     expect(within(panel).getByText(/preseleccion/)).toBeInTheDocument();
     expect(within(panel).getByText(/antecedentes/)).toBeInTheDocument();
     expect(within(panel).getByText('ana@larco.test')).toBeInTheDocument();

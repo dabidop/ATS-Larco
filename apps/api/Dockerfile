@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # ── Etapa 1: dependencias y build ────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
-# pnpm viene incluido en Node 20+ vía corepack
+# pnpm viene incluido en Node 24 vía corepack
 RUN corepack enable
 
 WORKDIR /app
@@ -29,7 +29,7 @@ RUN pnpm --filter @ats/shared build && pnpm --filter @ats/api build
 RUN pnpm deploy --filter @ats/api --prod /out
 
 # ── Etapa 2: imagen de ejecución ─────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 
 ENV NODE_ENV=production
 WORKDIR /app

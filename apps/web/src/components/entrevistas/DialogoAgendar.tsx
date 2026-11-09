@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 
 import { mensajeDeError, solicitud } from '../../lib/api';
@@ -109,10 +109,9 @@ export function DialogoAgendar({
     setErrores((anteriores) => ({ ...anteriores, [campo]: '' }));
   };
 
-  const alBuscar = async (evento: FormEvent<HTMLFormElement>) => {
-    evento.preventDefault();
-    const consulta = wizard.nombre.trim();
+  const buscarCandidatos = useCallback(async (consulta: string) => {
     if (consulta.length === 0) {
+      setWizard((anterior) => ({ ...anterior, candidatos: null }));
       setErrores({ nombre: 'Escribe al menos un nombre para buscar' });
       return;
     }
@@ -128,6 +127,23 @@ export function DialogoAgendar({
     } finally {
       setBuscando(false);
     }
+  }, []);
+
+  useEffect(() => {
+    const consulta = wizard.nombre.trim();
+    if (consulta.length === 0) {
+      setWizard((anterior) => ({ ...anterior, candidatos: null }));
+      return;
+    }
+    const temporizador = window.setTimeout(() => {
+      void buscarCandidatos(consulta);
+    }, 300);
+    return () => window.clearTimeout(temporizador);
+  }, [buscarCandidatos, wizard.nombre]);
+
+  const alBuscar = (evento: FormEvent<HTMLFormElement>) => {
+    evento.preventDefault();
+    void buscarCandidatos(wizard.nombre.trim());
   };
 
   const alElegirCandidato = async (candidato: Candidato) => {

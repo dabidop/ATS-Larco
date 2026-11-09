@@ -1,0 +1,241 @@
+================================================================================
+ ATS LARCO — GUÍA PARA RRHH Y PERSONAL ADMINISTRATIVO
+ Documento 3 de 3 · Versión: Node 24 / Etapa 9 · 09/11/2026
+================================================================================
+
+PROPÓSITO DE ESTE DOCUMENTO
+
+Esta guía explica el sistema desde el punto de vista de las personas que lo
+utilizan para trabajar. No es un manual de programación ni reemplaza la
+"PRUEBA-MANUAL-ATS.txt", que contiene un guion detallado para comprobar cada
+flujo. Su objetivo es explicar qué se construyó, por qué funciona de esta
+manera y qué controles protegen la información.
+
+================================================================================
+1. ¿QUÉ ES EL ATS LARCO?
+================================================================================
+
+ATS significa Applicant Tracking System, es decir, sistema de seguimiento de
+candidatos. ATS LARCO reúne en un solo lugar el proceso de selección:
+
+  - Solicitud y aprobación de personal.
+  - Registro de candidatos y sus hojas de vida.
+  - Seguimiento de candidatos por etapas.
+  - Entrevistas y notas del proceso.
+  - Consulta de departamentos y sus coordinadores.
+  - Indicadores operativos en el dashboard.
+  - Historial de cambios y bitácora de auditoría.
+
+La finalidad es que RRHH pueda saber qué se solicitó, quién está participando,
+en qué etapa se encuentra cada persona, qué falta por hacer y quién realizó
+cada cambio. El sistema reduce el uso de archivos separados, mensajes y
+seguimientos manuales que pueden perderse o quedar desactualizados.
+
+================================================================================
+2. ¿CÓMO SE ORGANIZA EL TRABAJO?
+================================================================================
+
+El proceso se divide en módulos relacionados:
+
+  REQUERIMIENTOS
+    Un líder solicita una vacante. RRHH revisa la información, aprueba o
+    rechaza la solicitud y puede iniciarla. Cada solicitud tiene un código
+    único y un estado visible.
+
+  CANDIDATOS
+    Se registra la información de la persona y se adjunta su hoja de vida.
+    Los campos obligatorios evitan crear fichas incompletas que después
+    dificulten el proceso.
+
+  EMBUDO DE SELECCIÓN
+    Cada postulación avanza por cinco etapas: recepción y análisis de HV,
+    validación de antecedentes, entrevistas y psicotécnicas, pruebas de
+    proveedor externo y contratación. El avance es hacia adelante para
+    conservar la lógica del proceso y evitar que una tarjeta retroceda sin
+    control. Si una persona no continúa, se descarta indicando el motivo.
+
+  ENTREVISTAS
+    Permite registrar la fecha, tipo, notas y estado de una entrevista
+    (agendada, realizada o cancelada) asociada a una postulación.
+
+  IMPORTACIÓN DE HVs
+    Permite cargar varias hojas de vida en lote, seleccionar el departamento
+    de destino y recibir un resumen de los archivos procesados.
+
+  DEPARTAMENTOS
+    Muestra las áreas de LARCO, sus coordinadores y sus contadores. La
+    asignación del coordinador también identifica su área de responsabilidad,
+    para que el líder vea la información que corresponde a su departamento.
+
+  DASHBOARD
+    Resume el estado general: candidatos por etapa, requerimientos y otros
+    indicadores que ayudan a priorizar el trabajo.
+
+================================================================================
+3. ¿QUIÉN PUEDE HACER CADA COSA?
+================================================================================
+
+El sistema usa perfiles de acceso. Cada persona ve únicamente los módulos y
+acciones necesarios para su función:
+
+  ADMINISTRACIÓN DE RRHH
+    Gestiona requerimientos, candidatos, procesos, entrevistas, importaciones
+    y departamentos. Puede aprobar, iniciar y cerrar procesos según las
+    reglas del sistema. Puede asignar coordinadores, pero no administra las
+    cuentas de usuarios ni consulta la bitácora técnica.
+
+  SUPERUSUARIO / IT
+    Administra las cuentas: crea usuarios, asigna perfiles, restablece
+    contraseñas y activa o desactiva accesos. También tiene las capacidades
+    de RRHH y es el único perfil que consulta la bitácora general de auditoría.
+
+  LÍDER DE ÁREA
+    Crea y edita sus propios requerimientos pendientes. Puede consultar la
+    información permitida para su departamento, pero no aprueba solicitudes
+    ni mueve candidatos en el embudo.
+
+  ANALISTA DE SELECCIÓN
+    Ejecuta el trabajo operativo diario: registra candidatos, carga CV,
+    importa HVs, crea postulaciones, mueve candidatos hacia adelante y
+    registra descartes con su motivo.
+
+La pantalla oculta botones que no corresponden al perfil, pero la protección
+no depende solo de la pantalla: el servidor vuelve a verificar cada operación.
+Por eso intentar acceder directamente a una opción no autorizada no permite
+realizarla.
+
+================================================================================
+4. ¿POR QUÉ SE TOMARON ESTAS DECISIONES?
+================================================================================
+
+  CAMPOS OBLIGATORIOS
+    Se hicieron obligatorios los datos necesarios para que cada candidato o
+    requerimiento sea útil desde el primer momento. Esto evita registros
+    incompletos y reduce correcciones posteriores.
+
+  ESTADOS Y AVANCE CONTROLADO
+    Los estados representan el proceso real. El embudo avanza solamente hacia
+    adelante porque una selección no debe cambiar de etapa sin una decisión
+    clara. Los descartes quedan registrados, aunque ya no aparezcan como
+    tarjetas activas.
+
+  ROLES SEPARADOS
+    Se separó la solicitud de la aprobación: quien pide personal no es quien
+    debe autorizarlo. También se separó la operación diaria de la administración
+    técnica de usuarios. Esta separación reduce errores y conflictos de acceso.
+
+  ÁREAS Y JEFATURAS
+    La asignación de un coordinador no es solamente un texto visible en una
+    tabla. También relaciona al líder con su departamento. Así, el sistema
+    puede aplicar correctamente el alcance de la información de su área.
+
+  HISTORIAL Y BITÁCORA
+    Los cambios importantes se conservan para responder qué ocurrió, quién lo
+    hizo y cuándo. Esto facilita las revisiones internas y evita depender de la
+    memoria de una persona.
+
+  INFORMACIÓN CENTRALIZADA
+    El sistema se construyó como una aplicación web para que todos trabajen
+    sobre la misma información actualizada, sin instalar un programa distinto
+    en cada computador.
+
+================================================================================
+5. ¿CÓMO FUNCIONA LA SEGURIDAD?
+================================================================================
+
+La seguridad está diseñada en varias capas. No se basa únicamente en ocultar
+opciones de la pantalla.
+
+  INICIO DE SESIÓN
+    Cada persona entra con su propia cuenta. Las contraseñas no se guardan en
+    texto visible; se almacenan mediante un mecanismo que no permite recuperar
+    la contraseña original.
+
+  SESIÓN PROTEGIDA
+    La sesión se maneja mediante cookies protegidas, no mediante datos que el
+    usuario tenga que copiar o compartir. La sesión principal dura poco tiempo
+    y se renueva de forma controlada. Al cerrar sesión, puede revocarse el
+    acceso activo.
+
+  PERMISOS POR PERFIL
+    El sistema verifica el perfil antes de cada operación. Un usuario no puede
+    aprobar, modificar, consultar o administrar algo solo por conocer una
+    dirección de pantalla.
+
+  INFORMACIÓN SENSIBLE
+    La cédula y el teléfono se guardan cifrados y se muestran protegidos o
+    enmascarados cuando no es necesario verlos completos. Los documentos de
+    los candidatos se validan y tienen límites de tamaño y formato.
+
+  TRAZABILIDAD
+    Las altas, modificaciones, movimientos y descartes dejan historial. La
+    bitácora general está reservada al superusuario para limitar la exposición
+    de información administrativa.
+
+  PROTECCIÓN DE LA APLICACIÓN
+    La aplicación incorpora protección de cabeceras, control de orígenes
+    permitidos, límites contra demasiados intentos y validación de los datos
+    antes de guardarlos. La base de datos también aplica reglas para evitar
+    combinaciones inválidas o duplicadas.
+
+  COPIAS Y OPERACIÓN
+    En un ambiente productivo deben mantenerse copias de seguridad de la base
+    de datos y de las hojas de vida en un lugar separado del servidor. Antes de
+    cambios importantes se recomienda hacer una copia y comprobar que pueda
+    restaurarse. La información real no debe utilizarse para pruebas sin
+    autorización.
+
+================================================================================
+6. ¿CÓMO FUE CONSTRUIDO, EN TÉRMINOS SENCILLOS?
+================================================================================
+
+El sistema tiene tres partes coordinadas:
+
+  - Una interfaz web: las pantallas, formularios, tablero y dashboard.
+  - Un servicio central: recibe las solicitudes, valida permisos y aplica las
+    reglas del negocio.
+  - Una base de datos: conserva usuarios, requerimientos, candidatos, estados,
+    documentos relacionados e historial.
+
+La información importante no depende únicamente de lo que muestra la pantalla.
+El servicio central y la base de datos vuelven a validar los datos, permisos,
+estados y límites. Por eso se puede controlar mejor la calidad de la
+información y mantener el comportamiento aunque se cambie la pantalla.
+
+Los documentos se prepararon para funcionar en ambientes separados: desarrollo
+para probar, y producción para el trabajo real. La versión actual utiliza
+Node.js 24 en sus imágenes de despliegue, PostgreSQL para la información y un
+servidor web para entregar las pantallas. Estas decisiones facilitan actualizar
+el sistema, respaldarlo y mantener separada la información real de las pruebas.
+
+================================================================================
+7. RECOMENDACIONES PARA EL PERSONAL
+================================================================================
+
+  - No compartir usuarios ni contraseñas.
+  - Cerrar sesión al terminar, especialmente en equipos compartidos.
+  - Revisar el departamento y el requerimiento antes de guardar.
+  - Registrar motivos y notas claros; el historial puede ser revisado después.
+  - No subir documentos que no correspondan al candidato.
+  - No intentar corregir un proceso borrando información: usar las opciones
+    disponibles, como cambiar el estado o registrar un descarte.
+  - Informar a IT si una cuenta, permiso o dato parece incorrecto.
+  - Informar a RRHH si un candidato aparece duplicado o asociado a un área
+    equivocada.
+
+================================================================================
+8. DOCUMENTOS RELACIONADOS
+================================================================================
+
+  PRUEBA-MANUAL-ATS.txt
+    Flujo pantalla por pantalla y guion para probar las funciones.
+
+  DOCUMENTACION-TECNICA-ATS.txt
+    Arquitectura, módulos, base de datos, API y detalles para personal técnico.
+
+  DEPLOY-STAGING.md
+    Procedimiento técnico para preparar un ambiente de staging o producción.
+
+================================================================================
+ FIN DE LA GUÍA
+================================================================================

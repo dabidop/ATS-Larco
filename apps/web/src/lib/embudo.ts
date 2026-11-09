@@ -10,11 +10,9 @@ import { FASES_POSTULACION, type EstadoPostulacion, type FasePostulacion } from 
  * (`contratacion` ⇒ `contratado`). Fichero de datos PURO (sin React, sin
  * fetch) para poder testearlo en unitarios herméticos.
  *
- * SOLO AVANZA (retroalimentación Etapa 9, regla 11): desde una fase solo se
- * admite mover a la SIGUIENTE (un paso adelante); NO hay retroceso. El
- * servidor es la autoridad —`cambiarFase` responde 409 al intentar retroceder—
- * y estos helpers son un ATALLO DE UX: evitan el viaje de red cuando el
- * movimiento es obviously inválido.
+ * El embudo permite mover una postulación una sola fase por operación, hacia
+ * adelante o hacia atrás. La pantalla pide confirmación antes de enviar el
+ * cambio y estos helpers evitan saltos de varias fases.
  */
 
 /** Posición de cada fase en el tablero (0-based), en el orden del ENUM de BD. */
@@ -52,11 +50,11 @@ export const ETIQUETA_ESTADO_POSTULACION: Readonly<Record<EstadoPostulacion, str
   descartado: 'Descartado',
 };
 
-/** Etiqueta legible de cada acción del historial (alta/cambio/borrado). */
+/** Etiqueta legible de cada acción del historial. */
 export const ETIQUETA_ACCION_HISTORIAL: Readonly<Record<string, string>> = {
-  INSERT: 'Alta',
-  UPDATE: 'Cambio',
-  DELETE: 'Borrado',
+  INSERT: 'Creación',
+  UPDATE: 'Modificación',
+  DELETE: 'Eliminación',
 };
 
 /** Nombre legible de cada campo del historial (antes → después). */
@@ -79,15 +77,21 @@ export function esSiguienteFase(origen: FasePostulacion, destino: FasePostulacio
   return INDICE_FASE[destino] === INDICE_FASE[origen] + 1;
 }
 
+export function esAnteriorFase(origen: FasePostulacion, destino: FasePostulacion): boolean {
+  return INDICE_FASE[origen] - INDICE_FASE[destino] === 1;
+}
+
+export function esFaseAdyacente(origen: FasePostulacion, destino: FasePostulacion): boolean {
+  return esSiguienteFase(origen, destino) || esAnteriorFase(origen, destino);
+}
+
 /** ¿La fase destino exige quedarse en `activa` o la vuelve `contratado`? */
 export function estadoTrasMover(destino: FasePostulacion): EstadoPostulacion {
   return destino === FASE_CONTRATACION ? 'contratado' : 'activa';
 }
 
 /**
- * Mensaje LOCAL de un movimiento que no avanza UN paso — el mismo criterio que
- * el 409 del servidor, para que el usuario vea un texto consistente aunque el
- * atajo evite la llamada. Cubre retrocesos y saltos.
+ * Mensaje LOCAL de un salto de más de una fase.
  */
 export function mensajeSoloAvanza(origen: FasePostulacion, destino: FasePostulacion): string {
   const siguiente = FASES_POSTULACION[INDICE_FASE[origen] + 1];

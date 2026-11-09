@@ -11,9 +11,9 @@
  * retroalimentación Etapa 9):
  *  - El embudo tiene 5 fases EN ESTE ORDEN:
  *    `preseleccion → antecedentes → entrevistas → proveedor_externo → contratacion`.
- *  - Un movimiento VÁLIDO solo avanza UN PASO (el embudo NO retrocede: regla
- *    11 de la retroalimentación, Etapa 9 — antes admitía ±1). Saltar fases o
- *    devolver a una anterior → 409.
+ *  - Un movimiento VÁLIDO solo cambia UN PASO ADYACENTE. Puede avanzar o
+ *    retroceder; la interfaz solicita confirmación antes de hacerlo. Saltar
+ *    fases → 409.
  *  - Llegar a `contratacion` ES contratar: la postulación pasa a estado
  *    `contratado` (terminal) en la MISMA operación, y SIEMPRE que se llene la
  *    última plaza disponible del requerimiento el servicio marca su requerimiento
@@ -73,10 +73,18 @@ export function esSiguiente(origen: Fase, destino: Fase): boolean {
   return INDICE_FASE[destino] - INDICE_FASE[origen] === 1;
 }
 
+/** ¿`destino` es exactamente la fase anterior a `origen`? */
+export function esAnterior(origen: Fase, destino: Fase): boolean {
+  return INDICE_FASE[origen] - INDICE_FASE[destino] === 1;
+}
+
+/** ¿El movimiento es exactamente de una columna adyacente? */
+export function esAdyacente(origen: Fase, destino: Fase): boolean {
+  return esSiguiente(origen, destino) || esAnterior(origen, destino);
+}
+
 /**
- * ¿`destino` es un RETROCESO respecto de `origen`? Existe solo para que el
- * servicio responda con el mensaje correcto («el embudo no retrocede» en vez
- * de «no se salta»).
+ * ¿`destino` es un RETROCESO respecto de `origen`?
  */
 export function esRetroceso(origen: Fase, destino: Fase): boolean {
   return INDICE_FASE[destino] < INDICE_FASE[origen];
@@ -122,8 +130,8 @@ export function mensajeNoAdyacente(origen: Fase, destino: Fase): string {
  */
 export function mensajeRetroceso(origen: Fase, destino: Fase): string {
   return (
-    `El embudo solo avanza: no se puede devolver un candidato de '${origen}' a ` +
-    `'${destino}'. Si necesitas revisarlo, usa el descarte con su motivo`
+    `Solo se permite devolver una fase por movimiento: de '${origen}' a '${destino}' ` +
+    `no es una etapa adyacente`
   );
 }
 

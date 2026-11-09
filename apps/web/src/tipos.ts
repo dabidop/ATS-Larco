@@ -497,19 +497,15 @@ export interface CambioAuditoria {
 
 /** Entrada de `audit_log` en forma pública (`GET /api/historial/auditoria`). */
 export interface EntradaAuditoria {
-  /** `audit_log.id` (bigserial; la API lo devuelve como string). */
-  id: string;
   tabla: string;
-  registroId: string;
   accion: 'INSERT' | 'UPDATE' | 'DELETE';
+  accionTexto: string;
   /**
-   * Nombre legible del registro («REQ-2026-001 — Vacante», «Juan Pérez»…),
-   * resuelto en el servidor desde el snapshot. `null` = la tabla no aporta
-   * nombre y se muestra el id corto.
+   * Nombre legible del registro, sin UUID ni seriales técnicos.
    */
-  etiqueta: string | null;
-  /** Quién ejecutó la escritura (resuelto desde `users`; `null` si fue SQL). */
-  actor: { id: string | null; email: string | null };
+  registro: string;
+  /** Quién ejecutó la escritura. */
+  actor: { nombre: string; email: string | null };
   fecha: string;
   /** Diff campo a campo (vacío en INSERT/DELETE). */
   cambios: CambioAuditoria[];

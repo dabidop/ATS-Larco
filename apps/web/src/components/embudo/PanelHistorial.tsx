@@ -9,8 +9,8 @@ import { EstadoVacio, MensajeError, Spinner } from '../ui/feedback';
  * Panel lateral con el historial de auditoría de una postulación
  * (`GET /api/postulaciones/:id/historial`, máx. 200 entradas, DESC).
  *
- * Cada entrada muestra la acción legible (Alta/Cambio/Borrado), la fecha, el
- * usuario (email si existe, si no el uuid) y los campos cambiados con el
+ * Cada entrada muestra la acción legible (Creación/Modificación/Eliminación),
+ * la fecha, el usuario y los campos cambiados con el
  * formato «antes → después» (usando `valorHistorial` para pintar nulos y
  * valores no textuales).
  */
@@ -74,7 +74,7 @@ export function PanelHistorial({
                   <time className="text-xs text-slate-500">{fechaHora(entrada.fecha)}</time>
                 </div>
                 <p className="mt-1 text-xs text-slate-400">
-                  {entrada.usuarioEmail ?? entrada.usuario ?? '—'}
+                  {entrada.usuarioEmail ?? 'Usuario del sistema'}
                 </p>
                 <ul className="mt-2 space-y-1">
                   {entrada.campos.map((cambio, indice) => (

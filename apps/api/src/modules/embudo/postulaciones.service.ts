@@ -21,8 +21,8 @@ import {
 } from './dto/postulacion.response';
 import {
   FASE_CONTRATACION,
+  esAdyacente,
   esRetroceso,
-  esSiguiente,
   esTerminal,
   estadoTrasMover,
   mensajeFaseActual,
@@ -252,9 +252,7 @@ export class PostulacionesService {
    *  2. **409** si el estado es TERMINAL (`contratado`/`descartado`): el
    *     desenlace ya está decidido, el embudo no se mueve más.
    *  3. **409** si la fase destino es la MISMA que la actual.
-   *  4. **409** si la fase destino es un RETROCESO (el embudo SOLO AVANZA,
-   *     regla 11 de la retroalimentación, Etapa 9).
-   *  5. **409** si la fase destino NO es la SIGUIENTE (no se saltan fases).
+   *  4. **409** si la fase destino NO es ADYACENTE (no se saltan fases).
    *  6. Al mover a `contratacion` (y SOLO en ese caso): se bloquea la fila del
    *     requerimiento (`SELECT ... FOR UPDATE`) y se cuenta el cupo — si ya
    *     está lleno, **409** (regla 4: no se mueve nadie más a contratación).
@@ -282,11 +280,12 @@ export class PostulacionesService {
     if (dto.fase === faseActual) {
       throw new ConflictException(mensajeFaseActual(dto.fase));
     }
-    if (esRetroceso(faseActual, dto.fase)) {
-      throw new ConflictException(mensajeRetroceso(faseActual, dto.fase));
-    }
-    if (!esSiguiente(faseActual, dto.fase)) {
-      throw new ConflictException(mensajeNoAdyacente(faseActual, dto.fase));
+    if (!esAdyacente(faseActual, dto.fase)) {
+      throw new ConflictException(
+        esRetroceso(faseActual, dto.fase)
+          ? mensajeRetroceso(faseActual, dto.fase)
+          : mensajeNoAdyacente(faseActual, dto.fase),
+      );
     }
 
     const nuevoEstado = estadoTrasMover(dto.fase);

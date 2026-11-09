@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 
 import { solicitud } from '../../lib/api';
@@ -30,10 +30,9 @@ export function FormularioAgregarPostulacion({
   const [errorBusqueda, setErrorBusqueda] = useState<string | null>(null);
   const [agregandoId, setAgregandoId] = useState<string | null>(null);
 
-  const alBuscar = async (evento: FormEvent<HTMLFormElement>) => {
-    evento.preventDefault();
-    const consulta = nombre.trim();
+  const buscarCandidatos = useCallback(async (consulta: string) => {
     if (consulta.length === 0) {
+      setResultados(null);
       setErrorBusqueda('Escribe al menos un nombre para buscar');
       return;
     }
@@ -50,6 +49,23 @@ export function FormularioAgregarPostulacion({
     } finally {
       setConsultando(false);
     }
+  }, []);
+
+  useEffect(() => {
+    const consulta = nombre.trim();
+    if (consulta.length === 0) {
+      setResultados(null);
+      return;
+    }
+    const temporizador = window.setTimeout(() => {
+      void buscarCandidatos(consulta);
+    }, 300);
+    return () => window.clearTimeout(temporizador);
+  }, [buscarCandidatos, nombre]);
+
+  const alBuscar = (evento: FormEvent<HTMLFormElement>) => {
+    evento.preventDefault();
+    void buscarCandidatos(nombre.trim());
   };
 
   const alElegir = async (candidato: Candidato) => {

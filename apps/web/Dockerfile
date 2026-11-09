@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ── Etapa 1: build de producción del frontend ────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 RUN corepack enable
 

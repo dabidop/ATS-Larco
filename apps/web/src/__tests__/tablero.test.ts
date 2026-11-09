@@ -173,17 +173,21 @@ describe('store del tablero (mover: optimista + rollback)', () => {
     expect(estado().error).toContain('El embudo solo avanza');
   });
 
-  it('RETROCEDER una fase NO se admite: el embudo solo avanza (sin fetch)', async () => {
+  it('RETROCEDER una fase adyacente llama al servidor', async () => {
     const original = fixturePostulacion({ fase: 'entrevistas', estado: 'activa' });
-    const fetchMock = instalarFetch(() => undefined);
+    const fetchMock = instalarFetch(() => ({
+      cuerpo: fixturePostulacion({ fase: 'antecedentes', estado: 'activa' }),
+    }));
     useTableroStore.setState({ postulaciones: [original], requerimientoId: 'req-1' });
 
     const resultado = await estado().mover('pos-1', 'antecedentes', null);
 
-    expect(resultado).toBe(false);
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(buscar('pos-1')?.fase).toBe('entrevistas');
-    expect(estado().error).toContain('El embudo solo avanza');
+    expect(resultado).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/postulaciones/pos-1/fase',
+      expect.objectContaining({ body: JSON.stringify({ fase: 'antecedentes' }) }),
+    );
+    expect(buscar('pos-1')?.fase).toBe('antecedentes');
   });
 
   it('con el CUPO lleno, avanzar a contratacion NO llama al servidor (regla 4)', async () => {

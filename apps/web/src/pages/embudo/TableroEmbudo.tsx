@@ -3,7 +3,7 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
-import { interpretarSoltar } from '../../lib/embudo';
+import { esFaseAdyacente, interpretarSoltar } from '../../lib/embudo';
 import { solicitud } from '../../lib/api';
 import { puedeAgregarPostulaciones, puedeMoverPostulaciones } from '../../lib/rbac';
 import { useRecurso } from '../../lib/useRecurso';
@@ -18,6 +18,7 @@ import {
 import { ColumnaEmbudo } from '../../components/embudo/ColumnaEmbudo';
 import { DialogoDescarte } from '../../components/embudo/DialogoDescarte';
 import { FormularioAgregarPostulacion } from '../../components/embudo/FormularioAgregarPostulacion';
+import { DialogoMovimiento } from '../../components/embudo/DialogoMovimiento';
 import { PanelHistorial } from '../../components/embudo/PanelHistorial';
 import { BadgeEstado } from '../../components/ui/datos';
 import { AvisoExito, EstadoVacio, MensajeError, Spinner } from '../../components/ui/feedback';
@@ -48,6 +49,10 @@ export function TableroEmbudo() {
 
   const [postulacionDescarte, setPostulacionDescarte] = useState<Postulacion | null>(null);
   const [postulacionHistorial, setPostulacionHistorial] = useState<Postulacion | null>(null);
+  const [movimientoPendiente, setMovimientoPendiente] = useState<{
+    postulacion: Postulacion;
+    destino: FasePostulacion;
+  } | null>(null);
   const [mostrarAlta, setMostrarAlta] = useState(false);
 
   const recursoRequerimiento = useRecurso<Requerimiento>(
@@ -104,13 +109,23 @@ export function TableroEmbudo() {
   /**
    * Al soltar una tarjeta: `over.id` es la FASE de la columna destino (el
    * `useDroppable` la usa como id). `interpretarSoltar` decide si hay drop
-   * válido; el store resuelve «solo avanza» y el cupo (mensajes SIN viaje de
-   * red).
+   * válido; el store resuelve la adyacencia y el cupo. Antes de mover se pide
+   * confirmación explícita al usuario.
    */
   const alSoltar = (evento: DragEndEvent) => {
     const decision = interpretarSoltar(editable, evento.active.id, evento.over?.id);
     if (!decision.procede || decision.id === undefined || decision.fase === undefined) return;
-    void mover(decision.id, decision.fase, numeroPlazas);
+    solicitarMovimiento(decision.id, decision.fase);
+  };
+
+  const solicitarMovimiento = (postulacionId: string, destino: FasePostulacion) => {
+    const postulacion = postulaciones.find((item) => item.id === postulacionId);
+    if (postulacion === undefined) return;
+    if (!esFaseAdyacente(postulacion.fase, destino)) {
+      void mover(postulacionId, destino, numeroPlazas);
+      return;
+    }
+    setMovimientoPendiente({ postulacion, destino });
   };
 
   // Agrupación por fase para pintar cada columna (la fase de la tarjeta manda,
@@ -222,9 +237,7 @@ export function TableroEmbudo() {
                 movible={editable}
                 cupoLleno={cupoLleno}
                 guardando={guardando}
-                onMover={(idPostulacion, destino) =>
-                  void mover(idPostulacion, destino, numeroPlazas)
-                }
+                onMover={solicitarMovimiento}
                 onDescartar={setPostulacionDescarte}
                 onHistorial={setPostulacionHistorial}
               />
@@ -255,6 +268,26 @@ export function TableroEmbudo() {
           postulacionId={postulacionHistorial.id}
           nombreCandidato={`${postulacionHistorial.candidato.nombres} ${postulacionHistorial.candidato.apellidos}`}
           onCerrar={() => setPostulacionHistorial(null)}
+        />
+      )}
+
+      {movimientoPendiente !== null && (
+        <DialogoMovimiento
+          nombreCandidato={`${movimientoPendiente.postulacion.candidato.nombres} ${movimientoPendiente.postulacion.candidato.apellidos}`}
+          origen={movimientoPendiente.postulacion.fase}
+          destino={movimientoPendiente.destino}
+          enviando={guardando.includes(movimientoPendiente.postulacion.id)}
+          onConfirmar={() => {
+            void mover(
+              movimientoPendiente.postulacion.id,
+              movimientoPendiente.destino,
+              numeroPlazas,
+            ).then(() => setMovimientoPendiente(null));
+          }}
+          onCancelar={() => {
+            limpiarMensajes();
+            setMovimientoPendiente(null);
+          }}
         />
       )}
     </div>

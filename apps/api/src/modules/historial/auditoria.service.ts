@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import type { AuditoriaQueryDto } from './dto/auditoria.query.dto';
 import {
+  type AuditoriaReferencias,
   type AuditoriaFilaCruda,
   type AuditoriaPageDto,
   toResponse,
@@ -68,11 +69,60 @@ export class AuditoriaService {
     ]);
 
     const total = conteo.rows[0]?.total ?? 0;
+    const referencias = await this.cargarReferencias();
     return {
-      entradas: filas.rows.map(toResponse),
+      entradas: filas.rows.map((fila) => toResponse(fila, referencias)),
       total,
       pagina,
       paginas: Math.max(1, Math.ceil(total / limite)),
+    };
+  }
+
+  /** Nombres de negocio para no enviar UUIDs ni claves internas a la bitácora. */
+  private async cargarReferencias(): Promise<AuditoriaReferencias> {
+    const [usuarios, roles, departamentos, candidatos, requerimientos, postulaciones] =
+      await Promise.all([
+        this.database.query<{ id: string; etiqueta: string }>(
+          `SELECT id, COALESCE(NULLIF(full_name, ''), email) AS etiqueta FROM users`,
+        ),
+        this.database.query<{ id: string; etiqueta: string }>(
+          `SELECT id, CASE code
+             WHEN 'admin_rrhh' THEN 'Administración de RRHH'
+             WHEN 'superusuario' THEN 'Superusuario de IT'
+             WHEN 'analista_seleccion' THEN 'Analista de selección'
+             WHEN 'lider_area' THEN 'Líder de área'
+             ELSE code END AS etiqueta
+             FROM roles`,
+        ),
+        this.database.query<{ id: string; etiqueta: string }>(
+          `SELECT id, nombre AS etiqueta FROM departamentos`,
+        ),
+        this.database.query<{ id: string; etiqueta: string }>(
+          `SELECT id, concat_ws(' ', nombres, apellidos) AS etiqueta FROM candidatos`,
+        ),
+        this.database.query<{ id: string; etiqueta: string }>(
+          `SELECT id, concat(code, ' — ', titulo) AS etiqueta FROM requerimientos`,
+        ),
+        this.database.query<{ id: string; etiqueta: string }>(
+          `SELECT p.id,
+                  concat('Postulación de ', concat_ws(' ', c.nombres, c.apellidos),
+                         ' para ', r.code) AS etiqueta
+             FROM postulaciones p
+             JOIN candidatos c ON c.id = p.candidato_id
+             JOIN requerimientos r ON r.id = p.requerimiento_id`,
+        ),
+      ]);
+
+    const mapa = <T extends { id: string; etiqueta: string }>(filas: T[]): Map<string, string> =>
+      new Map(filas.map((fila) => [fila.id, fila.etiqueta]));
+
+    return {
+      usuarios: mapa(usuarios.rows),
+      roles: mapa(roles.rows),
+      departamentos: mapa(departamentos.rows),
+      candidatos: mapa(candidatos.rows),
+      requerimientos: mapa(requerimientos.rows),
+      postulaciones: mapa(postulaciones.rows),
     };
   }
 }

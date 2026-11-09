@@ -50,10 +50,28 @@ export function PaginaCandidatos() {
     setPagina(1);
   };
 
-  /** La búsqueda textual se aplica en cada tecla; la cédula sigue siendo exacta. */
+  /** Las búsquedas se aplican en cada tecla; la cédula sigue siendo exacta. */
   const alCambiarNombre = (q: string) => {
     setValores((anterior) => ({ ...anterior, q }));
     setConsulta((anterior) => ({ ...anterior, q: q.trim() }));
+    setPagina(1);
+  };
+
+  const alCambiarCedula = (cedula: string) => {
+    setValores((anterior) => ({ ...anterior, cedula }));
+    const limpia = cedula.trim();
+    if (limpia.length === 0) {
+      setErrorBusqueda(null);
+      setConsulta((anterior) => ({ ...anterior, cedula: '' }));
+      setPagina(1);
+      return;
+    }
+    if (!PATRON_CEDULA.test(limpia)) {
+      setErrorBusqueda(MENSAJE_CEDULA);
+      return;
+    }
+    setErrorBusqueda(null);
+    setConsulta((anterior) => ({ ...anterior, cedula: limpia }));
     setPagina(1);
   };
 
@@ -84,7 +102,7 @@ export function PaginaCandidatos() {
             etiqueta="Cédula (exacta)"
             inputMode="numeric"
             valor={valores.cedula}
-            onCambio={(valor) => setValores((anterior) => ({ ...anterior, cedula: valor }))}
+            onCambio={alCambiarCedula}
             error={errorBusqueda ?? undefined}
           />
         </div>

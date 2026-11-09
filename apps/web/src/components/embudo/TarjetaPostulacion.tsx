@@ -42,6 +42,7 @@ export function TarjetaPostulacion({
     indice >= 0 && indice < FASES_POSTULACION.length - 1
       ? FASES_POSTULACION[indice + 1]
       : undefined;
+  const anterior = indice > 0 ? FASES_POSTULACION[indice - 1] : undefined;
   const avanceBloqueadoPorCupo =
     cupoLleno && posterior === 'contratacion' && postulacion.fase !== 'contratacion';
 
@@ -98,6 +99,18 @@ export function TarjetaPostulacion({
             className={CLASE_ACCION}
           >
             ▶
+          </button>
+        )}
+        {movible && !terminal && anterior !== undefined && (
+          <button
+            type="button"
+            title={`Devolver a ${ETIQUETA_FASE[anterior]}`}
+            aria-label={`Mover a ${ETIQUETA_FASE[anterior]}`}
+            disabled={enGuardado}
+            onClick={() => onMover(anterior)}
+            className={CLASE_ACCION}
+          >
+            ◀
           </button>
         )}
         {movible && !terminal && (

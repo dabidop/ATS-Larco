@@ -67,6 +67,12 @@ export function PaginaUsuarios() {
     setPagina(1);
   };
 
+  const alCambiarBusqueda = (q: string) => {
+    setValores((anterior) => ({ ...anterior, q }));
+    setConsulta((anterior) => ({ ...anterior, q: q.trim() }));
+    setPagina(1);
+  };
+
   const alCambiarFiltroRol = (nuevoRol: string) => {
     setValores((anterior) => ({ ...anterior, rol: nuevoRol }));
     setConsulta((anterior) => ({ ...anterior, rol: nuevoRol }));
@@ -158,9 +164,7 @@ export function PaginaUsuarios() {
             className={CLASE_CAMPO}
             value={valores.q}
             placeholder="ana@larco.test"
-            onChange={(evento) =>
-              setValores((anterior) => ({ ...anterior, q: evento.target.value }))
-            }
+            onChange={(evento) => alCambiarBusqueda(evento.target.value)}
           />
         </div>
         <div className="w-full max-w-[180px]">

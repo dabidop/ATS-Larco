@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { mensajeDeError, solicitud } from '../lib/api';
 import {
   ETIQUETA_FASE,
-  esSiguienteFase,
+  esFaseAdyacente,
   esTerminal,
   estadoTrasMover,
   mensajeCupoLleno,
@@ -128,8 +128,9 @@ export const useTableroStore = create<EstadoTablero>()((set, get) => ({
       set({ error: mensajeFaseActual(destino) });
       return false;
     }
-    // SOLO AVANZA (retroalimentación Etapa 9): sin retroceso ni saltos.
-    if (!esSiguienteFase(actual.fase, destino)) {
+    // Solo se permite mover una columna adyacente; la UI confirma antes de
+    // llamar a este método y el servidor vuelve a validar la regla.
+    if (!esFaseAdyacente(actual.fase, destino)) {
       set({ error: mensajeSoloAvanza(actual.fase, destino) });
       return false;
     }

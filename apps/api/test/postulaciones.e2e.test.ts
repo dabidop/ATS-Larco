@@ -1022,20 +1022,16 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       expect(response.body.message).toContain("'preseleccion'");
     });
 
-    it('un RETROCESO (antecedentes → preseleccion) → 409 (el embudo NO retrocede, Etapa 9)', async () => {
+    it('un RETROCESO de una etapa (antecedentes → preseleccion) → 200', async () => {
       // Avanza un paso (válido)…
       await mover(postulacionSalto.id, 'antecedentes', tokenAnalista).expect(200);
 
-      // …y ahora intenta DEVOLVERLO: 409 con el mensaje específico.
-      const respuesta = await mover(postulacionSalto.id, 'preseleccion', tokenAnalista).expect(409);
-      expect(respuesta.body.message).toContain('solo avanza');
-      expect(respuesta.body.message).toContain('no se puede devolver');
-      expect(respuesta.body.message).toContain("'antecedentes'");
-      expect(respuesta.body.message).toContain("'preseleccion'");
+      // …y ahora lo DEVUELVE una etapa: el servidor lo permite.
+      await mover(postulacionSalto.id, 'preseleccion', tokenAnalista).expect(200);
 
-      // Nada se escribió: sigue en antecedentes/activa.
+      // La postulación vuelve a preseleccion/activa.
       expect(await filaEnBD(postulacionSalto.id)).toMatchObject({
-        fase: 'antecedentes',
+        fase: 'preseleccion',
         estado: 'activa',
       });
     });
@@ -1044,7 +1040,7 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       const response = await mover(postulacionSalto.id, 'contratado', tokenAnalista).expect(400);
 
       expect(JSON.stringify(response.body.message)).toContain('fase debe ser una de');
-      expect(await filaEnBD(postulacionSalto.id)).toMatchObject({ fase: 'antecedentes' });
+      expect(await filaEnBD(postulacionSalto.id)).toMatchObject({ fase: 'preseleccion' });
     });
 
     it('404 si la postulación no existe y 400 si el id no es uuid', async () => {
@@ -1171,9 +1167,10 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
 
   describe('GET /api/postulaciones/:id/historial — audit_log', () => {
     it('registra el alta y cada movimiento de fase, con changed_by del QUE lo hizo', async () => {
-      // Esta postulación ya avanzó 1 paso (el bloque anterior: 1 UPDATE del
-      // analista) y ahora avanzan 2 más: el último lo ejecuta el ADMIN para
-      // demostrar que changed_by sigue al actor real, no al creador.
+      // Esta postulación tuvo un avance y un retroceso en el bloque anterior.
+      // Ahora avanza tres pasos; el último lo ejecuta el ADMIN para demostrar
+      // que changed_by sigue al actor real, no al creador.
+      await mover(postulacionSalto.id, 'antecedentes', tokenAnalista).expect(200);
       await mover(postulacionSalto.id, 'entrevistas', tokenAnalista).expect(200);
       await mover(postulacionSalto.id, 'proveedor_externo', tokenAdmin).expect(200);
 
@@ -1184,10 +1181,12 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
 
       const entradas = response.body as EntradaHistorialPostulacionDto[];
 
-      // Alta + 3 avances = 4 escrituras, en created_at DESC: lo último
+      // Alta + 5 movimientos = 6 escrituras, en created_at DESC: lo último
       // primero, el alta al final.
-      expect(entradas).toHaveLength(4);
+      expect(entradas).toHaveLength(6);
       expect(entradas.map((entrada) => entrada.accion)).toEqual([
+        'UPDATE',
+        'UPDATE',
         'UPDATE',
         'UPDATE',
         'UPDATE',
@@ -1204,9 +1203,15 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       expect(entradas[2]?.campos).toEqual([
         { campo: 'fase', antes: 'preseleccion', despues: 'antecedentes' },
       ]);
+      expect(entradas[3]?.campos).toEqual([
+        { campo: 'fase', antes: 'antecedentes', despues: 'preseleccion' },
+      ]);
+      expect(entradas[4]?.campos).toEqual([
+        { campo: 'fase', antes: 'preseleccion', despues: 'antecedentes' },
+      ]);
       // El alta informa fase y estado con `antes: null` (el motivo, al ser
       // NULL, no se lista).
-      expect(entradas[3]?.campos).toEqual([
+      expect(entradas[5]?.campos).toEqual([
         { campo: 'fase', antes: null, despues: 'preseleccion' },
         { campo: 'estado', antes: null, despues: 'activa' },
       ]);
@@ -1215,6 +1220,8 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       // analista en todo lo demás, incluida la escritura del alta.
       expect(entradas.map((entrada) => entrada.usuario)).toEqual([
         adminId,
+        analistaId,
+        analistaId,
         analistaId,
         analistaId,
         analistaId,
@@ -1279,16 +1286,29 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
       );
       const filas = resultado.rows as Array<{ action: string; changed_by: string | null }>;
 
-      expect(filas.map((fila) => fila.action)).toEqual(['INSERT', 'UPDATE', 'UPDATE', 'UPDATE']);
+      expect(filas.map((fila) => fila.action)).toEqual([
+        'INSERT',
+        'UPDATE',
+        'UPDATE',
+        'UPDATE',
+        'UPDATE',
+        'UPDATE',
+      ]);
       // El INSERT es del analista (sin GUC en el alta manda `created_by`).
       expect(filas[0]).toMatchObject({ action: 'INSERT', changed_by: analistaId });
 
-      // creó el analista → movió el analista 2 veces (el primer y segundo
-      // avance) → movió el ADMIN (el último avance). Sin el GUC de la
+      // creó el analista → movió el analista 4 veces (incluido el retroceso)
+      // → movió el ADMIN (el último avance). Sin el GUC de la
       // migración 004 las UPDATE habrían quedado con el creador de la fila:
       // el test lo detectaría.
       const cambios = filas.filter((fila) => fila.action === 'UPDATE');
-      expect(cambios.map((fila) => fila.changed_by)).toEqual([analistaId, analistaId, adminId]);
+      expect(cambios.map((fila) => fila.changed_by)).toEqual([
+        analistaId,
+        analistaId,
+        analistaId,
+        analistaId,
+        adminId,
+      ]);
       expect(cambios.map((fila) => fila.changed_by)).not.toContain(candidatoG.id);
     });
 

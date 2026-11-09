@@ -5,6 +5,8 @@ import {
   ESTADOS_TERMINALES,
   FASES,
   FASE_CONTRATACION,
+  esAdyacente,
+  esAnterior,
   esRetroceso,
   esSiguiente,
   esTerminal,
@@ -23,9 +25,8 @@ import {
  * (409/400) se verifican en `test/postulaciones.e2e.test.ts` contra la BD dev
  * real.
  *
- * Etapa 9 (retroalimentación, regla 11): el embudo SOLO AVANZA un paso. Antes
- * la adyacencia era ±1 (se podía regresar); ahora `esSiguiente` solo admite el
- * paso hacia DELANTE y `esRetroceso` existe para el mensaje específico.
+ * El embudo permite avanzar o regresar exactamente una etapa; los saltos
+ * siguen siendo inválidos.
  *
  * `P` es un alias corto de la fase `preseleccion`: los tests son la única zona
  * donde se repite tanto, el código fuente usa los nombres completos.
@@ -121,6 +122,19 @@ describe('esRetroceso — detecta el intento de devolver (para el mensaje 409)',
   });
 });
 
+describe('adyacencia del embudo', () => {
+  it('permite un paso hacia adelante o hacia atrás', () => {
+    expect(esAnterior('antecedentes', 'preseleccion')).toBe(true);
+    expect(esAdyacente('antecedentes', 'preseleccion')).toBe(true);
+    expect(esAdyacente('antecedentes', 'entrevistas')).toBe(true);
+  });
+
+  it('no permite saltos ni quedarse en la misma fase', () => {
+    expect(esAdyacente('preseleccion', 'entrevistas')).toBe(false);
+    expect(esAdyacente('entrevistas', 'entrevistas')).toBe(false);
+  });
+});
+
 describe('faseSiguiente — el ÚNICO destino válido desde cada fase', () => {
   it('cada fase tiene UNA siguiente; contratación no tiene (es la última)', () => {
     expect(faseSiguiente('preseleccion')).toBe('antecedentes');
@@ -162,12 +176,11 @@ describe('mensajes de error (los testea el e2e, aquí se fija el texto)', () => 
     expect(mensaje).toContain('ninguna');
   });
 
-  it('mensajeRetroceso explica que el embudo no devuelve candidatos', () => {
+  it('mensajeRetroceso explica que solo se puede devolver una etapa', () => {
     const mensaje = mensajeRetroceso('entrevistas', 'antecedentes');
-    expect(mensaje).toContain('solo avanza');
+    expect(mensaje).toContain('una fase');
     expect(mensaje).toContain("'entrevistas'");
     expect(mensaje).toContain("'antecedentes'");
-    expect(mensaje).toContain('descarte');
   });
 
   it('mensajeFaseActual explica que ya está en esa fase', () => {

@@ -9,22 +9,28 @@ export interface CambioAuditoriaDto {
   despues: unknown;
 }
 
+export interface AuditoriaReferencias {
+  usuarios: ReadonlyMap<string, string>;
+  roles: ReadonlyMap<string, string>;
+  departamentos: ReadonlyMap<string, string>;
+  candidatos: ReadonlyMap<string, string>;
+  requerimientos: ReadonlyMap<string, string>;
+  postulaciones: ReadonlyMap<string, string>;
+}
+
 /** Entrada de `audit_log` en forma pública (Etapa 9). */
 export interface EntradaAuditoriaDto {
-  /** `audit_log.id` (bigserial; `pg` lo devuelve como string). */
-  id: string;
+  /** Nombre de negocio de la tabla auditada. Nunca expone nombres técnicos. */
   tabla: string;
-  registroId: string;
   accion: 'INSERT' | 'UPDATE' | 'DELETE';
+  accionTexto: string;
   /**
-   * Nombre legible del registro que tocó la escritura («REQ-2026-001 —
-   * Vacante de Analista», «Juan Pérez», «it@larco.co»…), resuelto desde el
-   * snapshot `old_data`/`new_data`. `null` cuando la tabla no aporta etiqueta
-   * (el cliente entonces cae al id corto).
+   * Nombre legible del registro que tocó la escritura. Nunca contiene el UUID
+   * ni el serial de auditoría.
    */
-  etiqueta: string | null;
+  registro: string;
   /** Quién ejecutó la escritura (resuelto desde `users`). */
-  actor: { id: string | null; email: string | null };
+  actor: { nombre: string; email: string | null };
   fecha: string;
   /** Diff campo a campo (vacío en INSERT/DELETE: no hay par de comparación). */
   cambios: CambioAuditoriaDto[];
@@ -55,7 +61,65 @@ export interface AuditoriaFilaCruda {
 const CLAVES_PROTEGIDAS = new Set(['cedula_hash', 'password_hash', 'telefono_cifrado']);
 
 /** Marca sustituida en los valores protegidos del diff. */
-export const VALOR_PROTEGIDO = '[PROTEGIDO]';
+export const VALOR_PROTEGIDO = 'Dato protegido';
+
+const ETIQUETAS_TABLA: Readonly<Record<string, string>> = {
+  users: 'Usuarios',
+  candidatos: 'Candidatos',
+  requerimientos: 'Requerimientos',
+  postulaciones: 'Postulaciones',
+  entrevistas: 'Entrevistas',
+  departamentos: 'Departamentos',
+  archivos_cv: 'Hojas de vida',
+  auth_sessions: 'Sesiones de acceso',
+};
+
+const ETIQUETAS_CAMPO: Readonly<Record<string, string>> = {
+  nombres: 'Nombres',
+  apellidos: 'Apellidos',
+  full_name: 'Nombre completo',
+  email: 'Correo electrónico',
+  cedula_cifrada: 'Cédula',
+  telefono_cifrada: 'Teléfono',
+  active: 'Estado de la cuenta',
+  role_id: 'Perfil de acceso',
+  jefatura: 'Área asignada',
+  departamento_id: 'Departamento',
+  titulo: 'Título del requerimiento',
+  code: 'Código del requerimiento',
+  numero_plazas: 'Número de plazas',
+  estado: 'Estado',
+  fase: 'Etapa del proceso',
+  motivo_descarte: 'Motivo de descarte',
+  motivo_cierre: 'Motivo de cierre',
+  resultado_cierre: 'Resultado del cierre',
+  fecha: 'Fecha',
+  tipo: 'Tipo',
+  notas: 'Notas',
+  postulacion_id: 'Postulación',
+  candidato_id: 'Candidato',
+  requerimiento_id: 'Requerimiento',
+  created_by: 'Creado por',
+};
+
+const CAMPOS_TECNICOS = new Set(['id', 'created_at', 'updated_at', 'deleted_at']);
+
+export function etiquetaTabla(tabla: string): string {
+  return ETIQUETAS_TABLA[tabla] ?? 'Información del sistema';
+}
+
+export function etiquetaCampo(campo: string): string {
+  return (
+    ETIQUETAS_CAMPO[campo] ??
+    campo.replace(/_/g, ' ').replace(/\b\w/g, (letra) => letra.toUpperCase())
+  );
+}
+
+export function textoAccion(accion: 'INSERT' | 'UPDATE' | 'DELETE'): string {
+  if (accion === 'INSERT') return 'Creación';
+  if (accion === 'DELETE') return 'Eliminación';
+  return 'Modificación';
+}
 
 /**
  * ¿La clave contiene PII cifrada o un hash que NO debe salir ni siquiera en la
@@ -95,7 +159,7 @@ export function diffAuditoria(
       despues: esClaveProtegida(campo) && despues !== undefined ? VALOR_PROTEGIDO : despues,
     });
   }
-  return cambios;
+  return cambios.filter(({ campo }) => !CAMPOS_TECNICOS.has(campo));
 }
 
 /**
@@ -128,12 +192,14 @@ function textoDe(datos: Record<string, unknown> | null, clave: string): string |
 export function etiquetaAuditoria(
   tabla: string,
   datos: Record<string, unknown> | null,
+  registroId = '',
+  referencias?: AuditoriaReferencias,
 ): string | null {
   if (datos === null) return null;
 
   switch (tabla) {
     case 'requerimientos': {
-      const codigo = textoDe(datos, 'codigo');
+      const codigo = textoDe(datos, 'code');
       const titulo = textoDe(datos, 'titulo');
       if (codigo !== null && titulo !== null) return `${codigo} — ${titulo}`;
       return codigo ?? titulo;
@@ -152,25 +218,75 @@ export function etiquetaAuditoria(
     }
     case 'departamentos':
       return textoDe(datos, 'nombre');
+    case 'postulaciones':
+      return referencias?.postulaciones.get(registroId) ?? 'Postulación de un candidato';
+    case 'entrevistas': {
+      const postulacion = textoDe(datos, 'postulacion_id');
+      const nombre = postulacion === null ? null : referencias?.postulaciones.get(postulacion);
+      return nombre === undefined || nombre === null
+        ? 'Entrevista de selección'
+        : `Entrevista — ${nombre}`;
+    }
+    case 'archivos_cv': {
+      const candidato = textoDe(datos, 'candidato_id');
+      return candidato === null
+        ? 'Hoja de vida'
+        : `Hoja de vida — ${referencias?.candidatos.get(candidato) ?? 'candidato'}`;
+    }
     default:
-      return null;
+      return `${etiquetaTabla(tabla)} — registro actualizado`;
   }
 }
 
+function valorLegible(
+  tabla: string,
+  campo: string,
+  valor: unknown,
+  referencias?: AuditoriaReferencias,
+): unknown {
+  if (valor === undefined) return 'No informado';
+  if (valor === null) return 'Sin valor';
+  if (esClaveProtegida(campo)) return VALOR_PROTEGIDO;
+  if (typeof valor === 'boolean') return valor ? 'Sí' : 'No';
+  if (campo === 'role_id') return referencias?.roles.get(String(valor)) ?? 'Perfil de acceso';
+  if (campo === 'departamento_id') {
+    return referencias?.departamentos.get(String(valor)) ?? 'Departamento asignado';
+  }
+  if (campo === 'candidato_id') return referencias?.candidatos.get(String(valor)) ?? 'Candidato';
+  if (campo === 'requerimiento_id') {
+    return referencias?.requerimientos.get(String(valor)) ?? 'Requerimiento';
+  }
+  if (campo === 'postulacion_id') {
+    return referencias?.postulaciones.get(String(valor)) ?? 'Postulación';
+  }
+  if (campo.endsWith('_id') || campo === 'id') return 'Referencia interna';
+  return valor;
+}
+
 /** Fila cruda → entrada pública (camelCase + diff enmascarado). */
-export function toResponse(fila: AuditoriaFilaCruda): EntradaAuditoriaDto {
+export function toResponse(
+  fila: AuditoriaFilaCruda,
+  referencias?: AuditoriaReferencias,
+): EntradaAuditoriaDto {
   // La etiqueta sale del snapshot del MISMO instante que la escritura: `new`
   // en INSERT/UPDATE (el estado vigente) y `old` en DELETE (lo que existía).
   const snapshot = fila.action === 'DELETE' ? fila.old_data : (fila.new_data ?? fila.old_data);
 
   return {
-    id: fila.id,
-    tabla: fila.table_name,
-    registroId: fila.record_id,
+    tabla: etiquetaTabla(fila.table_name),
     accion: fila.action,
-    etiqueta: etiquetaAuditoria(fila.table_name, snapshot),
-    actor: { id: fila.changed_by, email: fila.actor_email },
+    accionTexto: textoAccion(fila.action),
+    registro:
+      etiquetaAuditoria(fila.table_name, snapshot, fila.record_id, referencias) ?? 'Registro',
+    actor: {
+      nombre: referencias?.usuarios.get(fila.changed_by ?? '') ?? 'Usuario del sistema',
+      email: fila.actor_email,
+    },
     fecha: fila.created_at.toISOString(),
-    cambios: diffAuditoria(fila.old_data, fila.new_data),
+    cambios: diffAuditoria(fila.old_data, fila.new_data).map((cambio) => ({
+      campo: etiquetaCampo(cambio.campo),
+      antes: valorLegible(fila.table_name, cambio.campo, cambio.antes, referencias),
+      despues: valorLegible(fila.table_name, cambio.campo, cambio.despues, referencias),
+    })),
   };
 }

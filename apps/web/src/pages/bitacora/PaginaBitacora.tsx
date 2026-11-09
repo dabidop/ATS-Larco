@@ -12,12 +12,12 @@ import { CLASE_BOTON_SECUNDARIO, CLASE_CAMPO, CLASE_ETIQUETA } from '../../compo
  * Bitácora de auditoría (`/bitacora`, Etapa 9, regla 7): SOLO `superusuario`
  * (la ruta está protegida en `App.tsx` y la API responde 03 al resto).
  *
- * Muestra `audit_log` paginado (quién cambió qué y cuándo) con el diff campo
- * a campo. Los valores sensibles llegan YA ENMASCARADOS del servidor como
- * `[PROTEGIDO]` (PII cifrada y hashes): el front nunca ve PII cruda aquí.
+ * Muestra la actividad en lenguaje de negocio (qué se creó, modificó o
+ * eliminó, sobre qué información, quién y cuándo). Los valores sensibles y
+ * las referencias internas se transforman en el servidor.
  */
 
-/** Color del badge por acción (alta/cambio/borrado). */
+/** Color del badge por acción. */
 const CLASES_ACCION: Readonly<Record<EntradaAuditoria['accion'], string>> = {
   INSERT: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300',
   UPDATE: 'border-amber-500/40 bg-amber-500/15 text-amber-300',
@@ -36,14 +36,14 @@ function EntradaAuditoriaFila({ entrada }: { entrada: EntradaAuditoria }) {
         <span
           className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold ${CLASES_ACCION[entrada.accion]}`}
         >
-          {ETIQUETA_ACCION_HISTORIAL[entrada.accion] ?? entrada.accion}
+          {entrada.accionTexto ?? ETIQUETA_ACCION_HISTORIAL[entrada.accion]}
         </span>
         <span className="font-medium text-slate-100">{entrada.tabla}</span>
-        <span className="text-xs text-slate-500">
-          {entrada.etiqueta ?? `registro ${entrada.registroId.slice(0, 8)}…`}
-        </span>
+        <span className="text-xs text-slate-500">{entrada.registro}</span>
         <span className="text-xs text-slate-400">
-          {entrada.actor.email ?? '—'} · {fechaHora(entrada.fecha)}
+          {entrada.actor.nombre}
+          {entrada.actor.email !== null ? ` (${entrada.actor.email})` : ''} ·{' '}
+          {fechaHora(entrada.fecha)}
         </span>
         {entrada.cambios.length > 0 && (
           <button
@@ -51,14 +51,14 @@ function EntradaAuditoriaFila({ entrada }: { entrada: EntradaAuditoria }) {
             onClick={() => setAbierta((anterior) => !anterior)}
             className="ml-auto text-xs font-semibold text-emerald-400 hover:text-emerald-300"
           >
-            {abierta ? 'Ocultar cambios' : `Ver cambios (${entrada.cambios.length})`}
+            {abierta ? 'Ocultar detalle' : `Ver detalle (${entrada.cambios.length})`}
           </button>
         )}
       </div>
       {abierta && (
         <ul className="mt-2 space-y-1 rounded-lg border border-slate-800 bg-slate-950/50 p-2">
           {entrada.cambios.map((cambio) => (
-            <li key={cambio.campo} className="font-mono text-xs break-all text-slate-300">
+            <li key={cambio.campo} className="text-xs break-all text-slate-300">
               <span className="text-slate-500">{cambio.campo}:</span>{' '}
               <span className="text-rose-300">{valorHistorial(cambio.antes)}</span>
               <span className="mx-1 text-slate-500">→</span>
@@ -88,26 +88,34 @@ export function PaginaBitacora() {
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-100">Bitácora de auditoría</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Registro de cambios sobre la información del ATS. Los datos sensibles aparecen como
-          [PROTEGIDO]: la bitácora nunca expone PII en claro.
+          Registro comprensible de creaciones, modificaciones y eliminaciones. No muestra
+          identificadores técnicos ni datos sensibles.
         </p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
         <div className="w-full max-w-xs">
           <label htmlFor="bitacora-tabla" className={CLASE_ETIQUETA}>
-            Filtrar por tabla
+            Filtrar por información
           </label>
-          <input
+          <select
             id="bitacora-tabla"
             value={tabla}
             onChange={(evento) => {
               setTabla(evento.target.value);
               setPagina(1);
             }}
-            placeholder="candidatos, postulaciones…"
             className={CLASE_CAMPO}
-          />
+          >
+            <option value="">Todas las actividades</option>
+            <option value="candidatos">Candidatos</option>
+            <option value="requerimientos">Requerimientos</option>
+            <option value="postulaciones">Postulaciones</option>
+            <option value="entrevistas">Entrevistas</option>
+            <option value="departamentos">Departamentos</option>
+            <option value="users">Usuarios</option>
+            <option value="archivos_cv">Hojas de vida</option>
+          </select>
         </div>
       </div>
 
@@ -126,8 +134,11 @@ export function PaginaBitacora() {
 
       {entradas.length > 0 && (
         <ul className="rounded-xl border border-slate-800">
-          {entradas.map((entrada) => (
-            <EntradaAuditoriaFila key={entrada.id} entrada={entrada} />
+          {entradas.map((entrada, indice) => (
+            <EntradaAuditoriaFila
+              key={`${entrada.fecha}-${entrada.tabla}-${indice}`}
+              entrada={entrada}
+            />
           ))}
         </ul>
       )}
