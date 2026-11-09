@@ -196,7 +196,7 @@ export function fixtureDashboard(extra: Partial<Dashboard> = {}): Dashboard {
       { fase: 'contratacion', cantidad: 0, tasaRetencion: 0 },
     ],
     requerimientos: { total: 1, aprobados: 1, pendientes: 0, enProceso: 0, criticos: 0 },
-    conversionPorRequerimiento: [],
+    conversionPorRequerimiento: { items: [], total: 0, page: 1, limit: 10 },
     ...extra,
   };
 }

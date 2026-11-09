@@ -1,7 +1,8 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { DashboardResponseDto } from './dto/dashboard.response';
+import { ListDashboardQueryDto } from './dto/list-dashboard-query.dto';
 import { DashboardService } from './dashboard.service';
 
 /**
@@ -20,7 +21,7 @@ export class DashboardController {
   /** Resumen operativo: candidatos en embudo + requerimientos + críticos. */
   @Get()
   @Roles('analista_seleccion', 'admin_rrhh', 'superusuario', 'lider_area')
-  resumen(): Promise<DashboardResponseDto> {
-    return this.service.resumen();
+  resumen(@Query() query: ListDashboardQueryDto): Promise<DashboardResponseDto> {
+    return this.service.resumen(query);
   }
 }

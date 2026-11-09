@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 
 /**
  * Cuerpo de `PATCH /api/departamentos/:id` (Etapa 9).
@@ -9,10 +9,15 @@ import { IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
  * produce 400).
  */
 export class ActualizarDepartamentoDto {
+  /** Usuario líder que quedará asignado al área. */
+  @IsOptional()
+  @IsUUID('4', { message: 'coordinadorId debe ser un UUID válido' })
+  coordinadorId?: string;
+
   /** Nombre completo del coordinador nuevo (min 3 para evitar «J»). */
+  @IsOptional()
   @IsString({ message: 'coordinador debe ser una cadena de texto' })
-  @IsNotEmpty({ message: 'coordinador es obligatorio' })
   @MinLength(3, { message: 'coordinador debe tener al menos 3 caracteres' })
   @MaxLength(120, { message: 'coordinador no puede superar 120 caracteres' })
-  coordinador!: string;
+  coordinador?: string;
 }

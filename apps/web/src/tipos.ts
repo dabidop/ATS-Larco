@@ -376,9 +376,17 @@ export interface Departamento {
   requerimientosAprobados: number;
 }
 
+export interface CoordinadorDisponible {
+  id: string;
+  nombre: string;
+  email: string;
+  jefatura: string | null;
+}
+
 /** Cuerpo de `PATCH /api/departamentos/:id` (solo coordinador; admin/super). */
 export interface DepartamentoActualizacion {
-  coordinador: string;
+  coordinadorId?: string;
+  coordinador?: string;
 }
 
 /** Concentración del embudo ACTIVO en una de las 5 fases (`GET /api/dashboard`). */
@@ -419,13 +427,20 @@ export interface DashboardConversion {
   tasaContratacion: number;
 }
 
+export interface DashboardConversionPage {
+  items: DashboardConversion[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 /** Respuesta de `GET /api/dashboard`. */
 export interface Dashboard {
   embudo: DashboardEmbudo;
   /** Las 5 fases SIEMPRE en orden de avance, incluso con cantidad 0. */
   porFase: DashboardFase[];
   requerimientos: DashboardRequerimientos;
-  conversionPorRequerimiento: DashboardConversion[];
+  conversionPorRequerimiento: DashboardConversionPage;
 }
 
 /** Estados del ENUM `estado_entrevista` (migración 009). */

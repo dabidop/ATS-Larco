@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 
 import { DatabaseService } from '../../database/database.service';
@@ -7,6 +7,7 @@ import type { ActualizarDepartamentoDto } from './dto/actualizar-coordinador.dto
 import {
   type DepartamentoFilaCruda,
   type DepartamentoResponseDto,
+  type CoordinadorDisponibleDto,
   toResponse,
 } from './dto/departamento.response';
 
@@ -73,6 +74,18 @@ export class DepartamentosService {
     return resultado.rows.map(toResponse);
   }
 
+  /** Líderes activos que pueden asumir la coordinación de un área. */
+  async listarCoordinadores(): Promise<CoordinadorDisponibleDto[]> {
+    const resultado = await this.database.query<CoordinadorDisponibleDto>(
+      `SELECT u.id, u.full_name AS nombre, u.email, u.jefatura
+         FROM users u
+         JOIN roles r ON r.id = u.role_id
+        WHERE u.active = true AND r.code = 'lider_area'
+        ORDER BY u.full_name ASC, u.email ASC`,
+    );
+    return resultado.rows;
+  }
+
   private async jefaturaDe(userId: string): Promise<string | null> {
     const resultado = await this.database.query<{ jefatura: string | null }>(
       'SELECT jefatura FROM users WHERE id = $1',
@@ -94,6 +107,58 @@ export class DepartamentosService {
     actor: string,
   ): Promise<DepartamentoResponseDto> {
     return this.conActorDeAuditoria(actor, async (cliente) => {
+      const departamento = await cliente.query<{ nombre: string }>(
+        'SELECT nombre FROM departamentos WHERE id = $1',
+        [id],
+      );
+      const nombreDepartamento = departamento.rows[0]?.nombre;
+      if (nombreDepartamento === undefined) {
+        throw new NotFoundException(`No existe un departamento con id ${id}`);
+      }
+
+      let nombreCoordinador = dto.coordinador?.trim();
+      if (dto.coordinadorId !== undefined) {
+        const usuario = await cliente.query<{ nombre: string; jefatura: string | null }>(
+          `SELECT u.full_name AS nombre
+                  , u.jefatura
+             FROM users u
+             JOIN roles r ON r.id = u.role_id
+            WHERE u.id = $1 AND u.active = true AND r.code = 'lider_area'`,
+          [dto.coordinadorId],
+        );
+        nombreCoordinador = usuario.rows[0]?.nombre;
+        if (nombreCoordinador === undefined) {
+          throw new BadRequestException('El coordinador debe ser un líder activo válido');
+        }
+
+        const jefaturaAnterior = usuario.rows[0]?.jefatura;
+        if (jefaturaAnterior !== null && jefaturaAnterior !== nombreDepartamento) {
+          await cliente.query(
+            `UPDATE departamentos
+                SET coordinador = 'Sin asignar'
+              WHERE LOWER(nombre) = LOWER($1) AND coordinador = $2`,
+            [jefaturaAnterior, nombreCoordinador],
+          );
+        }
+
+        await cliente.query(
+          `UPDATE users u
+              SET jefatura = NULL
+             FROM roles r
+            WHERE u.role_id = r.id
+              AND r.code = 'lider_area'
+              AND u.jefatura = $1`,
+          [nombreDepartamento],
+        );
+        await cliente.query('UPDATE users SET jefatura = $1 WHERE id = $2', [
+          nombreDepartamento,
+          dto.coordinadorId,
+        ]);
+      }
+      if (nombreCoordinador === undefined || nombreCoordinador.length < 3) {
+        throw new BadRequestException('Debe seleccionar un coordinador válido');
+      }
+
       const resultado = await cliente.query<DepartamentoFilaCruda>(
         `UPDATE departamentos
             SET coordinador = $1
@@ -102,7 +167,7 @@ export class DepartamentosService {
                     0::int AS total_candidatos,
                     0::int AS total_requerimientos,
                     0::int AS requerimientos_aprobados`,
-        [dto.coordinador.trim(), id],
+        [nombreCoordinador, id],
       );
       const fila = resultado.rows[0];
       if (fila === undefined) {

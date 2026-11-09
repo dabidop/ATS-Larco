@@ -3,7 +3,9 @@ import { ETIQUETA_FASE } from '../../lib/embudo';
 import { useRecurso } from '../../lib/useRecurso';
 import type { Dashboard } from '../../tipos';
 import { MensajeError, Spinner } from '../../components/ui/feedback';
+import { Paginacion } from '../../components/ui/datos';
 import { CLASE_TARJETA } from '../../components/ui/estilos';
+import { useState } from 'react';
 
 /**
  * Dashboard operativo (`/dashboard`, Etapa 9): tarjetas de totales del embudo
@@ -45,7 +47,11 @@ function porcentajeContratacion(tasa: number): string {
 }
 
 export function PaginaDashboard() {
-  const recurso = useRecurso<Dashboard>(() => solicitud<Dashboard>('/dashboard'), []);
+  const [pagina, setPagina] = useState(1);
+  const recurso = useRecurso<Dashboard>(
+    () => solicitud<Dashboard>(`/dashboard?page=${pagina}&limit=10`),
+    [pagina],
+  );
 
   if (recurso.fase === 'cargando' && recurso.datos === null) {
     return <Spinner texto="Cargando dashboard…" />;
@@ -143,39 +149,47 @@ export function PaginaDashboard() {
         <p className="mb-4 text-xs text-slate-500">
           Contratados ÷ postulaciones registradas; los requerimientos sin postulaciones muestran 0%.
         </p>
-        {conversionPorRequerimiento.length === 0 ? (
+        {conversionPorRequerimiento.items.length === 0 ? (
           <p className="text-sm text-slate-500">No hay requerimientos registrados.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[36rem] text-left text-sm">
-              <thead className="border-b border-slate-800 text-xs text-slate-500">
-                <tr>
-                  <th className="px-2 py-2">Requerimiento</th>
-                  <th className="px-2 py-2">Postulaciones</th>
-                  <th className="px-2 py-2">Contratados</th>
-                  <th className="px-2 py-2">Conversión</th>
-                </tr>
-              </thead>
-              <tbody>
-                {conversionPorRequerimiento.map((fila) => (
-                  <tr
-                    key={fila.requerimientoId}
-                    className="border-b border-slate-800/70 last:border-0"
-                  >
-                    <td className="px-2 py-2 text-slate-300">
-                      <span className="font-medium text-slate-200">{fila.codigo}</span>
-                      <span className="ml-2 text-xs text-slate-500">{fila.titulo}</span>
-                    </td>
-                    <td className="px-2 py-2 text-slate-300">{fila.postulaciones}</td>
-                    <td className="px-2 py-2 text-amber-300">{fila.contratados}</td>
-                    <td className="px-2 py-2 font-semibold text-emerald-300">
-                      {porcentajeContratacion(fila.tasaContratacion)}
-                    </td>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[36rem] text-left text-sm">
+                <thead className="border-b border-slate-800 text-xs text-slate-500">
+                  <tr>
+                    <th className="px-2 py-2">Requerimiento</th>
+                    <th className="px-2 py-2">Postulaciones</th>
+                    <th className="px-2 py-2">Contratados</th>
+                    <th className="px-2 py-2">Conversión</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {conversionPorRequerimiento.items.map((fila) => (
+                    <tr
+                      key={fila.requerimientoId}
+                      className="border-b border-slate-800/70 last:border-0"
+                    >
+                      <td className="px-2 py-2 text-slate-300">
+                        <span className="font-medium text-slate-200">{fila.codigo}</span>
+                        <span className="ml-2 text-xs text-slate-500">{fila.titulo}</span>
+                      </td>
+                      <td className="px-2 py-2 text-slate-300">{fila.postulaciones}</td>
+                      <td className="px-2 py-2 text-amber-300">{fila.contratados}</td>
+                      <td className="px-2 py-2 font-semibold text-emerald-300">
+                        {porcentajeContratacion(fila.tasaContratacion)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Paginacion
+              pagina={conversionPorRequerimiento.page}
+              total={conversionPorRequerimiento.total}
+              limit={conversionPorRequerimiento.limit}
+              onCambio={setPagina}
+            />
+          </>
         )}
       </section>
     </div>

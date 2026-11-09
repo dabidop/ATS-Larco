@@ -52,13 +52,20 @@ export interface DashboardConversionDto {
   tasaContratacion: number;
 }
 
+export interface DashboardConversionPageDto {
+  items: DashboardConversionDto[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 /** Respuesta de `GET /api/dashboard`. */
 export interface DashboardResponseDto {
   embudo: DashboardEmbudoDto;
   /** Las 5 fases SIEMPRE en orden de avance, incluso con cantidad 0. */
   porFase: DashboardFaseDto[];
   requerimientos: DashboardRequerimientosDto;
-  conversionPorRequerimiento: DashboardConversionDto[];
+  conversionPorRequerimiento: DashboardConversionPageDto;
 }
 
 /** Fila cruda de la consulta de embudo. */

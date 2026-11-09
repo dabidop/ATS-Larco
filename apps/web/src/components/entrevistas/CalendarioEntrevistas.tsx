@@ -137,7 +137,7 @@ export function CalendarioEntrevistas() {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
-            Calendario del mes
+            Calendario del mes - {MESES[mes.getMonth()]}
           </h2>
           <p className="text-xs text-slate-500">
             {MESES[mes.getMonth()]} de {mes.getFullYear()} · {entrevistas.length}{' '}

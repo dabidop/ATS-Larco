@@ -186,8 +186,8 @@ describe('Dashboard — resumen operativo e2e (BD dev docker real)', () => {
     }
     expect(requerimientos.total).toBeGreaterThanOrEqual(1);
 
-    expect(response.body.conversionPorRequerimiento).toBeInstanceOf(Array);
-    const conversion = response.body.conversionPorRequerimiento.find(
+    expect(response.body.conversionPorRequerimiento.items).toBeInstanceOf(Array);
+    const conversion = response.body.conversionPorRequerimiento.items.find(
       (fila: { requerimientoId: string }) => fila.requerimientoId === idsFixture.requerimiento,
     );
     expect(conversion).toMatchObject({ postulaciones: 1, contratados: 0, tasaContratacion: 0 });

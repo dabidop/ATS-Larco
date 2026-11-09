@@ -13,7 +13,10 @@ import {
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { AuthenticatedRequest, AuthenticatedUser } from '../../common/guards/auth.guard';
 import { ActualizarDepartamentoDto } from './dto/actualizar-coordinador.dto';
-import type { DepartamentoResponseDto } from './dto/departamento.response';
+import type {
+  CoordinadorDisponibleDto,
+  DepartamentoResponseDto,
+} from './dto/departamento.response';
 import { DepartamentosService } from './departamentos.service';
 
 /**
@@ -63,6 +66,12 @@ export class DepartamentosController {
   constructor(private readonly service: DepartamentosService) {}
 
   /** Catálogo con conteos de candidatos y requerimientos por área. */
+  @Roles('admin_rrhh', 'superusuario')
+  @Get('coordinadores')
+  coordinadores(): Promise<CoordinadorDisponibleDto[]> {
+    return this.service.listarCoordinadores();
+  }
+
   @Get()
   listar(@Req() request: AuthenticatedRequest): Promise<DepartamentoResponseDto[]> {
     return this.service.listar(requireUser(request));

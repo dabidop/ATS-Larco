@@ -129,8 +129,8 @@ async function lanzarFetch(ruta: string, init: RequestInit): Promise<Response> {
   }
 }
 
-/** Renueva la sesión una sola vez usando únicamente las cookies HttpOnly + CSRF. */
-async function renovarSesion(): Promise<boolean> {
+/** Renueva la sesión usando únicamente las cookies HttpOnly + CSRF. */
+async function renovarSesionExclusiva(): Promise<boolean> {
   const csrf = leerCookie('ats_csrf');
   if (csrf === null) return false;
   try {
@@ -146,6 +146,24 @@ async function renovarSesion(): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Promesa compartida para evitar que varias peticiones vencidas roten a la vez
+ * el mismo refresh token. El backend revoca la sesión si detecta reutilización.
+ */
+let renovacionEnCurso: Promise<boolean> | null = null;
+
+async function renovarSesion(): Promise<boolean> {
+  if (renovacionEnCurso !== null) return renovacionEnCurso;
+
+  const renovacion = renovarSesionExclusiva();
+  renovacionEnCurso = renovacion;
+  try {
+    return await renovacion;
+  } finally {
+    if (renovacionEnCurso === renovacion) renovacionEnCurso = null;
   }
 }
 

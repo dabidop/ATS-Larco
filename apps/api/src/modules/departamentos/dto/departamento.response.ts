@@ -15,6 +15,13 @@ export interface DepartamentoResponseDto {
   requerimientosAprobados: number;
 }
 
+export interface CoordinadorDisponibleDto {
+  id: string;
+  nombre: string;
+  email: string;
+  jefatura: string | null;
+}
+
 /** Fila cruda del listado con conteos (pg devuelve los enteros como number). */
 export interface DepartamentoFilaCruda {
   id: string;

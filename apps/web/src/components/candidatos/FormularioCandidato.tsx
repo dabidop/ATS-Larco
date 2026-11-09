@@ -84,6 +84,7 @@ const LIMITES = {
 /** Valida el formulario con los MISMOS mensajes que el DTO del backend. */
 export function validarFormularioCandidato(
   formulario: EstadoFormularioCandidato,
+  todosObligatorios = false,
 ): ErroresCandidato {
   const errores: ErroresCandidato = {};
 
@@ -103,28 +104,42 @@ export function validarFormularioCandidato(
 
   if (!PATRON_CEDULA.test(formulario.cedula.trim())) errores.cedula = MENSAJE_CEDULA;
 
+  if (todosObligatorios && formulario.departamentoId.trim().length === 0) {
+    errores.departamentoId = 'departamentoId es obligatorio';
+  }
+
   const email = formulario.email.trim();
-  if (email.length > 0 && !PATRON_EMAIL.test(email)) {
+  if (todosObligatorios && email.length === 0) {
+    errores.email = 'email es obligatorio';
+  } else if (email.length > 0 && !PATRON_EMAIL.test(email)) {
     errores.email = 'email debe ser un correo electrónico válido';
   } else if (email.length > LIMITES.email) {
     errores.email = `email no puede superar ${LIMITES.email} caracteres`;
   }
 
   const telefono = formulario.telefono.trim();
-  if (telefono.length > LIMITES.telefono) {
+  if (todosObligatorios && telefono.length === 0) {
+    errores.telefono = 'telefono es obligatorio';
+  } else if (telefono.length > LIMITES.telefono) {
     errores.telefono = `telefono no puede superar ${LIMITES.telefono} caracteres`;
   }
   const ciudad = formulario.ciudad.trim();
-  if (ciudad.length > LIMITES.ciudad) {
+  if (todosObligatorios && ciudad.length === 0) {
+    errores.ciudad = 'ciudad es obligatoria';
+  } else if (ciudad.length > LIMITES.ciudad) {
     errores.ciudad = `ciudad no puede superar ${LIMITES.ciudad} caracteres`;
   }
   const cargoActual = formulario.cargoActual.trim();
-  if (cargoActual.length > LIMITES.cargoActual) {
+  if (todosObligatorios && cargoActual.length === 0) {
+    errores.cargoActual = 'cargoActual es obligatorio';
+  } else if (cargoActual.length > LIMITES.cargoActual) {
     errores.cargoActual = `cargoActual no puede superar ${LIMITES.cargoActual} caracteres`;
   }
 
   const expectativa = formulario.expectativaSalarial.trim();
-  if (expectativa.length > 0) {
+  if (todosObligatorios && expectativa.length === 0) {
+    errores.expectativaSalarial = 'expectativaSalarial es obligatoria';
+  } else if (expectativa.length > 0) {
     if (Number.isNaN(Number(expectativa))) {
       errores.expectativaSalarial = 'expectativaSalarial debe ser un número';
     } else if (Number(expectativa) < 0) {
@@ -191,7 +206,10 @@ export function FormularioCandidato({
 
   const alEnviar = async (evento: FormEvent<HTMLFormElement>) => {
     evento.preventDefault();
-    const detectados = validarFormularioCandidato(formulario);
+    const detectados = validarFormularioCandidato(
+      formulario,
+      inicial === undefined || inicial === null,
+    );
     setErrores(detectados);
     if (Object.values(detectados).some((error) => error !== undefined)) return;
 
@@ -229,51 +247,60 @@ export function FormularioCandidato({
           error={errores.cedula}
         />
         <CampoTexto
-          etiqueta="Email"
+          etiqueta="Email *"
           type="email"
+          required={inicial === undefined || inicial === null}
           valor={formulario.email}
           onCambio={cambiar('email')}
           error={errores.email}
         />
         <CampoTexto
-          etiqueta="Teléfono"
+          etiqueta="Teléfono *"
+          required={inicial === undefined || inicial === null}
           valor={formulario.telefono}
           onCambio={cambiar('telefono')}
           error={errores.telefono}
         />
         <CampoTexto
-          etiqueta="Ciudad"
+          etiqueta="Ciudad *"
+          required={inicial === undefined || inicial === null}
           valor={formulario.ciudad}
           onCambio={cambiar('ciudad')}
           error={errores.ciudad}
         />
         <div>
           <label htmlFor="candidato-departamento" className={CLASE_ETIQUETA}>
-            Departamento
+            Departamento *
           </label>
           <select
             id="candidato-departamento"
             value={formulario.departamentoId}
             onChange={(evento) => cambiar('departamentoId')(evento.target.value)}
             className={CLASE_CAMPO}
+            required={inicial === undefined || inicial === null}
           >
-            <option value="">(sin departamento)</option>
+            <option value="">Selecciona un departamento</option>
             {(departamentos.datos ?? []).map((departamento) => (
               <option key={departamento.id} value={departamento.id}>
                 {departamento.nombre}
               </option>
             ))}
           </select>
+          {errores.departamentoId && (
+            <p className="mt-1 text-xs text-rose-400">{errores.departamentoId}</p>
+          )}
         </div>
         <CampoTexto
-          etiqueta="Cargo actual"
+          etiqueta="Cargo actual *"
+          required={inicial === undefined || inicial === null}
           valor={formulario.cargoActual}
           onCambio={cambiar('cargoActual')}
           error={errores.cargoActual}
         />
         <CampoTexto
-          etiqueta="Expectativa salarial"
+          etiqueta="Expectativa salarial *"
           inputMode="decimal"
+          required={inicial === undefined || inicial === null}
           valor={formulario.expectativaSalarial}
           onCambio={cambiar('expectativaSalarial')}
           error={errores.expectativaSalarial}

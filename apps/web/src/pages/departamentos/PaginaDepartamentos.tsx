@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { mensajeDeError, solicitud } from '../../lib/api';
 import { puedeEditarDepartamento } from '../../lib/rbac';
 import { useRecurso } from '../../lib/useRecurso';
 import { useSesionStore } from '../../store/sesion';
-import type { Departamento } from '../../tipos';
+import type { CoordinadorDisponible, Departamento } from '../../tipos';
 import { AvisoExito, EstadoVacio, MensajeError, Spinner } from '../../components/ui/feedback';
 import {
   CLASE_BOTON_PRINCIPAL,
@@ -25,21 +25,31 @@ import {
 function FilaDepartamento({
   departamento,
   editable,
+  coordinadores,
   onGuardado,
 }: {
   departamento: Departamento;
   editable: boolean;
+  coordinadores: CoordinadorDisponible[];
   onGuardado: (actualizado: Departamento) => void;
 }) {
   const [editando, setEditando] = useState(false);
-  const [coordinador, setCoordinador] = useState(departamento.coordinador);
+  const [coordinadorId, setCoordinadorId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const coordinadoresDisponibles = coordinadores;
+
+  useEffect(() => {
+    const actual = coordinadoresDisponibles.find(
+      (opcion) => opcion.nombre === departamento.coordinador,
+    );
+    setCoordinadorId(actual?.id ?? '');
+  }, [coordinadoresDisponibles, departamento.coordinador]);
 
   const guardar = async () => {
-    const limpio = coordinador.trim();
-    if (limpio.length < 3) {
-      setError('coordinador debe tener al menos 3 caracteres');
+    const seleccionado = coordinadoresDisponibles.find((opcion) => opcion.id === coordinadorId);
+    if (seleccionado === undefined) {
+      setError('Selecciona un líder activo');
       return;
     }
     setEnviando(true);
@@ -47,7 +57,7 @@ function FilaDepartamento({
     try {
       const actualizado = await solicitud<Departamento>(`/departamentos/${departamento.id}`, {
         metodo: 'PATCH',
-        cuerpo: { coordinador: limpio },
+        cuerpo: { coordinadorId: seleccionado.id },
       });
       onGuardado(actualizado);
       setEditando(false);
@@ -63,13 +73,23 @@ function FilaDepartamento({
       <td className="px-3 py-2 text-sm font-medium text-slate-100">{departamento.nombre}</td>
       <td className="px-3 py-2 text-sm text-slate-300">
         {editando ? (
-          <div className="flex items-center gap-2">
-            <input
+          <div className="flex flex-wrap items-center gap-2">
+            <select
               aria-label={`Coordinador de ${departamento.nombre}`}
-              value={coordinador}
-              onChange={(evento) => setCoordinador(evento.target.value)}
-              className={error === undefined ? CLASE_CAMPO : `${CLASE_CAMPO} border-rose-500/70`}
-            />
+              value={coordinadorId}
+              onChange={(evento) => {
+                const id = evento.target.value;
+                setCoordinadorId(id);
+              }}
+              className={error === null ? CLASE_CAMPO : `${CLASE_CAMPO} border-rose-500/70`}
+            >
+              <option value="">Selecciona un líder</option>
+              {coordinadoresDisponibles.map((opcion) => (
+                <option key={opcion.id} value={opcion.id}>
+                  {opcion.nombre} · {opcion.email} · {opcion.jefatura ?? 'Sin departamento'}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
               disabled={enviando}
@@ -81,7 +101,7 @@ function FilaDepartamento({
             <button
               type="button"
               onClick={() => {
-                setCoordinador(departamento.coordinador);
+                setCoordinadorId('');
                 setError(null);
                 setEditando(false);
               }}
@@ -123,6 +143,13 @@ export function PaginaDepartamentos() {
   const [aviso, setAviso] = useState<string | null>(null);
 
   const recurso = useRecurso<Departamento[]>(() => solicitud<Departamento[]>('/departamentos'), []);
+  const recursoCoordinadores = useRecurso<CoordinadorDisponible[]>(
+    () =>
+      editable
+        ? solicitud<CoordinadorDisponible[]>('/departamentos/coordinadores')
+        : Promise.resolve([]),
+    [editable],
+  );
 
   if (recurso.fase === 'cargando' && recurso.datos === null) {
     return <Spinner texto="Cargando departamentos…" />;
@@ -169,6 +196,7 @@ export function PaginaDepartamentos() {
                   key={departamento.id}
                   departamento={departamento}
                   editable={editable}
+                  coordinadores={recursoCoordinadores.datos ?? []}
                   onGuardado={(actualizado) => {
                     setAviso(`Coordinador de ${actualizado.nombre} actualizado`);
                   }}

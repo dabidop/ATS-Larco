@@ -3,11 +3,13 @@ import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import {
   type DashboardResponseDto,
+  type DashboardConversionPageDto,
   type EmbudoFilaCruda,
   type FaseFilaCruda,
   type RequerimientosFilaCruda,
   armarPorFase,
 } from './dto/dashboard.response';
+import type { ListDashboardQueryDto } from './dto/list-dashboard-query.dto';
 
 /**
  * Lógica del DASHBOARD de LARCO (Etapa 9, retroalimentación).
@@ -25,7 +27,7 @@ export class DashboardService {
   constructor(private readonly database: DatabaseService) {}
 
   /** Embudo + por-fase + requerimientos, en una única respuesta coherente. */
-  async resumen(): Promise<DashboardResponseDto> {
+  async resumen(query: ListDashboardQueryDto): Promise<DashboardResponseDto> {
     const [embudo, porFila, requerimientos, conversionPorRequerimiento] = await Promise.all([
       this.leerEmbudo(),
       this.database.query<FaseFilaCruda>(
@@ -35,7 +37,7 @@ export class DashboardService {
           GROUP BY fase`,
       ),
       this.leerRequerimientos(),
-      this.leerConversionPorRequerimiento(),
+      this.leerConversionPorRequerimiento(query),
     ]);
 
     const totalActivas = porFila.rows.reduce((suma, fila) => suma + fila.cantidad, 0);
@@ -99,17 +101,18 @@ export class DashboardService {
    * El denominador incluye postulaciones en cualquier estado para que la tasa
    * sea reproducible y no dependa de que el requerimiento siga abierto.
    */
-  private async leerConversionPorRequerimiento(): Promise<
-    DashboardResponseDto['conversionPorRequerimiento']
-  > {
-    const resultado = await this.database.query<{
-      requerimiento_id: string;
-      codigo: string;
-      titulo: string;
-      postulaciones: number;
-      contratados: number;
-    }>(
-      `SELECT r.id AS requerimiento_id,
+  private async leerConversionPorRequerimiento(
+    query: ListDashboardQueryDto,
+  ): Promise<DashboardConversionPageDto> {
+    const [resultado, total] = await Promise.all([
+      this.database.query<{
+        requerimiento_id: string;
+        codigo: string;
+        titulo: string;
+        postulaciones: number;
+        contratados: number;
+      }>(
+        `SELECT r.id AS requerimiento_id,
               r.code AS codigo,
               r.titulo,
               count(p.id)::int AS postulaciones,
@@ -117,18 +120,27 @@ export class DashboardService {
          FROM requerimientos r
          LEFT JOIN postulaciones p ON p.requerimiento_id = r.id
         GROUP BY r.id, r.code, r.titulo
-        ORDER BY r.created_at DESC, r.id ASC`,
-    );
-    return resultado.rows.map((fila) => ({
-      requerimientoId: fila.requerimiento_id,
-      codigo: fila.codigo,
-      titulo: fila.titulo,
-      postulaciones: fila.postulaciones,
-      contratados: fila.contratados,
-      tasaContratacion:
-        fila.postulaciones === 0
-          ? 0
-          : Math.round((fila.contratados / fila.postulaciones) * 10000) / 10000,
-    }));
+         ORDER BY r.created_at DESC, r.id ASC
+         LIMIT $1 OFFSET $2`,
+        [query.limit, (query.page - 1) * query.limit],
+      ),
+      this.database.query<{ total: number }>('SELECT count(*)::int AS total FROM requerimientos'),
+    ]);
+    return {
+      items: resultado.rows.map((fila) => ({
+        requerimientoId: fila.requerimiento_id,
+        codigo: fila.codigo,
+        titulo: fila.titulo,
+        postulaciones: fila.postulaciones,
+        contratados: fila.contratados,
+        tasaContratacion:
+          fila.postulaciones === 0
+            ? 0
+            : Math.round((fila.contratados / fila.postulaciones) * 10000) / 10000,
+      })),
+      total: total.rows[0]?.total ?? 0,
+      page: query.page,
+      limit: query.limit,
+    };
   }
 }
