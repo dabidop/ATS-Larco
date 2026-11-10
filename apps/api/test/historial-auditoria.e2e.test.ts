@@ -89,6 +89,11 @@ describe('Bitácora de auditoría — historial e2e (BD dev docker real)', () =>
 
     tokenSuper = await jwt.signAsync({ sub: superId, email: SUPER_EMAIL, role: 'superusuario' });
     tokenAdmin = await jwt.signAsync({ sub: adminId, email: ADMIN_EMAIL, role: 'admin_rrhh' });
+    const departamentos = await database.query<{ id: string }>(
+      'SELECT id FROM departamentos ORDER BY nombre LIMIT 1',
+    );
+    const departamentoId = departamentos.rows[0]?.id;
+    if (departamentoId === undefined) throw new Error('No hay departamentos disponibles');
 
     // El candidato se crea VÍA API (no por SQL crudo): así el trigger
     // `candidatos_audit_log` escribe el INSERT con changed_by = superusuario,
@@ -106,6 +111,7 @@ describe('Bitácora de auditoría — historial e2e (BD dev docker real)', () =>
         email: `bitacora-${SUFIJO_UNICO}@larco.test`,
         cedula,
         telefono,
+        departamentoId,
       })
       .expect(201);
     candidatoId = response.body.id;

@@ -244,8 +244,7 @@ function valorLegible(
   valor: unknown,
   referencias?: AuditoriaReferencias,
 ): unknown {
-  if (valor === undefined) return 'No informado';
-  if (valor === null) return 'Sin valor';
+  if (valor === undefined || valor === null) return 'Sin valor';
   if (esClaveProtegida(campo)) return VALOR_PROTEGIDO;
   if (typeof valor === 'boolean') return valor ? 'Sí' : 'No';
   if (campo === 'role_id') return referencias?.roles.get(String(valor)) ?? 'Perfil de acceso';
