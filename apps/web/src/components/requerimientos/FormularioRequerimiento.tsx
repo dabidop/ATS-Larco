@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 
 import { mensajeDeError, solicitud } from '../../lib/api';
 import { textoALista } from '../../lib/formato';
@@ -118,6 +118,30 @@ export function formularioDesdeRequerimiento(
 }
 
 const PATRON_FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Sección del formulario que puede abrirse y cerrarse sin perder sus datos. */
+function SeccionFormulario({ titulo, children }: { titulo: string; children: ReactNode }) {
+  const [abierta, setAbierta] = useState(true);
+
+  return (
+    <fieldset className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <legend className="px-2">
+        <button
+          type="button"
+          aria-expanded={abierta}
+          onClick={() => setAbierta((actual) => !actual)}
+          className="flex items-center gap-2 text-left text-sm font-semibold text-slate-200 hover:text-white"
+        >
+          <span aria-hidden="true" className="text-slate-400">
+            {abierta ? '▾' : '▸'}
+          </span>
+          <span>{titulo}</span>
+        </button>
+      </legend>
+      {abierta && children}
+    </fieldset>
+  );
+}
 
 /** Valida el formulario replicando los mensajes de los DTO del backend. */
 export function validarFormularioRequerimiento(
@@ -301,10 +325,7 @@ export function FormularioRequerimiento({
 
   return (
     <form onSubmit={alEnviar} className="space-y-4" noValidate>
-      <fieldset className="rounded-xl border border-slate-800 bg-slate-900 p-5">
-        <legend className="px-2 text-sm font-semibold text-slate-200">
-          1. Identificación y jefatura
-        </legend>
+      <SeccionFormulario titulo="1. Identificación y jefatura">
         <div className="grid gap-4 sm:grid-cols-2">
           <CampoTexto
             etiqueta="Título *"
@@ -428,10 +449,9 @@ export function FormularioRequerimiento({
             error={errores.fechaRequerida}
           />
         </div>
-      </fieldset>
+      </SeccionFormulario>
 
-      <fieldset className="rounded-xl border border-slate-800 bg-slate-900 p-5">
-        <legend className="px-2 text-sm font-semibold text-slate-200">2. Perfil profesional</legend>
+      <SeccionFormulario titulo="2. Perfil profesional">
         <div className="grid gap-4">
           <CampoArea
             etiqueta="Perfil profesional *"
@@ -455,12 +475,9 @@ export function FormularioRequerimiento({
             />
           </div>
         </div>
-      </fieldset>
+      </SeccionFormulario>
 
-      <fieldset className="rounded-xl border border-slate-800 bg-slate-900 p-5">
-        <legend className="px-2 text-sm font-semibold text-slate-200">
-          3. Conocimientos y habilidades
-        </legend>
+      <SeccionFormulario titulo="3. Conocimientos y habilidades">
         <div className="grid gap-4">
           <CampoArea
             etiqueta="Conocimientos (separados por comas) *"
@@ -479,12 +496,9 @@ export function FormularioRequerimiento({
             error={errores.habilidades}
           />
         </div>
-      </fieldset>
+      </SeccionFormulario>
 
-      <fieldset className="rounded-xl border border-slate-800 bg-slate-900 p-5">
-        <legend className="px-2 text-sm font-semibold text-slate-200">
-          4. Condiciones salariales y contractuales
-        </legend>
+      <SeccionFormulario titulo="4. Condiciones salariales y contractuales">
         <div className="grid gap-4 sm:grid-cols-2">
           <CampoTexto
             etiqueta="Salario mínimo *"
@@ -513,10 +527,9 @@ export function FormularioRequerimiento({
             error={errores.jornada}
           />
         </div>
-      </fieldset>
+      </SeccionFormulario>
 
-      <fieldset className="rounded-xl border border-slate-800 bg-slate-900 p-5">
-        <legend className="px-2 text-sm font-semibold text-slate-200">5. Justificación</legend>
+      <SeccionFormulario titulo="5. Justificación">
         <CampoArea
           etiqueta="Justificación *"
           rows={3}
@@ -524,7 +537,7 @@ export function FormularioRequerimiento({
           onCambio={cambiar('justificacion')}
           error={errores.justificacion}
         />
-      </fieldset>
+      </SeccionFormulario>
 
       {errorServidor && (
         <p

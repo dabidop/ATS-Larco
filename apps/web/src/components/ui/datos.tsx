@@ -123,6 +123,7 @@ export function Paginacion({
           onClick={() => onCambio(pagina - 1)}
           disabled={pagina <= 1}
           className={CLASE_BOTON_SECUNDARIO}
+          cursor-pointer
         >
           Anterior
         </button>
@@ -131,6 +132,7 @@ export function Paginacion({
           onClick={() => onCambio(pagina + 1)}
           disabled={pagina >= totalPaginas}
           className={CLASE_BOTON_SECUNDARIO}
+          cursor-pointer
         >
           Siguiente
         </button>

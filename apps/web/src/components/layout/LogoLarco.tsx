@@ -19,7 +19,7 @@ export function LogoLarco({ destino }: { destino: string }) {
       <img src={logoLarco} alt="LARCO" className="h-10 w-auto mix-blend-screen" />
       <span aria-hidden="true" className="hidden h-8 w-px bg-slate-700 sm:block" />
       <span className="hidden leading-tight sm:block">
-        <span className="block text-xs font-semibold tracking-wide text-pink-500 uppercase">
+        <span className="block text-xs font-semibold tracking-wide text-pink-400 uppercase">
           Gestión Humana
         </span>
         <span className="block text-[10px] text-slate-400">Applicant Tracking System</span>

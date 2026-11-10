@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 
 import { cerrarSesionEnServidor } from '../../lib/api';
@@ -13,7 +14,7 @@ import {
   puedeVerSeccionUsuarios,
 } from '../../lib/rbac';
 import { useSesionStore } from '../../store/sesion';
-import { CLASE_BOTON_SECUNDARIO } from '../ui/estilos';
+import { CLASE_BOTON_PRINCIPAL, CLASE_BOTON_SECUNDARIO } from '../ui/estilos';
 import { LogoLarco } from './LogoLarco';
 
 /**
@@ -28,6 +29,7 @@ export function Header() {
   const usuario = useSesionStore((estado) => estado.usuario);
   const cerrarSesionLocal = useSesionStore((estado) => estado.cerrarSesion);
   const navegar = useNavigate();
+  const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false);
   const rol = usuario?.role ?? null;
 
   const secciones = [
@@ -57,41 +59,74 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-10 border-b border-slate-800 bg-slate-900/95 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-        <LogoLarco destino={puedeVerSeccionDashboard(rol) ? '/dashboard' : '/requerimientos'} />
-        <nav aria-label="Secciones principales" className="flex flex-wrap gap-4">
-          {secciones.map((seccion) => (
-            <NavLink
-              key={seccion.destino}
-              to={seccion.destino}
-              className={({ isActive }) =>
-                `text-sm transition ${
-                  isActive
-                    ? 'font-semibold text-emerald-400'
-                    : 'text-slate-300 hover:text-slate-100'
-                }`
-              }
-            >
-              {seccion.etiqueta}
-            </NavLink>
-          ))}
-          {secciones.length === 0 && (
-            <span className="text-sm text-amber-400">
-              Tu rol no tiene secciones habilitadas. Contacta con RRHH.
+    <>
+      <header className="sticky top-0 z-10 border-b border-slate-800 bg-slate-900/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+          <LogoLarco destino={puedeVerSeccionDashboard(rol) ? '/dashboard' : '/requerimientos'} />
+          <nav aria-label="Secciones principales" className="flex flex-wrap gap-4">
+            {secciones.map((seccion) => (
+              <NavLink
+                key={seccion.destino}
+                to={seccion.destino}
+                className={({ isActive }) =>
+                  `text-sm transition ${
+                    isActive
+                      ? 'font-semibold text-emerald-400'
+                      : 'text-slate-300 hover:text-slate-100'
+                  }`
+                }
+              >
+                {seccion.etiqueta}
+              </NavLink>
+            ))}
+            {secciones.length === 0 && (
+              <span className="text-sm text-amber-400">
+                Tu rol no tiene secciones habilitadas. Contacta con RRHH.
+              </span>
+            )}
+          </nav>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-xs text-slate-400">
+              {usuario?.email ?? 'Sesión iniciada'}
+              {usuario?.role ? ` · ${etiquetaRol(usuario.role)}` : ''}
             </span>
-          )}
-        </nav>
-        <div className="ml-auto flex items-center gap-3">
-          <span className="text-xs text-slate-400">
-            {usuario?.email ?? 'Sesión iniciada'}
-            {usuario?.role ? ` · ${etiquetaRol(usuario.role)}` : ''}
-          </span>
-          <button type="button" onClick={alSalir} className={CLASE_BOTON_SECUNDARIO}>
-            Salir
-          </button>
+            <button
+              type="button"
+              onClick={() => setMostrarConfirmacion(true)}
+              className={CLASE_BOTON_SECUNDARIO}
+            >
+              Cerrar sesión
+            </button>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+      {mostrarConfirmacion && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirmar-salida-titulo"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+        >
+          <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-xl">
+            <h2 id="confirmar-salida-titulo" className="text-base font-semibold text-slate-100">
+              Confirmar cierre de sesión
+            </h2>
+            <p className="mt-2 text-sm text-slate-300">¿Deseas cerrar tu sesión actual?</p>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <button type="button" onClick={alSalir} className={CLASE_BOTON_PRINCIPAL}>
+                Confirmar salida
+              </button>
+              <button
+                type="button"
+                onClick={() => setMostrarConfirmacion(false)}
+                className={CLASE_BOTON_SECUNDARIO}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

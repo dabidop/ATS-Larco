@@ -47,6 +47,7 @@ describe('layout autenticado (header con navegación por rol)', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Salir' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar salida' }));
 
     expect(useSesionStore.getState().token).toBeNull();
     expect(await screen.findByLabelText(/correo electrónico/i)).toBeInTheDocument();
