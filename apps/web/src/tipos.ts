@@ -500,15 +500,16 @@ export interface CambioAuditoria {
 
 /** Entrada de `audit_log` en forma pública (`GET /api/historial/auditoria`). */
 export interface EntradaAuditoria {
+  id: string;
   tabla: string;
+  registroId: string;
   accion: 'INSERT' | 'UPDATE' | 'DELETE';
-  accionTexto: string;
   /**
-   * Nombre legible del registro, sin UUID ni seriales técnicos.
+   * Nombre legible del registro; la interfaz nunca debe mostrar `registroId`.
    */
-  registro: string;
+  etiqueta: string | null;
   /** Quién ejecutó la escritura. */
-  actor: { nombre: string; email: string | null };
+  actor: { id: string | null; email: string | null };
   fecha: string;
   /** Diff campo a campo (vacío en INSERT/DELETE). */
   cambios: CambioAuditoria[];

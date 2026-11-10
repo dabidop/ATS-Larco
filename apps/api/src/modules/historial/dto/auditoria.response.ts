@@ -20,17 +20,18 @@ export interface AuditoriaReferencias {
 
 /** Entrada de `audit_log` en forma pública (Etapa 9). */
 export interface EntradaAuditoriaDto {
+  id: string;
   /** Nombre de negocio de la tabla auditada. Nunca expone nombres técnicos. */
   tabla: string;
+  registroId: string;
   accion: 'INSERT' | 'UPDATE' | 'DELETE';
-  accionTexto: string;
   /**
    * Nombre legible del registro que tocó la escritura. Nunca contiene el UUID
    * ni el serial de auditoría.
    */
-  registro: string;
+  etiqueta: string | null;
   /** Quién ejecutó la escritura (resuelto desde `users`). */
-  actor: { nombre: string; email: string | null };
+  actor: { id: string | null; email: string | null };
   fecha: string;
   /** Diff campo a campo (vacío en INSERT/DELETE: no hay par de comparación). */
   cambios: CambioAuditoriaDto[];
@@ -274,13 +275,13 @@ export function toResponse(
   const snapshot = fila.action === 'DELETE' ? fila.old_data : (fila.new_data ?? fila.old_data);
 
   return {
+    id: fila.id,
     tabla: etiquetaTabla(fila.table_name),
+    registroId: fila.record_id,
     accion: fila.action,
-    accionTexto: textoAccion(fila.action),
-    registro:
-      etiquetaAuditoria(fila.table_name, snapshot, fila.record_id, referencias) ?? 'Registro',
+    etiqueta: etiquetaAuditoria(fila.table_name, snapshot, fila.record_id, referencias),
     actor: {
-      nombre: referencias?.usuarios.get(fila.changed_by ?? '') ?? 'Usuario del sistema',
+      id: fila.changed_by,
       email: fila.actor_email,
     },
     fecha: fila.created_at.toISOString(),

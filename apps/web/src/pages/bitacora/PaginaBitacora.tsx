@@ -36,14 +36,14 @@ function EntradaAuditoriaFila({ entrada }: { entrada: EntradaAuditoria }) {
         <span
           className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold ${CLASES_ACCION[entrada.accion]}`}
         >
-          {entrada.accionTexto ?? ETIQUETA_ACCION_HISTORIAL[entrada.accion]}
+          {ETIQUETA_ACCION_HISTORIAL[entrada.accion]}
         </span>
         <span className="font-medium text-slate-100">{entrada.tabla}</span>
-        <span className="text-xs text-slate-500">{entrada.registro}</span>
+        <span className="text-xs text-slate-500">
+          {entrada.etiqueta ?? 'Registro sin descripción'}
+        </span>
         <span className="text-xs text-slate-400">
-          {entrada.actor.nombre}
-          {entrada.actor.email !== null ? ` (${entrada.actor.email})` : ''} ·{' '}
-          {fechaHora(entrada.fecha)}
+          {entrada.actor.email ?? 'Usuario del sistema'} · {fechaHora(entrada.fecha)}
         </span>
         {entrada.cambios.length > 0 && (
           <button

@@ -151,10 +151,9 @@ describe('Bitácora de auditoría — historial e2e (BD dev docker real)', () =>
     );
     expect(entrada).toBeDefined();
     expect(entrada.tabla).toBe('Candidatos');
-    expect(entrada.registro).toContain(NOMBRES_PRUEBA);
+    expect(entrada.etiqueta).toContain(NOMBRES_PRUEBA);
 
     // El actor se muestra con nombre y correo, nunca con el UUID interno.
-    expect(entrada.actor.nombre).toContain('Super');
     expect(entrada.actor.email).toBe(SUPER_EMAIL);
 
     // Diff: el nombre NO cifrado sale EN CLARO; la PII cifrada sale PROTEGIDA.
