@@ -44,6 +44,7 @@ function FilaEntrevista({
 }) {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [estadoPendiente, setEstadoPendiente] = useState<EstadoEntrevista | null>(null);
 
   const cambiarEstado = async (estado: EstadoEntrevista) => {
     setEnviando(true);
@@ -58,6 +59,7 @@ function FilaEntrevista({
       setError(mensajeDeError(capturado, 'No se pudo actualizar la entrevista'));
     } finally {
       setEnviando(false);
+      setEstadoPendiente(null);
     }
   };
 
@@ -66,44 +68,92 @@ function FilaEntrevista({
     : 'agendada';
 
   return (
-    <tr className="border-t border-slate-800 align-top">
-      <td className="px-3 py-2 text-sm whitespace-nowrap text-slate-200">
-        {fechaCorta(entrevista.fecha)}
-        {entrevista.hora !== null && <span className="ml-2 text-slate-400">{entrevista.hora}</span>}
-      </td>
-      <td className="px-3 py-2 text-sm text-slate-100">
-        {entrevista.candidato.nombre}
-        <span className="mt-0.5 block text-xs text-slate-500">
-          {entrevista.requerimiento.codigo} — {entrevista.requerimiento.titulo}
-        </span>
-      </td>
-      <td className="px-3 py-2 text-sm text-slate-300">{entrevista.tipo}</td>
-      <td className="px-3 py-2 text-sm text-slate-300">{entrevista.entrevistador ?? '—'}</td>
-      <td className="px-3 py-2 text-sm">
-        <span
-          className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold ${CLASES_ESTADO[estadoActual]}`}
-        >
-          {ETIQUETA_ESTADO_ENTREVISTA[estadoActual]}
-        </span>
-      </td>
-      <td className="px-3 py-2 text-sm">
-        <select
-          aria-label={`Estado de la entrevista de ${entrevista.candidato.nombre}`}
-          value={estadoActual}
-          disabled={enviando}
-          onChange={(evento) => void cambiarEstado(evento.target.value as EstadoEntrevista)}
-          className={CLASE_CAMPO}
-        >
-          {ESTADOS_ENTREVISTA.map((estado) => (
-            <option key={estado} value={estado}>
-              {ETIQUETA_ESTADO_ENTREVISTA[estado]}
-            </option>
-          ))}
-        </select>
-        {error !== null && <p className="mt-1 text-xs text-rose-400">{error}</p>}
-      </td>
-      <td className="px-3 py-2 text-xs text-slate-500">{fechaHora(entrevista.actualizadoEn)}</td>
-    </tr>
+    <>
+      <tr className="border-t border-slate-800 align-top">
+        <td className="px-3 py-2 text-sm whitespace-nowrap text-slate-200">
+          {fechaCorta(entrevista.fecha)}
+          {entrevista.hora !== null && (
+            <span className="ml-2 text-slate-400">{entrevista.hora}</span>
+          )}
+        </td>
+        <td className="px-3 py-2 text-sm text-slate-100">
+          {entrevista.candidato.nombre}
+          <span className="mt-0.5 block text-xs text-slate-500">
+            {entrevista.requerimiento.codigo} — {entrevista.requerimiento.titulo}
+          </span>
+        </td>
+        <td className="px-3 py-2 text-sm text-slate-300">{entrevista.tipo}</td>
+        <td className="px-3 py-2 text-sm text-slate-300">{entrevista.entrevistador ?? '—'}</td>
+        <td className="px-3 py-2 text-sm">
+          <span
+            className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold ${CLASES_ESTADO[estadoActual]}`}
+          >
+            {ETIQUETA_ESTADO_ENTREVISTA[estadoActual]}
+          </span>
+        </td>
+        <td className="px-3 py-2 text-sm">
+          <select
+            aria-label={`Estado de la entrevista de ${entrevista.candidato.nombre}`}
+            value={estadoActual}
+            disabled={enviando}
+            onChange={(evento) => setEstadoPendiente(evento.target.value as EstadoEntrevista)}
+            className={CLASE_CAMPO}
+          >
+            {ESTADOS_ENTREVISTA.map((estado) => (
+              <option key={estado} value={estado}>
+                {ETIQUETA_ESTADO_ENTREVISTA[estado]}
+              </option>
+            ))}
+          </select>
+          {error !== null && <p className="mt-1 text-xs text-rose-400">{error}</p>}
+        </td>
+        <td className="px-3 py-2 text-xs text-slate-500">{fechaHora(entrevista.actualizadoEn)}</td>
+      </tr>
+      {estadoPendiente !== null && estadoPendiente !== estadoActual && (
+        <tr>
+          <td colSpan={7}>
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={`confirmar-estado-${entrevista.id}`}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+            >
+              <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-xl">
+                <h2
+                  id={`confirmar-estado-${entrevista.id}`}
+                  className="text-base font-semibold text-slate-100"
+                >
+                  Confirmar actualización
+                </h2>
+                <p className="mt-2 text-sm text-slate-300">
+                  ¿Confirmas cambiar el estado de la entrevista de{' '}
+                  <strong>{entrevista.candidato.nombre}</strong> a{' '}
+                  <strong>{ETIQUETA_ESTADO_ENTREVISTA[estadoPendiente]}</strong>?
+                </p>
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    disabled={enviando}
+                    onClick={() => void cambiarEstado(estadoPendiente)}
+                    className={CLASE_BOTON_PRINCIPAL}
+                  >
+                    {enviando ? 'Guardando…' : 'Confirmar'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={enviando}
+                    onClick={() => setEstadoPendiente(null)}
+                    className="rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -224,6 +274,7 @@ export function PaginaEntrevistas() {
                 <th className={`px-3 py-2 ${CLASE_ETIQUETA}`}>Tipo</th>
                 <th className={`px-3 py-2 ${CLASE_ETIQUETA}`}>Entrevistador</th>
                 <th className={`px-3 py-2 ${CLASE_ETIQUETA}`}>Estado</th>
+                <th className={`px-3 py-2 ${CLASE_ETIQUETA}`}>Acciones</th>
                 <th className={`px-3 py-2 ${CLASE_ETIQUETA}`}>Actualizada</th>
               </tr>
             </thead>
