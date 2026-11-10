@@ -88,9 +88,9 @@ export class Candidato {
   @Column({ type: 'text', nullable: true })
   ciudad!: string | null;
 
-  /** Área LARCO del candidato (FK `departamentos(id)`, Etapa 9; nullable). */
-  @Column({ name: 'departamento_id', type: 'uuid', nullable: true })
-  departamentoId!: string | null;
+  /** Área LARCO del candidato (FK `departamentos(id)`, obligatoria). */
+  @Column({ name: 'departamento_id', type: 'uuid' })
+  departamentoId!: string;
 
   @Column({ name: 'cargo_actual', type: 'text', nullable: true })
   cargoActual!: string | null;

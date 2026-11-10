@@ -6,10 +6,8 @@ import { textoALista } from '../../lib/formato';
 import { useRecurso } from '../../lib/useRecurso';
 import { useSesionStore } from '../../store/sesion';
 import {
-  MODALIDADES_REQUERIMIENTO,
   URGENCIAS_REQUERIMIENTO,
   type Departamento,
-  type ModalidadRequerimiento,
   type Requerimiento,
   type RequerimientoNuevo,
   type UrgenciaRequerimiento,
@@ -23,13 +21,6 @@ export const ETIQUETA_URGENCIA: Readonly<Record<UrgenciaRequerimiento, string>> 
   normal: 'Normal',
   alta: 'Alta',
   critica: 'Crítica',
-};
-
-/** Etiquetas legibles de modalidad. */
-export const ETIQUETA_MODALIDAD: Readonly<Record<ModalidadRequerimiento, string>> = {
-  directa: 'Directa',
-  indirecta: 'Indirecta',
-  terceros: 'Terceros / Contratistas',
 };
 
 /**
@@ -47,11 +38,9 @@ export const ETIQUETA_MODALIDAD: Readonly<Record<ModalidadRequerimiento, string>
 export interface EstadoFormularioRequerimiento {
   titulo: string;
   jefatura: string;
+  departamentoId: string;
   numeroPlazas: string;
   urgencia: UrgenciaRequerimiento;
-  modalidad: ModalidadRequerimiento;
-  departamentoId: string;
-  ubicacion: string;
   fechaRequerida: string;
   experienciaRequerida: string;
   nivelEducacion: string;
@@ -72,11 +61,9 @@ export function formularioVacio(): EstadoFormularioRequerimiento {
   return {
     titulo: '',
     jefatura: '',
+    departamentoId: '',
     numeroPlazas: '1',
     urgencia: 'normal',
-    modalidad: 'directa',
-    departamentoId: '',
-    ubicacion: '',
     fechaRequerida: '',
     experienciaRequerida: '',
     nivelEducacion: '',
@@ -98,11 +85,9 @@ export function formularioDesdeRequerimiento(
   return {
     titulo: requerimiento.titulo,
     jefatura: requerimiento.jefatura,
+    departamentoId: requerimiento.departamentoId ?? '',
     numeroPlazas: String(requerimiento.numeroPlazas),
     urgencia: requerimiento.urgencia,
-    modalidad: requerimiento.modalidad,
-    departamentoId: requerimiento.departamentoId ?? '',
-    ubicacion: requerimiento.ubicacion ?? '',
     fechaRequerida: requerimiento.fechaRequerida ?? '',
     experienciaRequerida: requerimiento.experienciaRequerida ?? '',
     nivelEducacion: requerimiento.nivelEducacion ?? '',
@@ -181,13 +166,6 @@ export function validarFormularioRequerimiento(
   if (textoALista(formulario.habilidades).length === 0) {
     errores.habilidades = 'habilidades no puede estar vacía';
   }
-  if (formulario.departamentoId.trim().length === 0) {
-    errores.departamentoId = 'departamentoId es obligatorio';
-  }
-  if (formulario.ubicacion.trim().length === 0) {
-    errores.ubicacion = 'ubicacion es obligatoria';
-  }
-
   const min = formulario.salarioMin.trim();
   const max = formulario.salarioMax.trim();
   if (min.length === 0) {
@@ -239,11 +217,9 @@ export function aCuerpoRequerimiento(
     identificacion: {
       titulo: formulario.titulo.trim(),
       jefatura: formulario.jefatura.trim(),
+      departamentoId: formulario.departamentoId.trim(),
       numeroPlazas: Number(formulario.numeroPlazas.trim()),
       urgencia: formulario.urgencia,
-      modalidad: formulario.modalidad,
-      departamentoId: formulario.departamentoId.trim(),
-      ubicacion: formulario.ubicacion.trim(),
       fechaRequerida: formulario.fechaRequerida,
     },
     perfil: {
@@ -295,7 +271,6 @@ export function FormularioRequerimiento({
   const [enviando, setEnviando] = useState(false);
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
 
-  // El catálogo de departamentos es obligatorio para crear un requerimiento.
   const departamentos = useRecurso<Departamento[]>(
     () => solicitud<Departamento[]>('/departamentos'),
     [],
@@ -340,13 +315,27 @@ export function FormularioRequerimiento({
               </label>
               <select
                 id="req-jefatura"
-                value={formulario.jefatura}
-                onChange={(evento) => cambiar('jefatura')(evento.target.value)}
+                value={formulario.departamentoId}
+                onChange={(evento) => {
+                  const departamento = (departamentos.datos ?? []).find(
+                    (item) => item.id === evento.target.value,
+                  );
+                  setFormulario((anterior) => ({
+                    ...anterior,
+                    departamentoId: evento.target.value,
+                    jefatura: departamento?.nombre ?? '',
+                  }));
+                  setErrores((anteriores) => ({
+                    ...anteriores,
+                    departamentoId: undefined,
+                    jefatura: undefined,
+                  }));
+                }}
                 className={CLASE_CAMPO}
               >
                 <option value="">(selecciona una jefatura)</option>
                 {(departamentos.datos ?? []).map((departamento) => (
-                  <option key={departamento.id} value={departamento.nombre}>
+                  <option key={departamento.id} value={departamento.id}>
                     {departamento.nombre}
                   </option>
                 ))}
@@ -395,52 +384,6 @@ export function FormularioRequerimiento({
               ))}
             </select>
           </div>
-          <div>
-            <label htmlFor="req-modalidad" className={CLASE_ETIQUETA}>
-              Modalidad
-            </label>
-            <select
-              id="req-modalidad"
-              value={formulario.modalidad}
-              onChange={(evento) =>
-                cambiar('modalidad')(evento.target.value as ModalidadRequerimiento)
-              }
-              className={CLASE_CAMPO}
-            >
-              {MODALIDADES_REQUERIMIENTO.map((modalidad) => (
-                <option key={modalidad} value={modalidad}>
-                  {ETIQUETA_MODALIDAD[modalidad]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="req-departamento" className={CLASE_ETIQUETA}>
-              Departamento *
-            </label>
-            <select
-              id="req-departamento"
-              value={formulario.departamentoId}
-              onChange={(evento) => cambiar('departamentoId')(evento.target.value)}
-              className={CLASE_CAMPO}
-            >
-              <option value="">(selecciona un departamento)</option>
-              {(departamentos.datos ?? []).map((departamento) => (
-                <option key={departamento.id} value={departamento.id}>
-                  {departamento.nombre}
-                </option>
-              ))}
-            </select>
-            {errores.departamentoId && (
-              <p className="mt-1 text-xs text-rose-300">{errores.departamentoId}</p>
-            )}
-          </div>
-          <CampoTexto
-            etiqueta="Ubicación *"
-            valor={formulario.ubicacion}
-            onCambio={cambiar('ubicacion')}
-            error={errores.ubicacion}
-          />
           <CampoTexto
             etiqueta="Fecha requerida *"
             type="date"

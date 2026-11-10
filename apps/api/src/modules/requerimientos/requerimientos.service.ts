@@ -30,8 +30,6 @@ const CAMPOS_OBLIGATORIOS: ReadonlyArray<{ campo: keyof Requerimiento; etiqueta:
   { campo: 'numeroPlazas', etiqueta: 'numeroPlazas' },
   { campo: 'urgencia', etiqueta: 'urgencia' },
   { campo: 'modalidad', etiqueta: 'modalidad' },
-  { campo: 'departamentoId', etiqueta: 'departamentoId' },
-  { campo: 'ubicacion', etiqueta: 'ubicacion' },
   { campo: 'fechaRequerida', etiqueta: 'fechaRequerida' },
   { campo: 'experienciaRequerida', etiqueta: 'experienciaRequerida' },
   { campo: 'nivelEducacion', etiqueta: 'nivelEducacion' },

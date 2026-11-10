@@ -100,7 +100,7 @@ describe('listado y búsqueda de candidatos', () => {
     expect(fetchMock).toHaveBeenCalledTimes(llamadasIniciales);
   });
 
-  it('lider_area no ve «Nuevo candidato» (no puede registrar candidatos)', async () => {
+  it('lider_area ve «Nuevo candidato»', async () => {
     sembrarSesion('lider_area');
     instalarFetch(() => ({
       cuerpo: fixturePagina([fixtureCandidato()], { total: 1, page: 1, limit: 10 }),
@@ -109,6 +109,6 @@ describe('listado y búsqueda de candidatos', () => {
     pintar();
 
     expect(await screen.findByRole('link', { name: 'María Pérez' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Nuevo candidato' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Nuevo candidato' })).toBeInTheDocument();
   });
 });

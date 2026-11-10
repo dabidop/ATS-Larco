@@ -37,8 +37,8 @@ export interface PiiPreparada {
 /**
  * DTO de creación → datos de la entidad.
  *
- * Los opcionales del DTO (`undefined`) se traducen a `null`: las columnas son
- * `NULL` en BD y la entidad declara `string | null`, no `string | undefined`.
+ * Los campos opcionales del DTO se traducen a `null`; `departamentoId` es la
+ * excepción porque el servicio lo resuelve antes de llamar a este mapper.
  * Los campos PII (`cedula`, `telefono`) NO aparecen aquí en claro: el servicio
  * los pasa ya cifrados en `pii`.
  */
@@ -51,7 +51,7 @@ export function buildCreateData(dto: CreateCandidatoDto, pii: PiiPreparada): Can
     telefonoCifrada: pii.telefonoCifrada,
     cedulaHash: pii.cedulaHash,
     ciudad: normalizarCadena(dto.ciudad),
-    departamentoId: dto.departamentoId ?? null,
+    departamentoId: dto.departamentoId!,
     cargoActual: normalizarCadena(dto.cargoActual),
     expectativaSalarial: dto.expectativaSalarial ?? null,
     disponibilidad: normalizarCadena(dto.disponibilidad),

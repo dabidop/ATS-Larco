@@ -128,12 +128,12 @@ export class CandidatosController {
   /** Crea un candidato (201) con la PII cifrada. Solo selección, admin RRHH y superusuario. */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles('analista_seleccion', 'admin_rrhh', 'superusuario')
+  @Roles('analista_seleccion', 'admin_rrhh', 'superusuario', 'lider_area')
   async create(
     @Body() body: CreateCandidatoDto,
     @Req() request: AuthenticatedRequest,
   ): Promise<CandidatoResponseDto> {
-    return this.candidatos.create(body, requireUser(request).sub);
+    return this.candidatos.create(body, requireUser(request));
   }
 
   /** Listado paginado con filtros `q` (parcial) y `cedula` (exacta) — cualquier rol. */

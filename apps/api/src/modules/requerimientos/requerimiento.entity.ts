@@ -133,11 +133,11 @@ export class Requerimiento {
   modalidad!: ModalidadRequerimiento;
 
   /** Área LARCO solicitante (FK `departamentos(id)`). */
-  @Column({ name: 'departamento_id', type: 'uuid' })
-  departamentoId!: string;
+  @Column({ name: 'departamento_id', type: 'uuid', nullable: true })
+  departamentoId!: string | null;
 
-  @Column({ type: 'text' })
-  ubicacion!: string;
+  @Column({ type: 'text', nullable: true })
+  ubicacion!: string | null;
 
   /** `'YYYY-MM-DD'`: el driver hidrata `date` como string, no como Date. */
   @Column({ name: 'fecha_requerida', type: 'date' })

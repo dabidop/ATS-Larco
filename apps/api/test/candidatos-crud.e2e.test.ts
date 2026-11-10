@@ -140,6 +140,7 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
 
   /** Candidato principal: PII, GET, filtros y 403 de no-creador. */
   let candidatoPrincipal: { id: string };
+  let departamentoSistemas: string;
 
   beforeAll(async () => {
     const url = process.env.DATABASE_URL;
@@ -232,6 +233,12 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
     tokenLider = jwt.sign({ sub: idDe(EMAIL_LIDER), email: EMAIL_LIDER, role: 'lider_area' });
     tokenSuper = jwt.sign({ sub: superId, email: SUPER_EMAIL, role: 'superusuario' });
 
+    const departamentosIniciales = (await repo.query(
+      `SELECT id FROM departamentos WHERE nombre = 'SISTEMAS' LIMIT 1`,
+    )) as Array<{ id: string }>;
+    departamentoSistemas = departamentosIniciales[0]?.id ?? '';
+    if (departamentoSistemas === '') throw new Error('No se encontró SISTEMAS');
+
     // Fixtures: el candidato principal (para GET/filtros/403) y un segundo
     // candidato que servirá de "colisión" de cédula en el PATCH.
     candidatoPrincipal = await crearFixture('Zoraida', CEDULA_PRINCIPAL, TOKEN_Q);
@@ -298,6 +305,7 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
         apellidos: `Prueba ${SUFIJO_UNICO}`,
         cedula,
         ciudad: MARCA,
+        departamentoId: departamentoSistemas,
       })
       .expect(201);
     return { id: response.body.id as string };
@@ -312,6 +320,7 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
       cedula,
       telefono: '3001234567',
       ciudad: MARCA,
+      departamentoId: departamentoSistemas,
       cargoActual: 'Ingeniera de Datos',
       expectativaSalarial: 4_500_000,
       disponibilidad: 'Inmediata',
@@ -375,14 +384,17 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
       expect(response.body.message).toBe('Ya existe un candidato con esa cédula');
     });
 
-    it('con rol lider_area → 403 (solo analista_seleccion, admin_rrhh y superusuario)', async () => {
+    it('con rol lider_area → 201 y asigna su propio departamento', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/candidatos')
         .set('Authorization', `Bearer ${tokenLider}`)
-        .send(cuerpoValido(`${CEDULA_POST}9`))
-        .expect(403);
+        .send({
+          ...cuerpoValido(`${CEDULA_POST}9`),
+          email: `candidato-lider-${SUFIJO_UNICO}@mail.test`,
+        })
+        .expect(201);
 
-      expect(response.body.message).toBe('No tienes permiso para realizar esta acción');
+      expect(response.body.departamentoId).toBeDefined();
     });
 
     it('con una cédula inválida (texto) → 400 con mensaje en español', async () => {
@@ -539,12 +551,19 @@ describe('Candidatos — API CRUD e2e con PII cifrada (BD dev docker real)', () 
         .query({ q: SUFIJO_UNICO, departamentoId: area[0]?.departamento_id })
         .set('Authorization', `Bearer ${tokenLider}`)
         .expect(200);
-      expect(listado.body.items).toHaveLength(1);
-      expect(listado.body.items[0].id).toBe(candidatoPrincipal.id);
+      expect(listado.body.items.length).toBeGreaterThanOrEqual(2);
+      expect(listado.body.items.map((item: { id: string }) => item.id)).toContain(
+        candidatoPrincipal.id,
+      );
 
       const fueraDelArea = (await repo.query(
-        'SELECT id FROM candidatos WHERE ciudad = $1 AND id <> $2 LIMIT 1',
-        [MARCA, candidatoPrincipal.id],
+        `SELECT id
+           FROM candidatos
+          WHERE ciudad = $1
+            AND departamento_id <> $2
+            AND id <> $3
+          LIMIT 1`,
+        [MARCA, area[0]?.departamento_id, candidatoPrincipal.id],
       )) as Array<{ id: string }>;
       const otroId = fueraDelArea[0]?.id;
       expect(otroId).toBeDefined();

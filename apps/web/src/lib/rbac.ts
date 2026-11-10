@@ -94,7 +94,7 @@ export function puedeConsultarCandidatos(rol: string | null | undefined): boolea
  * (`POST /:id/archivos`) → `analista_seleccion`, `admin_rrhh` y `superusuario`.
  */
 export function puedeGestionarCandidatos(rol: string | null | undefined): boolean {
-  return rol === 'analista_seleccion' || esAdministradorRRHH(rol);
+  return rol === 'analista_seleccion' || rol === 'lider_area' || esAdministradorRRHH(rol);
 }
 
 /** Editar (`PATCH /:id`): «solo el creador del candidato o un administrador de RRHH/superusuario». */

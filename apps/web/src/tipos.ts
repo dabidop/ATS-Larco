@@ -72,7 +72,8 @@ export interface Requerimiento {
   /** Prioridad (Etapa 9): `normal` | `alta` | `critica`. */
   urgencia: UrgenciaRequerimiento;
   /** Modalidad (Etapa 9): `directa` | `indirecta` | `terceros`. */
-  modalidad: ModalidadRequerimiento;
+  /** Campo heredado; ya no se solicita en el formulario. */
+  modalidad?: ModalidadRequerimiento;
   /** FK al área LARCO (`departamentos`); `null` si no está asociado. */
   departamentoId: string | null;
   ubicacion: string | null;
@@ -106,9 +107,11 @@ export interface SeccionIdentificacion {
   jefatura: string;
   numeroPlazas: number;
   urgencia: UrgenciaRequerimiento;
-  modalidad: ModalidadRequerimiento;
-  departamentoId: string;
-  ubicacion: string;
+  /** Campo heredado; ya no se solicita en el formulario. */
+  modalidad?: ModalidadRequerimiento;
+  /** Campos heredados, ya no se solicitan en el formulario. */
+  departamentoId?: string;
+  ubicacion?: string;
   /** `'YYYY-MM-DD'` exacto (`@IsDateString({ strictSeparator: true })`. */
   fechaRequerida: string;
 }

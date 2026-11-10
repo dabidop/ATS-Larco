@@ -74,7 +74,7 @@ describe('rbac — matriz real de la API', () => {
     expect(puedeGestionarCandidatos('analista_seleccion')).toBe(true);
     expect(puedeGestionarCandidatos('admin_rrhh')).toBe(true);
     expect(puedeGestionarCandidatos('superusuario')).toBe(true);
-    expect(puedeGestionarCandidatos('lider_area')).toBe(false);
+    expect(puedeGestionarCandidatos('lider_area')).toBe(true);
     expect(puedeGestionarCandidatos(null)).toBe(false);
   });
 
@@ -83,7 +83,7 @@ describe('rbac — matriz real de la API', () => {
     expect(puedeEditarCandidato('superusuario', false)).toBe(true);
     expect(puedeEditarCandidato('analista_seleccion', true)).toBe(true);
     expect(puedeEditarCandidato('analista_seleccion', false)).toBe(false);
-    // Inalcanzable en la práctica (lider_area no crea candidatos), pero
+    // El líder puede crear candidatos en su propio departamento, pero
     // replica la regla del servidor: el CREADOR siempre puede editar.
     expect(puedeEditarCandidato('lider_area', true)).toBe(true);
     expect(puedeEditarCandidato('lider_area', false)).toBe(false);

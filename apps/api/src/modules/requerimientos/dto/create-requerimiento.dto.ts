@@ -60,15 +60,15 @@ export class IdentificacionRequerimientoDto {
   @IsEnum(ModalidadRequerimiento, {
     message: `modalidad debe ser una de: ${Object.values(ModalidadRequerimiento).join(', ')}`,
   })
-  modalidad!: ModalidadRequerimiento;
+  modalidad?: ModalidadRequerimiento;
 
   /** Área LARCO solicitante. */
+  /** Campos heredados aceptados solo para compatibilidad con clientes antiguos. */
   @IsUUID('4', { message: 'departamentoId debe ser un UUID válido' })
-  departamentoId!: string;
+  departamentoId?: string;
 
   @IsString({ message: 'ubicacion debe ser una cadena de texto' })
-  @IsNotEmpty({ message: 'ubicacion es obligatoria' })
-  ubicacion!: string;
+  ubicacion?: string;
 
   /** `'YYYY-MM-DD'` exacto: `strictSeparator` descarta fechas con hora. */
   @IsDateString(

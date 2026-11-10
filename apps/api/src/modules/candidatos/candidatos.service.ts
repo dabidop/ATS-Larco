@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -341,8 +342,14 @@ export class CandidatosService {
    * único `candidatos_cedula_hash_unique` cierra la carrera si dos peticiones
    * concurrentes crean la misma cédula (el 23505 se traduce aquí abajo).
    */
-  async create(dto: CreateCandidatoDto, createdBy: string): Promise<CandidatoResponseDto> {
+  async create(dto: CreateCandidatoDto, user: AuthenticatedUser): Promise<CandidatoResponseDto> {
     const repo = await this.store.repo();
+
+    const departamentoId =
+      user.role === 'lider_area' ? await this.departamentoDelLider(repo, user) : dto.departamentoId;
+    if (departamentoId === undefined) {
+      throw new BadRequestException('departamentoId es obligatorio');
+    }
 
     const cedulaHash = this.searchHash.hashCedula(dto.cedula);
     const existente = await repo.findOneBy({ cedulaHash });
@@ -350,14 +357,20 @@ export class CandidatosService {
       throw new ConflictException('Ya existe un candidato con esa cédula');
     }
 
-    await this.assertDepartamentoExiste(repo, dto.departamentoId);
+    await this.assertDepartamentoExiste(repo, departamentoId);
 
     const cedulaCifrada = this.crypto.encrypt(dto.cedula);
     const telefonoCifrada = cifrarTelefono(this.crypto, dto.telefono);
+    const dtoConDepartamento: CreateCandidatoDto = { ...dto, departamentoId };
 
     const entidad = repo.create({
-      ...buildCreateData(dto, { cedulaCifrada, telefonoCifrada, cedulaHash }),
-      createdBy,
+      ...buildCreateData(dtoConDepartamento, {
+        cedulaCifrada,
+        telefonoCifrada,
+        cedulaHash,
+      }),
+      departamentoId,
+      createdBy: user.sub,
     });
 
     try {
@@ -366,6 +379,26 @@ export class CandidatosService {
     } catch (error) {
       throw this.mapearDuplicado(error);
     }
+  }
+
+  /** Asigna al líder el departamento que corresponde a su jefatura. */
+  private async departamentoDelLider(
+    repo: Repository<Candidato>,
+    user: AuthenticatedUser,
+  ): Promise<string> {
+    const filas = (await repo.manager.query<Array<{ id: string }>>(
+      `SELECT d.id
+         FROM departamentos d
+         JOIN users u ON lower(btrim(u.jefatura)) = lower(btrim(d.nombre))
+        WHERE u.id = $1 AND u.active AND u.jefatura IS NOT NULL
+        LIMIT 1`,
+      [user.sub],
+    )) as Array<{ id: string }>;
+    const departamento = filas[0];
+    if (departamento === undefined) {
+      throw new ForbiddenException('El líder no tiene una jefatura asociada a un departamento');
+    }
+    return departamento.id;
   }
 
   /**

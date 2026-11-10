@@ -94,7 +94,7 @@ export class CreateCandidatoDto {
   })
   ciudad?: string;
 
-  /** Área LARCO del candidato (Etapa 9; FK a `departamentos`; opcional). */
+  /** Área LARCO; el líder la recibe automáticamente desde su jefatura. */
   @IsOptional()
   @IsUUID('4', { message: 'departamentoId debe ser un UUID válido' })
   departamentoId?: string;
