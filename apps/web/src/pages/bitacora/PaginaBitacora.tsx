@@ -60,7 +60,9 @@ function EntradaAuditoriaFila({ entrada }: { entrada: EntradaAuditoria }) {
           {entrada.cambios.map((cambio) => (
             <li key={cambio.campo} className="text-xs break-all text-slate-300">
               <span className="text-slate-500">{cambio.campo}:</span>{' '}
-              {entrada.accion === 'DELETE' ? (
+              {entrada.accion === 'INSERT' ? (
+                <span className="text-emerald-300">{valorHistorial(cambio.despues)}</span>
+              ) : entrada.accion === 'DELETE' ? (
                 <span className="text-rose-300">{valorHistorial(cambio.antes)} — eliminado</span>
               ) : (
                 <>

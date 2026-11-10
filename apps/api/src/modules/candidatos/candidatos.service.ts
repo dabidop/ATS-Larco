@@ -169,7 +169,6 @@ const COLUMNAS_HISTORIAL: Readonly<Record<string, string>> = {
   cedula_cifrada: 'cedula',
   telefono_cifrada: 'telefono',
   ciudad: 'ciudad',
-  departamento_id: 'departamentoId',
   cargo_actual: 'cargoActual',
   expectativa_salarial: 'expectativaSalarial',
   disponibilidad: 'disponibilidad',

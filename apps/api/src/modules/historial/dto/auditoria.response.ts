@@ -248,6 +248,8 @@ function valorLegible(
   if (esClaveProtegida(campo)) return VALOR_PROTEGIDO;
   if (typeof valor === 'boolean') return valor ? 'Sí' : 'No';
   if (campo === 'role_id') return referencias?.roles.get(String(valor)) ?? 'Perfil de acceso';
+  if (campo === 'created_by')
+    return referencias?.usuarios.get(String(valor)) ?? 'Usuario del sistema';
   if (campo === 'departamento_id') {
     return referencias?.departamentos.get(String(valor)) ?? 'Departamento asignado';
   }

@@ -349,10 +349,10 @@ function SeccionHistorial({ candidatoId }: { candidatoId: string }) {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm font-semibold text-slate-200">
                   {entrada.accion === 'INSERT'
-                    ? 'Alta'
+                    ? 'Creación'
                     : entrada.accion === 'UPDATE'
                       ? 'Modificación'
-                      : 'Borrado'}
+                      : 'Eliminación'}
                 </span>
                 <span className="text-xs text-slate-400">{fechaHora(entrada.fecha)}</span>
               </div>
@@ -369,7 +369,13 @@ function SeccionHistorial({ candidatoId }: { candidatoId: string }) {
                     <div key={cambio.campo} className="flex flex-wrap gap-2 text-xs">
                       <dt className="font-medium text-slate-300">{cambio.campo}</dt>
                       <dd className="text-slate-400">
-                        {valorHistorial(cambio.antes)} → {valorHistorial(cambio.despues)}
+                        {entrada.accion === 'INSERT' ? (
+                          valorHistorial(cambio.despues)
+                        ) : entrada.accion === 'DELETE' ? (
+                          <>{valorHistorial(cambio.antes)} — eliminado</>
+                        ) : (
+                          `${valorHistorial(cambio.antes)} → ${valorHistorial(cambio.despues)}`
+                        )}
                       </dd>
                     </div>
                   ))}
