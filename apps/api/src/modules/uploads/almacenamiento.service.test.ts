@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, readdir, readFile, rm, stat, utimes } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ConfigService } from '@nestjs/config';
@@ -96,6 +96,18 @@ describe('AlmacenamientoService', () => {
       expect(a.deduplicado).toBe(false);
       expect(b.deduplicado).toBe(false);
       expect(await readdir(directorio)).toHaveLength(2);
+    });
+
+    it('rechaza un blob existente corrupto y nunca lo pisa', async () => {
+      const contenido = Buffer.from('%PDF-1.7\ncontenido original', 'latin1');
+      const sha = sha256De(contenido);
+      await servicio.guardar(contenido);
+      const ruta = join(directorio, sha);
+      const corrupto = Buffer.from('%PDF-1.7\ntruncado', 'latin1');
+      await writeFile(ruta, corrupto);
+
+      await expect(servicio.guardar(contenido)).rejects.toThrow(/Blob existente corrupto/);
+      await expect(readFile(ruta)).resolves.toEqual(corrupto);
     });
 
     it('crea el directorio en el primer uso (no hace falta existir antes)', async () => {

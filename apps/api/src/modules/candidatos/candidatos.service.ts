@@ -312,8 +312,7 @@ export class CandidatosService {
 
   /**
    * 404 si `departamentoId` viene informado y NO existe (Etapa 9): el cuerpo
-   * nunca debe provocar un 500 de FK violada. Ausente o `null` no comprueban
-   * (desasociar el departamento siempre es válido).
+   * nunca debe provocar un 500 de FK violada.
    */
   private async assertDepartamentoExiste(
     repo: Repository<Candidato>,
@@ -346,7 +345,7 @@ export class CandidatosService {
 
     const departamentoId =
       user.role === 'lider_area' ? await this.departamentoDelLider(repo, user) : dto.departamentoId;
-    if (departamentoId === undefined) {
+    if (departamentoId === undefined || departamentoId === null) {
       throw new BadRequestException('departamentoId es obligatorio');
     }
 
@@ -513,6 +512,9 @@ export class CandidatosService {
 
     const cambios = buildUpdateData(dto);
     if (dto.departamentoId !== undefined) {
+      if (dto.departamentoId === null) {
+        throw new BadRequestException('departamentoId es obligatorio y no puede ser null');
+      }
       await this.assertDepartamentoExiste(repo, dto.departamentoId);
     }
 

@@ -408,7 +408,7 @@ describe('Importación masiva de HVs — e2e (BD dev docker real)', () => {
     expect(noPdf.ok).toBe(false);
     expect(String(noPdf.motivo)).toContain('no es un PDF');
     expect(duplicado.ok).toBe(false);
-    expect(String(duplicado.motivo)).toContain('Ya existe un candidato con el email');
+    expect(String(duplicado.motivo)).toContain('el email ya está registrado');
 
     // La importación es transaccional POR ARCHIVO: el email duplicado NO creó
     // un segundo candidato (el índice único de email lo impediría igualmente).
@@ -454,7 +454,9 @@ describe('Importación masiva de HVs — e2e (BD dev docker real)', () => {
       .expect(200);
 
     expect(response.body).toMatchObject({ procesados: 1, creados: 0, fallidos: 1 });
-    expect(String(response.body.resultados[0].motivo)).toContain('No se pudo adjuntar el CV');
+    expect(String(response.body.resultados[0].motivo)).toContain(
+      'No se pudo completar el registro del candidato y su CV',
+    );
     const candidatos = await database.query('SELECT id FROM candidatos WHERE email = $1', [
       EMAIL_FALLO_ADJUNTO,
     ]);

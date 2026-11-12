@@ -378,6 +378,7 @@ describe('Postulaciones — embudo de selección e2e (BD dev docker real)', () =
         nombres: nombresCompletos,
         apellidos: APELLIDOS_MARCA,
         cedula,
+        departamentoId,
       })
       .expect(201);
     return { id: response.body.id as string, nombres: nombresCompletos };

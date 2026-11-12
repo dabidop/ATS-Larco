@@ -5,11 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { descargar, mensajeDeError, solicitud, subirArchivo } from '../../lib/api';
 import { validarArchivoCv } from '../../lib/archivos';
 import { fechaCorta, fechaHora, tamanoArchivo, valorHistorial } from '../../lib/formato';
-import {
-  puedeEditarCandidato,
-  puedeEliminarCandidato,
-  puedeGestionarCandidatos,
-} from '../../lib/rbac';
+import { puedeEditarCandidato, puedeEliminarCandidato, puedeSubirArchivosCv } from '../../lib/rbac';
 import { useRecurso } from '../../lib/useRecurso';
 import { useSesionStore } from '../../store/sesion';
 import type { ArchivoCv, Candidato, CandidatoNuevo, EntradaHistorial } from '../../tipos';
@@ -199,7 +195,7 @@ function SeccionArchivos({ candidatoId, rol }: { candidatoId: string; rol: strin
   const [errorDescarga, setErrorDescarga] = useState<string | null>(null);
   const [exito, setExito] = useState<string | null>(null);
   const inputArchivo = useRef<HTMLInputElement>(null);
-  const puedeSubir = puedeGestionarCandidatos(rol);
+  const puedeSubir = puedeSubirArchivosCv(rol);
 
   const alSeleccionar = async (evento: ChangeEvent<HTMLInputElement>) => {
     const archivo = evento.target.files?.[0];

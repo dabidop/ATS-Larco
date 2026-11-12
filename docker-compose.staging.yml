@@ -25,10 +25,13 @@ services:
       NODE_ENV: production
       PORT: '3000'
       UPLOAD_DIR: /app/storage/CVs
+      BACKUP_DIR: /app/storage/backups
     expose:
       - '3000'
     volumes:
       - cv_staging:/app/storage/CVs
+      # Solo lectura: el host debe inyectar explícitamente BACKUP_DIR_HOST.
+      - ${BACKUP_DIR_HOST:?BACKUP_DIR_HOST requerido}:/app/storage/backups:ro
     depends_on:
       db:
         condition: service_healthy

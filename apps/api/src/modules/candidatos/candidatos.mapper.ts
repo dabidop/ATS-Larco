@@ -76,8 +76,9 @@ export function buildUpdateData(dto: UpdateCandidatoDto): Partial<CandidatoEdita
   if (dto.apellidos !== undefined) cambios.apellidos = dto.apellidos.trim();
   if (dto.email !== undefined) cambios.email = normalizarCadena(dto.email);
   if (dto.ciudad !== undefined) cambios.ciudad = normalizarCadena(dto.ciudad);
-  // `null` explícito desasocia al candidato de su departamento.
-  if (dto.departamentoId !== undefined) cambios.departamentoId = dto.departamentoId ?? null;
+  // departamentoId es NOT NULL desde la migración 021; DTO y servicio
+  // rechazan null antes de llegar a este mapper.
+  if (dto.departamentoId !== undefined) cambios.departamentoId = dto.departamentoId;
   if (dto.cargoActual !== undefined) cambios.cargoActual = normalizarCadena(dto.cargoActual);
   if (dto.expectativaSalarial !== undefined) {
     cambios.expectativaSalarial = dto.expectativaSalarial;

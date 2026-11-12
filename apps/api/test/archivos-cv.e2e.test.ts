@@ -132,6 +132,8 @@ describe('Archivos de CV — subida, dedup y descarga e2e (BD dev docker real)',
   let ficherosIniciales = new Set<string>();
 
   let creadorId: string;
+  let departamentoId: string;
+  const codigoRequerimientoRetencion = `REQ-2026-${randomInt(100000, 999999)}`;
   let tokenAnalista: string;
   let tokenLider: string;
 
@@ -176,6 +178,11 @@ describe('Archivos de CV — subida, dedup y descarga e2e (BD dev docker real)',
     jwt = app.get(JwtService);
     store = app.get(CandidatosStoreService, { strict: false });
     repo = await store.repo();
+    const departamentosFixture = (await repo.query(
+      'SELECT id FROM departamentos ORDER BY nombre LIMIT 1',
+    )) as Array<{ id: string }>;
+    departamentoId = departamentosFixture[0]?.id ?? '';
+    if (departamentoId === '') throw new Error('No hay departamentos para los fixtures de CV');
     almacenamiento = app.get(AlmacenamientoService, { strict: false });
     archivosCv = app.get(ArchivosCvService);
     directorioSubidas = almacenamiento.directorio;
@@ -266,6 +273,9 @@ describe('Archivos de CV — subida, dedup y descarga e2e (BD dev docker real)',
           [MARCA],
         );
         await em.query('DELETE FROM candidatos WHERE ciudad = $1', [MARCA]);
+        await em.query('DELETE FROM requerimientos WHERE code = $1', [
+          codigoRequerimientoRetencion,
+        ]);
         // `audit_log.changed_by` es FK con ON DELETE SET NULL: borrar usuarios
         // provocaría un UPDATE sobre `audit_log`, que su trigger rechaza. Se
         // deshabilita SOLO dentro de esta transacción. Las filas de
@@ -317,6 +327,7 @@ describe('Archivos de CV — subida, dedup y descarga e2e (BD dev docker real)',
         apellidos: `Prueba ${SUFIJO_UNICO}`,
         cedula,
         ciudad: MARCA,
+        departamentoId,
       })
       .expect(201);
     return { id: response.body.id as string };
@@ -849,9 +860,24 @@ describe('Archivos de CV — subida, dedup y descarga e2e (BD dev docker real)',
       tokenAnalista,
     ).expect(201);
 
-    const requerimientos = (await repo.query(
+    let requerimientos = (await repo.query(
       `SELECT id FROM requerimientos WHERE estado = 'en_proceso' LIMIT 1`,
     )) as Array<{ id: string }>;
+    if (requerimientos[0] === undefined) {
+      requerimientos = (await repo.query(
+        `INSERT INTO requerimientos
+           (code, estado, jefatura, titulo, numero_plazas, perfil_profesional,
+            experiencia_requerida, nivel_educacion, conocimientos, habilidades,
+            salario_min, salario_max, tipo_contrato, jornada, departamento_id,
+            ubicacion, fecha_requerida, justificacion, modalidad, urgencia, created_by)
+         VALUES ($1, 'en_proceso', 'Jefatura CV', 'Retención CV', 1, 'Profesional',
+            '2 años', 'Profesional', ARRAY['SQL'], ARRAY['Análisis'],
+            2800000, 3500000, 'Indefinido', 'Diurna', $2,
+            'Bogotá D.C.', '2026-12-01', 'Fixture de retención CV', 'directa', 'normal', $3)
+         RETURNING id`,
+        [codigoRequerimientoRetencion, departamentoId, creadorId],
+      )) as Array<{ id: string }>;
+    }
     expect(requerimientos[0]).toBeDefined();
     const postulacion = (await repo.query(
       `INSERT INTO postulaciones (candidato_id, requerimiento_id, created_by)

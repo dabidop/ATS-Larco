@@ -228,7 +228,12 @@ describe('Refresh rotatorio — e2e (BD dev docker real)', () => {
       .post('/api/candidatos')
       .set('Cookie', `ats_access=${cookies.ats_access ?? ''}; ats_csrf=${cookies.ats_csrf ?? ''}`)
       .set('X-CSRF-Token', cookies.ats_csrf ?? '')
-      .send({})
+      .send({
+        nombres: 'Candidato de prueba',
+        apellidos: 'Cambio de rol',
+        cedula: '987654321',
+        departamentoId: '11111111-1111-4111-8111-111111111111',
+      })
       .expect(403);
 
     await db.query(

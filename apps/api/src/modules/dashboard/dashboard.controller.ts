@@ -1,4 +1,5 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, Req } from '@nestjs/common';
+import type { AuthenticatedRequest } from '../../common/guards/auth.guard';
 
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { DashboardResponseDto } from './dto/dashboard.response';
@@ -21,7 +22,15 @@ export class DashboardController {
   /** Resumen operativo: candidatos en embudo + requerimientos + críticos. */
   @Get()
   @Roles('analista_seleccion', 'admin_rrhh', 'superusuario', 'lider_area')
-  resumen(@Query() query: ListDashboardQueryDto): Promise<DashboardResponseDto> {
-    return this.service.resumen(query);
+  resumen(
+    @Query() query: ListDashboardQueryDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<DashboardResponseDto> {
+    const user = request.user;
+    if (user === undefined) {
+      // AuthGuard is global; this is only a defensive type/runtime guard.
+      throw new Error('Usuario autenticado no disponible');
+    }
+    return this.service.resumen(query, user);
   }
 }

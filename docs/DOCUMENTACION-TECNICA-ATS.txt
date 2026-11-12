@@ -1,7 +1,9 @@
 ================================================================================
  ATS LARCO — DOCUMENTACIÓN TÉCNICA (concreta)
  Etapa 9 — Retroalimentación · 09/11/2026 · Monorepo pnpm (sin Turborepo)
- Todo lo siguiente fue VERIFICADO contra el código y la BD de desarrollo.
+  Todo lo siguiente fue VERIFICADO contra el código; las comprobaciones de BD,
+  pruebas y despliegue citadas son históricas y no demuestran la versión de cada
+  entorno. En particular, el código 022 no significa que 022 esté aplicada.
 ================================================================================
 
 ÍNDICE
@@ -29,7 +31,10 @@
     Persistencia: pool `pg` global (DatabaseService) para casi todos los
     módulos + DataSource de TypeORM SOLO en el módulo requerimientos.
     Migraciones: node-pg-migrate con archivos TS en apps/api/db/migrations
-     (001–020) — NO hay Prisma en el proyecto.
+     (001–022) — NO hay Prisma en el proyecto. La presencia de una migración en
+     el árbol no significa que esté aplicada en cada entorno: 021 requiere
+     clasificar antes los candidatos sin área; 022 depende de 021 y restringe
+     el borrado de departamentos referenciados.
     Seguridad: helmet, CORS endurecido, Throttler global (100 peticiones/
     minuto por IP) y @Throttle(5/min) en login; nestjs-pino (logging).
     CV: multer en memoria, 5 MB máx., tipo real por MAGIC BYTES (PDF/DOC/
@@ -69,7 +74,7 @@
   pnpm-workspace.yaml → apps/api, apps/web, packages/shared.
 
      apps/api/
-      db/migrations/          001_initial_schema … 020_retirar_verificaciones (TS)
+      db/migrations/          001_initial_schema … 022_candidatos_departamento_fk_restrict (TS)
     src/
       config/               env validada con zod, JWT corto
       common/
@@ -97,8 +102,8 @@
         historial/          + GET /api/historial/auditoria (Etapa 9, solo
                             superusuario)
         usuarios/           gestión de cuentas (Etapa 8, solo superusuario)
-        antecedentes/ proveedor/
-                            Fase 6: SOLO GET ping (marcadores de reserva)
+        (sin módulos antecedentes/proveedor: las verificaciones externas están
+         fuera del ATS; sus fases del embudo son manuales)
 
   apps/web/src/
     pages/                  Login, requerimientos (lista/nuevo/detalle),
@@ -156,8 +161,9 @@
                        antecedentes, entrevistas, proveedor_externo,
                        contratacion — el ORDEN del enum es la base de la
                        adyacencia) · estado ENUM estado_postulacion (activa,
-                       contratado, descartado) · UNIQUE(candidato_id,
-                       requerimiento_id) · CHECK postulaciones_contratacion_check
+                       contratado, descartado) · UNIQUE(candidato_id) — una
+                        sola postulación TOTAL por candidato · CHECK
+                        postulaciones_contratacion_check
                        (estado='contratado' ⟺ fase='contratacion') · CHECK
                        postulaciones_descarte_check (motivo obligatorio y
                        exclusivo del descarte) · triggers de auditoría
@@ -321,8 +327,8 @@
   auto-cambia el rol; el último superusuario activo es intocable; todas las
   operaciones quedan en audit_log con actor IT.
 
-  GET  /embudo/ping · /uploads/ping · /antecedentes/ping ·
-       /proveedor/ping   (Fase 6: marcadores)
+  GET  /embudo/ping · /uploads/ping   (marcadores de diagnóstico existentes;
+        no representan módulos de verificaciones externas)
 
   ── Etapa 9 (nuevos) ──────────────────────────────────────────────
   GET  /dashboard                        @Roles(analista, admin, super,
@@ -502,7 +508,7 @@
   Tras cambiar la web:  … --force-recreate web
                         (el watch de Windows no detecta archivos nuevos)
   Migraciones:          pnpm --filter @ats/api db:migrate
-                        (pnpm -C apps/api db:migrate — 001…010)
+                        (pnpm -C apps/api db:migrate — 001…022)
   Gates:                pnpm typecheck · pnpm lint · pnpm build ·
                         pnpm format:check        (NO hay Turborepo instalado)
    Pruebas:              pnpm -C apps/api test    (417 en verde)
@@ -518,9 +524,11 @@
 
    • PENDIENTE: ejecutar la prueba manual del usuario (guion en
      PRUEBA-MANUAL-ATS.txt) antes de la salida a producción.
-   • FASE 6 PARCIAL: los módulos antecedentes y proveedor externo siguen
-     sin lógica de negocio ni UI. Entrevistas, importación e
-    historial/auditoría SÍ están implementados desde la Etapa 9.
+   • Las verificaciones de antecedentes y proveedor externo están retiradas
+      del ATS: no hay módulos, rutas ni almacenamiento de resultados. Sus dos
+      nombres de fase permanecen únicamente como etapas manuales del embudo.
+      Entrevistas, importación e historial/auditoría SÍ están implementados
+      desde la Etapa 9.
   • Sin módulo de reportes ni generación de PDF (el plan los contempla).
   • Drag & drop solo verificado a mano (sensor de dnd-kit exige umbral de
     pointer); el botón ▶ está automatizado.

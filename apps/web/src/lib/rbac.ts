@@ -90,11 +90,17 @@ export function puedeConsultarCandidatos(rol: string | null | undefined): boolea
 }
 
 /**
- * Gestionar candidatos: crear (`POST /api/candidatos`) y subir CVs
- * (`POST /:id/archivos`) → `analista_seleccion`, `admin_rrhh` y `superusuario`.
+ * Gestionar candidatos: crear (`POST /api/candidatos`) y operaciones de
+ * candidato permitidas al líder de área. La subida de CV tiene una matriz
+ * específica en `puedeSubirArchivosCv`.
  */
 export function puedeGestionarCandidatos(rol: string | null | undefined): boolean {
   return rol === 'analista_seleccion' || rol === 'lider_area' || esAdministradorRRHH(rol);
+}
+
+/** Subir CV (`POST /:id/archivos`): coincide con los roles del controlador. */
+export function puedeSubirArchivosCv(rol: string | null | undefined): boolean {
+  return rol === 'analista_seleccion' || esAdministradorRRHH(rol);
 }
 
 /** Editar (`PATCH /:id`): «solo el creador del candidato o un administrador de RRHH/superusuario». */

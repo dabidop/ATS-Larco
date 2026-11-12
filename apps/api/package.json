@@ -13,7 +13,9 @@
     "test:coverage": "vitest run --coverage",
     "db:migrate": "node --env-file-if-exists=../../.env ./node_modules/node-pg-migrate/bin/node-pg-migrate.js up --migrations-dir db/migrations",
     "db:migrate:down": "node --env-file-if-exists=../../.env ./node_modules/node-pg-migrate/bin/node-pg-migrate.js down --migrations-dir db/migrations",
-    "db:migrate:create": "node --env-file-if-exists=../../.env ./node_modules/node-pg-migrate/bin/node-pg-migrate.js create --migrations-dir db/migrations --migration-file-language ts"
+    "db:migrate:create": "node --env-file-if-exists=../../.env ./node_modules/node-pg-migrate/bin/node-pg-migrate.js create --migrations-dir db/migrations --migration-file-language ts",
+    "ops:cv-inventory": "node dist/operacion/cv-inventory.js",
+    "ops:availability": "node dist/operacion/availability-check.js"
   },
   "dependencies": {
     "@ats/shared": "workspace:*",

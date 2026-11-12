@@ -92,8 +92,8 @@ describe('Entrevistas — agenda e2e (BD dev docker real)', () => {
     });
 
     const candidato = await database.query<{ id: string }>(
-      `INSERT INTO candidatos (nombres, apellidos, email, created_by)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
+      `INSERT INTO candidatos (nombres, apellidos, email, departamento_id, created_by)
+       VALUES ($1, $2, $3, (SELECT id FROM departamentos LIMIT 1), $4) RETURNING id`,
       ['Entrevista', `Prueba ${SUFIJO_UNICO}`, `entrevista-${SUFIJO_UNICO}@larco.test`, adminId],
     );
     candidatoId = candidato.rows[0]?.id ?? '';
@@ -130,8 +130,8 @@ describe('Entrevistas — agenda e2e (BD dev docker real)', () => {
     // exige UN candidato = UNA postulación (`UNIQUE(candidato_id)`), así que
     // el 409 de «agenda sobre terminal» necesita SU propio candidato.
     const candidatoDescartado = await database.query<{ id: string }>(
-      `INSERT INTO candidatos (nombres, apellidos, email, created_by)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
+      `INSERT INTO candidatos (nombres, apellidos, email, departamento_id, created_by)
+       VALUES ($1, $2, $3, (SELECT id FROM departamentos LIMIT 1), $4) RETURNING id`,
       ['Descartado', `Prueba ${SUFIJO_UNICO}`, `descartado-${SUFIJO_UNICO}@larco.test`, adminId],
     );
     candidatoDescartadoId = candidatoDescartado.rows[0]?.id ?? '';

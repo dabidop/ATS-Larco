@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  ValidateIf,
   MaxLength,
   Matches,
   Min,
@@ -95,7 +96,9 @@ export class CreateCandidatoDto {
   ciudad?: string;
 
   /** Área LARCO; el líder la recibe automáticamente desde su jefatura. */
-  @IsOptional()
+  // Los líderes pueden omitirlo: el servicio lo resuelve desde su jefatura.
+  // Si se envía explícitamente, null no es una forma válida de omitirlo.
+  @ValidateIf((_obj, value) => value !== undefined)
   @IsUUID('4', { message: 'departamentoId debe ser un UUID válido' })
   departamentoId?: string;
 

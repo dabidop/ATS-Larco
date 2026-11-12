@@ -1,0 +1,181 @@
+AUDITORÍA ESTÁTICA DEL ATS LARCO — 11/11/2026
+=============================================
+
+Alcance y criterio
+------------------
+Fuentes: ALCANCE.pdf (4 páginas), PROJECT_CONTEXT.md, ROADMAP.md,
+docs/DEPLOY-STAGING.md, apps/api/db/README.md, documentación de docs/ y código
+relacionado en apps/api y apps/web. La decisión posterior documentada prevalece
+sobre el punto D del PDF: antecedentes y proveedor externo se verifican FUERA
+del ATS; sus fases en el embudo son manuales. NO se recomienda reintroducir
+scrapers, resultados, estados ni evidencias de esas verificaciones. Se conserva
+la regla de una sola postulación TOTAL por candidato (migración 009), el esquema
+híbrido pg/TypeORM, el cifrado AES-256-CBC con IV aleatorio, la auditoría
+inmutable y el flujo de cinco fases. El PDF permite un piloto incompleto: los
+pendientes de producción no significan incumplimiento total de la prueba.
+
+Método: lectura de código/configuración; sin levantar servicios, ejecutar
+pruebas, consultar BD, revisar datos personales ni verificar despliegues.
+Los resultados de tests/HTTPS/restore citados en ROADMAP.md son históricos,
+NO se reproducen aquí. Las ubicaciones se refieren al árbol actual.
+
+Balance comprobable frente al alcance
+-------------------------------------
+- Existen rutas y lógica para solicitudes de personal, códigos anuales, cinco
+  fases del embudo, descarte motivado, CV con hash SHA-256, entrevistas,
+  importación de PDF, dashboard y bitácora. La protección criptográfica de
+  cédula/teléfono y los guards de roles están implementados en código.
+- La importación tiene previsualización editable y confirmación, pero también
+  sigue expuesto el endpoint legado de creación inmediata. Las habilidades
+  solo se sugieren desde un vocabulario limitado; no se guardan en el candidato.
+- El stack usa React 19/Vite, NestJS 11 y PostgreSQL. El access JWT actual es
+  corto con refresh rotatorio; NO equiparar literalmente el requisito original
+  de 24 horas con la duración del access. Confirmar la aceptación de esta
+  variante antes de declarar conformidad formal con el PDF.
+- Existe migración 021 posterior a lo descrito en PROJECT_CONTEXT.md, ROADMAP.md,
+  apps/api/db/README.md y docs/DOCUMENTACION-TECNICA-ATS.txt; el estado real
+  de aplicación por entorno es desconocido.
+
+HALLAZGOS Y PUNTOS CRÍTICOS (prioridad; evidencia; acción prudente)
+-------------------------------------------------------------------
+
+[C1 / ALTA] Contrato de área incoherente con la migración 021.
+  apps/api/db/migrations/021_candidatos_departamento_obligatorio.ts:10-31
+  hace NOT NULL candidatos.departamento_id y se detiene si quedan candidatos
+  sin área. apps/api/src/modules/candidatos/dto/update-candidato.dto.ts:78-81
+  todavía acepta null por @IsOptional; candidatos.mapper.ts:80 lo traduce a
+  null; candidatos.service.ts:514-517 no lo rechaza. En BD con 021 aplicada,
+  ese PATCH termina en violación NOT NULL (500), en vez de validación clara.
+  La FK de la migración 009:195 además conserva ON DELETE SET NULL, que no
+  puede aplicarse si se borra un departamento referenciado tras 021. El
+  catálogo actual no ofrece borrado, pero un borrado SQL futuro fallaría.
+  Acción: alinear DTO/servicio y FK con la nueva regla mediante migración
+  deliberada; inventariar nulos y versión del esquema ANTES de migrar. No
+  asignar áreas arbitrarias ni ejecutar down de 020 sobre datos existentes.
+
+[C2 / ALTA] Fuga de PII mediante mensajes de importación y vía heredada.
+  apps/api/src/modules/importacion/importacion.service.ts:513-531 devuelve la
+  cédula en claro para duplicados y puede devolver el mensaje bruto de una
+  excepción; el endpoint /hvs en importacion.controller.ts:67-86 todavía crea
+  candidatos sin revisión, aunque la UI use /previsualizar y /confirmar.
+  Acción: respuestas genéricas por archivo sin cédula ni errores internos;
+  mantener compatibilidad solo si hay consumidores confirmados y, de ser así,
+  documentar/limitar el flujo automático sin romperlos. Probar que ni logs ni
+  respuestas contienen PII o trazas de BD en casos de fallo.
+
+[C3 / ALTA] Lectura global del dashboard para líder de área.
+  apps/api/src/modules/dashboard/dashboard.controller.ts:22-25 permite
+  lider_area; dashboard.service.ts:30-41,60-87,104-127 consulta candidatos,
+  postulaciones y títulos de TODOS los requerimientos sin filtro de área.
+  Contrasta con el alcance por área aplicado en candidatos.service.ts:678-694
+  y departamentos.service.ts:38-47. No se expone la cédula, pero sí conteos
+  y títulos de vacantes ajenas. Acción: acordar si los agregados de dirección
+  son globales o por jefatura; si son por área, filtrar en servidor con pruebas
+  por rol y sin jefatura. No confiar en filtros enviados por la UI.
+
+[C4 / ALTA] Carrera entre limpieza de CV y subida concurrente.
+  apps/api/src/modules/uploads/archivos-cv.service.ts:260-297 borra filas,
+  consulta si queda alguna referencia y luego borra el blob; subir():121-135
+  guarda/reutiliza el archivo ANTES de insertar su fila. En el intervalo entre
+  comprobar referencias y eliminar bytes puede entrar una nueva subida del
+  mismo hash: quedaría una fila apuntando a un fichero ausente. La limpieza
+  manual no evita esta carrera. Acción: coordinar por hash (bloqueo compartido
+  entre subida y purga, o cuarentena/revalidación y reconciliación segura) y
+  añadir prueba concurrente PG+FS preservando deduplicación; no borrar por
+  simple conteo fuera de una coordinación transaccional.
+
+[C5 / MEDIA-ALTA] Persistencia de blobs sin referencia y protección operativa.
+  archivos-cv.service.ts:149-153 admite blob huérfano tras rollback;
+  almacenamiento.service.ts:36-44 conserva bytes tras borrar candidato y
+  describe una limpieza futura, pero no hay un barrido general implementado.
+  La retención de CV descartados en ROADMAP.md:T08 es mantenimiento explícito,
+  no una ejecución programada; no asumir que los seis meses se aplican solos.
+  Acción: definir operación auditable de reconciliación/retención con periodo
+  de gracia, distinguiendo huérfanos de blobs compartidos, y verificar backup,
+  restauración, custodia de claves, permisos y protección/escaneo de PDFs en
+  el entorno real antes de usar datos reales. No cambiar la regla de conservar
+  CV de contratados ni eliminar blobs por cronología sin validar referencias.
+
+[C6 / MEDIA] Confirmación de importación no valida el objeto JSON en runtime.
+  apps/api/src/modules/importacion/dto/confirmar-hvs.dto.ts:4-12 declara
+  RevisionImportacionDto como interfaz (no valida contenido); en
+  importacion.service.ts:357-384 se hace cast y se llama .trim() sobre los
+  supuestos nombres. JSON válido como [{"indice":0,"nombres":null,...}]
+  produce TypeError/500, y no hay límites de texto/email equiparables al DTO
+  de candidato; las habilidades de la revisión no se persisten
+  (importacion.service.ts:484-510). Acción: validar cada revisión, índices
+  únicos y campos con límites compatibles; devolver 400/resultado por archivo
+  predecible. Aclarar que habilidades son sugerencias no almacenadas, o acordar
+  un modelo persistente antes de prometer prellenado permanente.
+
+[C7 / MEDIA] Previsualización puede quedar obsoleta en UI.
+  apps/web/src/pages/importacion/PaginaImportarHVs.tsx:49-79 borra vista al
+  cambiar archivos; :205 cambia el departamento sin invalidar previsualización;
+  :124-145 confirma con el departamento vigente. Es posible revisar para un
+  destino y confirmar en otro. Acción: congelar destino durante revisión o
+  invalidar/mostrar nueva confirmación al cambiarlo; comprobarlo en test UI.
+
+[C8 / MEDIA] Integridad de fichero deduplicado existente no se comprueba al
+  guardarlo. almacenamiento.service.ts:72-83 trata EEXIST como contenido
+  idéntico sin verificar tamaño/hash del fichero ya presente; una escritura
+  interrumpida o manipulación puede dejar un blob truncado. La descarga sí
+  verifica SHA-256 (archivos-cv.service.ts:235-245), por lo que falla tarde.
+  Acción: verificar al reutilizar y gestionar escrituras temporales con
+  publicación atómica; ensayo de corrupción y concurrencia sin eliminar un
+  blob compartido. La firma/magic bytes no equivale a antivirus.
+
+[C9 / MEDIA] La agenda permite agendar tras cierre por carrera.
+  entrevistas.service.ts:73-97 y :155-168 comprueba estado de postulación en
+  una SELECT y luego inserta en otra consulta/transacción; puede descartarse
+  o contratarse entre ambas. Acción: hacer la condición de estado efectiva
+  durante la escritura mediante bloqueo/transacción o INSERT condicionado;
+  probar carrera con el descarte/movimiento sin alterar el flujo de cinco fases.
+
+[C10 / MEDIA] Trazabilidad y documentación técnica desfasadas.
+  PROJECT_CONTEXT.md y ROADMAP.md hablan de 001-020; docs/DOCUMENTACION-
+  TECNICA-ATS.txt:30-32,71-72,100-101,155-160 aún menciona módulos ping
+  retirados y UNIQUE(candidato_id,requerimiento_id), contrario a 009.
+  apps/api/db/README.md:26-31 afirma reversibilidad total, contradicha por
+  020 y por la cautela de ROADMAP.md. Riesgo: operación o cambios de esquema
+  basados en reglas obsoletas. Acción: actualizar fuentes de referencia y
+  señalar 021 y su prerequisito de clasificación; no ejecutar migraciones ni
+  rollbacks sobre BD desconocida como parte de esta corrección documental.
+
+[C11 / BLOQUEANTE PARA DATOS REALES] Operación de producción inconclusa.
+  ROADMAP.md:T16-T17 sigue pendiente; no se encontraron workflows CI en
+  .github/workflows. docker-compose.staging.yml y docs/DEPLOY-STAGING.md
+  ofrecen staging detrás de gateway TLS externo, no demuestran por sí mismos
+  alertas, backups cifrados, restauración en destino ni certificado público.
+  Acción: completar gates CI, vigilancia/alerta, restauración y checklist de
+  salida con datos sintéticos; confirmar versión 021 en cada entorno. No
+  declarar el piloto apto para tratar PII real solo por pruebas locales previas.
+
+Opciones de optimización SIN perder funcionalidad ni infringir condiciones
+--------------------------------------------------------------------------
+1. Priorizar correcciones C1-C4 antes de optimizar tiempos; conservar checks,
+   triggers, código atómico REQ, autorización en servidor y migraciones como
+   única autoridad del esquema (sin synchronize ni reemplazar pg/TypeORM).
+2. auditoria.service.ts:72-125 carga TODOS los usuarios, candidatos,
+   requerimientos y postulaciones en cada página de 50 entradas. Consultar
+   solo referencias de la página actual con consultas por lotes; medir EXPLAIN
+   y tiempo con datos sintéticos antes/después. Mantener etiquetas y máscaras.
+3. Dashboard.service.ts:30-41,60-70 ejecuta múltiples agregados en snapshots
+   distintos pese al comentario de mismo instante; si se exige coherencia,
+   agrupar lecturas en una transacción read-only de snapshot consistente.
+   Evitar caches de PII y verificar que el filtro por rol siga aplicándose.
+4. Importacion.service.ts:370-384 usa find por cada archivo (hasta 50): crear
+   un Map de revisiones por índice después de validarlas. Mantener el resultado
+   ordenado y los fallos aislados por archivo; NO añadir cola/OCR sin medición
+   adicional (ROADMAP.md:T12 documenta lote sintético aceptable).
+5. Mantener DTOs de API/web alineados con pruebas de contrato para importación
+   y regla de área 021. Extraer constantes/tipos al paquete shared solo si
+   reduce divergencia sin introducir acoplamiento o cambiar el contrato público.
+
+Verificación sugerida (NO ejecutada en esta auditoría)
+-----------------------------------------------------
+Tests negativos de PATCH departamentoId:null antes/después de 021; intento de
+migración en BD desechable con candidato sin área; roles del dashboard; JSON
+malformado en revisiones; duplicado de cédula sin PII en respuesta; retención
+vs. subida simultánea del mismo hash; blob EEXIST corrupto; agendamiento vs.
+descarte simultáneo. Después, typecheck/lint/tests pertinentes y staging con
+esquema y restore comprobados. No usar CV ni credenciales reales para ensayos.

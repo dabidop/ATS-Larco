@@ -58,6 +58,7 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
   let adminId: string;
   let analistaId: string;
   let liderId: string;
+  let departamentoId: string;
 
   let tokenSuper: string;
   /** Token con claim `role: superusuario` emitido para el ADMIN (actor ajeno). */
@@ -154,6 +155,13 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
     jwt = app.get(JwtService);
     database = app.get(DatabaseService, { strict: false });
 
+    const departamento = await query<{ id: string }>(
+      'SELECT id FROM departamentos ORDER BY nombre LIMIT 1',
+    );
+    departamentoId = departamento.rows[0]?.id ?? '';
+    if (departamentoId === '')
+      throw new Error('No hay departamentos para el fixture de candidatos');
+
     const usuarios = await query<{ id: string; email: string }>(
       'SELECT id, email FROM users WHERE email = ANY($1::text[])',
       [[EMAIL_SUPERUSUARIO, EMAIL_ADMIN]],
@@ -176,6 +184,7 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
       'E2E Usuarios Analista',
     );
     liderId = await seedUsuario('e2e-usuarios-lider@larco.co', 'lider_area', 'E2E Usuarios Lider');
+    await seedUsuario('e2e-usuarios-super@larco.co', 'superusuario', 'E2E Usuarios Superusuario');
 
     tokenSuper = await jwt.signAsync({
       sub: superusuarioId,
@@ -722,6 +731,7 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
           email: 'e2e-usuarios-candidato@larco.co',
           cedula: CEDULA_SU,
           ciudad: 'E2E Usuarios',
+          departamentoId,
         })
         .expect(201);
       expect(response.body.id).toEqual(expect.any(String));
@@ -730,13 +740,16 @@ describe('Gestión de usuarios — módulo exclusivo del superusuario (BD dev re
         .post('/api/candidatos')
         .set('Authorization', `Bearer ${tokenLider}`)
         .send({
-          nombres: 'No',
+          nombres: 'No pasa',
           apellidos: 'Debe Pasar',
           cedula: `${CEDULA_BASE}99`,
           ciudad: 'E2E Usuarios',
+          departamentoId,
         })
         .expect(403);
-      expect(denegado.body.message).toBe('No tienes permiso para realizar esta acción');
+      expect(denegado.body.message).toBe(
+        'El líder no tiene una jefatura asociada a un departamento',
+      );
     });
 
     it('POST /api/postulaciones: superusuario supera el RBAC (400 de forma) y lider_area recibe 403', async () => {

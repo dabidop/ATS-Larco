@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { isEmail } from 'class-validator';
 
 import { DatabaseService } from '../../database/database.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
@@ -13,6 +14,7 @@ import type {
   ResultadoArchivoDto,
 } from './dto/importar-hvs.response';
 import { extraerTextoPdf } from './pdf-texto';
+import { LIMITES_CANDIDATO } from '../candidatos/dto/create-candidato.dto';
 
 /** Códigos que `node-postgres` copia del ErrorResponse de PostgreSQL. */
 interface ErrorDePostgres {
@@ -43,10 +45,105 @@ function esCedulaDuplicada(error: unknown): boolean {
   return e.code === '23505' && (e.constraint ?? '').includes('cedula_hash');
 }
 
-/** Texto amigable de un error para el resultado por archivo. */
-function mensajeDeError(error: unknown): string {
-  if (error instanceof Error && error.message.trim() !== '') return error.message;
-  return 'Error desconocido';
+/** Detalle técnico reducido: nunca incluye el mensaje (puede contener PII/SQL). */
+function tipoDeError(error: unknown): string {
+  return error instanceof Error && error.name.trim() !== '' ? error.name : 'Error';
+}
+
+function esTexto(valor: unknown): valor is string {
+  return typeof valor === 'string';
+}
+
+/** Valida el JSON controlado por el cliente antes de usarlo como datos de candidato. */
+export function validarRevisiones(
+  valor: unknown,
+  cantidadArchivos: number,
+): RevisionImportacionDto[] {
+  if (!Array.isArray(valor) || valor.length !== cantidadArchivos) {
+    throw new BadRequestException('revisiones debe contener una revisión por cada archivo');
+  }
+
+  const indices = new Set<number>();
+  return valor.map((item, posicion) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      throw new BadRequestException('Cada revisión debe ser un objeto válido');
+    }
+    const revision = item as Record<string, unknown>;
+    const camposPermitidos = new Set([
+      'indice',
+      'nombres',
+      'apellidos',
+      'email',
+      'telefono',
+      'ciudad',
+      'habilidades',
+    ]);
+    if (Object.keys(revision).some((campo) => !camposPermitidos.has(campo))) {
+      throw new BadRequestException('La revisión contiene campos no permitidos');
+    }
+    const indice = revision.indice;
+    if (
+      typeof indice !== 'number' ||
+      !Number.isInteger(indice) ||
+      indice < 0 ||
+      indice >= cantidadArchivos ||
+      indices.has(indice)
+    ) {
+      throw new BadRequestException(
+        'Los índices de revisión deben ser únicos y estar dentro del lote',
+      );
+    }
+    indices.add(indice);
+
+    const nombres = revision.nombres;
+    const apellidos = revision.apellidos;
+    if (
+      !esTexto(nombres) ||
+      !esTexto(apellidos) ||
+      nombres.trim().length < 3 ||
+      nombres.trim().length > LIMITES_CANDIDATO.nombres ||
+      apellidos.trim().length < 3 ||
+      apellidos.trim().length > LIMITES_CANDIDATO.apellidos
+    ) {
+      throw new BadRequestException(`nombres y apellidos inválidos en la revisión ${posicion + 1}`);
+    }
+
+    const opcionales = [
+      ['email', LIMITES_CANDIDATO.email],
+      ['telefono', LIMITES_CANDIDATO.telefono],
+      ['ciudad', LIMITES_CANDIDATO.ciudad],
+    ] as const;
+    for (const [campo, limite] of opcionales) {
+      const dato = revision[campo];
+      if (dato !== undefined && dato !== null && (!esTexto(dato) || dato.trim().length > limite)) {
+        throw new BadRequestException(`${campo} inválido en la revisión ${posicion + 1}`);
+      }
+    }
+    const email = revision.email;
+    if (email !== undefined && email !== null && email !== '' && !isEmail(String(email).trim())) {
+      throw new BadRequestException(`email inválido en la revisión ${posicion + 1}`);
+    }
+    const habilidades = revision.habilidades;
+    if (habilidades !== undefined && (!Array.isArray(habilidades) || !habilidades.every(esTexto))) {
+      throw new BadRequestException(`habilidades inválidas en la revisión ${posicion + 1}`);
+    }
+
+    return {
+      indice,
+      nombres: nombres.trim(),
+      apellidos: apellidos.trim(),
+      email: email === null || email === undefined ? null : String(email).trim(),
+      telefono:
+        revision.telefono === null || revision.telefono === undefined
+          ? null
+          : String(revision.telefono).trim(),
+      ciudad:
+        revision.ciudad === null || revision.ciudad === undefined
+          ? null
+          : String(revision.ciudad).trim(),
+      habilidades: habilidades as string[] | undefined,
+    };
+  });
 }
 
 /** ¿El buffer empieza (o contiene en su cabecera) con la firma `%PDF-`? */
@@ -334,7 +431,7 @@ export class ImportacionService {
         });
       } catch (error) {
         this.logger.warn(
-          `No se pudo previsualizar un PDF (archivo ${identificadorArchivoSeguro(archivo.originalname)}): ${mensajeDeError(error)}`,
+          `No se pudo previsualizar un PDF (archivo ${identificadorArchivoSeguro(archivo.originalname)}; tipo ${tipoDeError(error)})`,
         );
         resultados.push({
           archivo: archivo.originalname,
@@ -354,26 +451,22 @@ export class ImportacionService {
     revisionesJson: string,
     actor: string,
   ): Promise<ImportarHvsResponseDto> {
-    let revisiones: RevisionImportacionDto[];
+    let parseado: unknown;
     try {
-      const parseado: unknown = JSON.parse(revisionesJson);
-      if (!Array.isArray(parseado)) throw new Error('debe ser una lista');
-      revisiones = parseado as RevisionImportacionDto[];
+      parseado = JSON.parse(revisionesJson);
     } catch {
       throw new BadRequestException('revisiones debe ser una lista JSON válida');
     }
-    if (revisiones.length !== archivos.length) {
-      throw new BadRequestException('Debe existir una revisión por cada archivo');
-    }
+    // La sintaxis JSON y la forma del contrato son errores distintos: conservar
+    // el diagnóstico de validación evita responder "JSON inválido" a un objeto
+    // válido pero incompleto, sin incluir valores sensibles en el mensaje.
+    const revisiones = validarRevisiones(parseado, archivos.length);
     await this.assertDepartamentoExiste(departamentoId);
+    const revisionesPorIndice = new Map(revisiones.map((revision) => [revision.indice, revision]));
     const resultados: ResultadoArchivoDto[] = [];
     for (const [indice, archivo] of archivos.entries()) {
-      const revision = revisiones.find((item) => item.indice === indice);
-      if (
-        revision === undefined ||
-        revision.nombres.trim() === '' ||
-        revision.apellidos.trim() === ''
-      ) {
+      const revision = revisionesPorIndice.get(indice);
+      if (revision === undefined) {
         resultados.push({
           archivo: archivo.originalname,
           ok: false,
@@ -446,7 +539,7 @@ export class ImportacionService {
       // El detalle REAL va al log del servidor (diagnóstico); el cliente ve un
       // mensaje genérico en español sin filtros internos de pdf.js.
       this.logger.warn(
-        `No se pudo leer un PDF (archivo ${identificadorArchivoSeguro(archivo.originalname)}): ${mensajeDeError(error)}`,
+        `No se pudo leer un PDF (archivo ${identificadorArchivoSeguro(archivo.originalname)}; tipo ${tipoDeError(error)})`,
       );
       return {
         archivo: archivo.originalname,
@@ -514,20 +607,20 @@ export class ImportacionService {
         return {
           archivo: archivo.originalname,
           ok: false,
-          motivo: `Ya existe un candidato con el email ${email ?? ''}`.trim(),
+          motivo: 'No se pudo crear el candidato porque el email ya está registrado',
         };
       }
       if (esCedulaDuplicada(error)) {
         return {
           archivo: archivo.originalname,
           ok: false,
-          motivo: `Ya existe un candidato con la cédula ${cedula}`,
+          motivo: 'No se pudo crear el candidato porque la cédula ya está registrada',
         };
       }
       return {
         archivo: archivo.originalname,
         ok: false,
-        motivo: `No se pudo adjuntar el CV al candidato: ${mensajeDeError(error)}`,
+        motivo: 'No se pudo completar el registro del candidato y su CV',
       };
     }
 

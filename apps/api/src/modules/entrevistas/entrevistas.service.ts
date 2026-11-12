@@ -71,26 +71,46 @@ export class EntrevistasService {
    * descartados (la postulación cerró; si reaparece, será otra selección).
    */
   async crear(dto: CrearEntrevistaDto, actor: string): Promise<EntrevistaResponseDto> {
-    await this.assertPostulacionAgendable(dto.postulacionId);
-    // El INSERT solo devuelve `id`: los JOINs de candidato/requerimiento no
-    // están en scope de un INSERT, así que la fila completa se RELEE (mismo
-    // patrón que `actualizar`), garantizando además los valores por defecto.
-    const insert = await this.database.query<{ id: string }>(
-      `INSERT INTO entrevistas (postulacion_id, fecha, hora, tipo, entrevistador, estado, notas, created_by)
-       VALUES ($1, $2::date, $3::time, $4, $5, COALESCE($6::estado_entrevista, 'agendada'), $7, $8)
-       RETURNING id`,
-      [
-        dto.postulacionId,
-        dto.fecha,
-        dto.hora ?? null,
-        dto.tipo.trim(),
-        dto.entrevistador ?? null,
-        dto.estado ?? null,
-        dto.notas ?? null,
-        actor,
-      ],
-    );
-    const id = insert.rows[0]?.id;
+    // El check y el INSERT viven en la MISMA transacción. `FOR UPDATE` toma el
+    // bloqueo de la fila que también adquiere el UPDATE del embudo; así, si una
+    // transición terminal gana la carrera, el check ve el estado terminal, y si
+    // esta operación gana, queda linealizada antes de esa transición. El GUC es
+    // SET LOCAL para que el trigger de auditoría registre al actor real.
+    const id = await this.database.withTransaction(async (cliente) => {
+      await cliente.query(`SELECT set_config('app.current_user_id', $1, true)`, [actor]);
+      const postulacion = await cliente.query<{ estado: string }>(
+        'SELECT estado FROM postulaciones WHERE id = $1 FOR UPDATE',
+        [dto.postulacionId],
+      );
+      const fila = postulacion.rows[0];
+      if (fila === undefined) {
+        throw new NotFoundException(`No existe una postulación con id ${dto.postulacionId}`);
+      }
+      if (ESTADOS_POSTULACION_TERMINALES.includes(fila.estado)) {
+        throw new ConflictException(
+          `La postulación está en estado «${fila.estado}» (terminal): no se pueden agendar entrevistas sobre ella`,
+        );
+      }
+
+      // El INSERT solo devuelve `id`: los JOINs de candidato/requerimiento no
+      // están en scope de un INSERT, así que la fila completa se RELEE.
+      const insert = await cliente.query<{ id: string }>(
+        `INSERT INTO entrevistas (postulacion_id, fecha, hora, tipo, entrevistador, estado, notas, created_by)
+         VALUES ($1, $2::date, $3::time, $4, $5, COALESCE($6::estado_entrevista, 'agendada'), $7, $8)
+         RETURNING id`,
+        [
+          dto.postulacionId,
+          dto.fecha,
+          dto.hora ?? null,
+          dto.tipo.trim(),
+          dto.entrevistador ?? null,
+          dto.estado ?? null,
+          dto.notas ?? null,
+          actor,
+        ],
+      );
+      return insert.rows[0]?.id;
+    });
     if (id === undefined) {
       throw new NotFoundException('La entrevista creada no se pudo leer de vuelta');
     }
@@ -145,26 +165,5 @@ export class EntrevistasService {
       throw new NotFoundException(`No existe una entrevista con id ${id}`);
     }
     return toResponse(fila);
-  }
-
-  /**
-   * **404** si la postulación no existe; **409** si es terminal. Se lee SOLO
-   * `estado` (una fila) antes del INSERT: el error llega como el mensaje de
-   * negocio correcto y nunca como violación de FK cruda (500).
-   */
-  private async assertPostulacionAgendable(postulacionId: string): Promise<void> {
-    const resultado = await this.database.query<{ estado: string }>(
-      'SELECT estado FROM postulaciones WHERE id = $1',
-      [postulacionId],
-    );
-    const fila = resultado.rows[0];
-    if (fila === undefined) {
-      throw new NotFoundException(`No existe una postulación con id ${postulacionId}`);
-    }
-    if (ESTADOS_POSTULACION_TERMINALES.includes(fila.estado)) {
-      throw new ConflictException(
-        `La postulación está en estado «${fila.estado}» (terminal): no se pueden agendar entrevistas sobre ella`,
-      );
-    }
   }
 }

@@ -64,7 +64,11 @@ function requireUser(request: AuthenticatedRequest): AuthenticatedUser {
 export class ImportacionController {
   constructor(private readonly service: ImportacionService) {}
 
-  /** Importa un lote de HVs (PDF) → { procesados, creados, fallidos, ... }. */
+  /**
+   * Endpoint legado: conserva la creación inmediata por compatibilidad de contrato.
+   * Mantiene autenticación/RBAC, límites de archivos y validación del departamento;
+   * para revisar datos antes de crear usar `/hvs/previsualizar` + `/hvs/confirmar`.
+   */
   @Post('hvs')
   @HttpCode(HttpStatus.OK)
   @Roles('admin_rrhh', 'superusuario', 'analista_seleccion')

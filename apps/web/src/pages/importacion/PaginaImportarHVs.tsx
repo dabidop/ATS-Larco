@@ -202,6 +202,7 @@ export function PaginaImportarHVs() {
           <select
             id="importar-departamento"
             value={departamentoId}
+            disabled={previsualizacion !== null}
             onChange={(evento) => setDepartamentoId(evento.target.value)}
             className={CLASE_CAMPO}
           >
@@ -271,7 +272,11 @@ export function PaginaImportarHVs() {
                 <p className="text-xs text-slate-400">
                   Habilidades detectadas:{' '}
                   {fila.sugerencias?.habilidades.join(', ') ||
-                    'ninguna; puedes indicarlas en la ficha después'}
+                    'ninguna; las habilidades no se almacenan durante la importación'}
+                </p>
+                <p className="text-xs text-slate-500">
+                  Las habilidades son sugerencias de esta revisión y no se almacenan durante la
+                  importación.
                 </p>
               </div>
             ))}

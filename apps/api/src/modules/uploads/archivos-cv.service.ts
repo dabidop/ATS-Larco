@@ -41,6 +41,11 @@ export interface ResultadoRetencionCv {
   blobsRetirados: number;
 }
 
+export interface CandidatoReconciliacionCv {
+  sha256: string;
+  modificadoEn: Date;
+}
+
 /** Mensaje de rechazo cuando los magic bytes no corresponden a un CV permitido. */
 const MENSAJE_TIPO_NO_PERMITIDO = 'Tipo de archivo no permitido. Se aceptan PDF, DOC, DOCX y RTF.';
 
@@ -118,21 +123,22 @@ export class ArchivosCvService {
       throw new BadRequestException(MENSAJE_TIPO_NO_PERMITIDO);
     }
 
-    const { sha256 } = await this.almacenamiento.guardar(archivo.buffer);
-    // Se persiste SIEMPRE el MIME derivado de los magic bytes, no el declarado.
-    const mimeType = MIME_POR_TIPO[tipo];
-
+    // El advisory lock vive en la misma sesión/transacción que el INSERT y
+    // coordina esta publicación con la retención en cualquier proceso.
     try {
-      const fila = await this.conActorDeAuditoria(createdBy, (cliente) =>
-        this.insertarFila(cliente, {
+      const fila = await this.conActorDeAuditoria(createdBy, async (cliente) => {
+        const { sha256 } = await this.guardarConBloqueo(cliente, archivo.buffer);
+        // Se persiste SIEMPRE el MIME derivado de los magic bytes.
+        const mimeType = MIME_POR_TIPO[tipo];
+        return this.insertarFila(cliente, {
           candidatoId,
           sha256,
           filenameOriginal: archivo.originalname,
           mimeType,
           sizeBytes: archivo.buffer.length,
           createdBy,
-        }),
-      );
+        });
+      });
       if (fila === undefined) {
         // Imposible en la práctica: un INSERT con RETURNING siempre devuelve fila.
         throw new Error('El INSERT sobre archivos_cv no devolvió ninguna fila');
@@ -168,9 +174,9 @@ export class ArchivosCvService {
       throw new BadRequestException(MENSAJE_TIPO_NO_PERMITIDO);
     }
 
-    const { sha256 } = await this.almacenamiento.guardar(archivo.buffer);
     try {
       await cliente.query(`SELECT set_config('app.current_user_id', $1, true)`, [createdBy]);
+      const { sha256 } = await this.guardarConBloqueo(cliente, archivo.buffer);
       const fila = await this.insertarFila(cliente, {
         candidatoId,
         sha256,
@@ -258,7 +264,10 @@ export class ArchivosCvService {
    * Este método es mantenimiento explícito, no un endpoint HTTP.
    */
   async retirarCvDescartadosAntesDe(fechaLimite: Date): Promise<ResultadoRetencionCv> {
-    const sha256s = await this.database.withTransaction(async (cliente) => {
+    const cliente = await this.database.pool.connect();
+    const hashesBloqueados: string[] = [];
+    try {
+      await cliente.query('BEGIN');
       const candidatos = await cliente.query<{ candidato_id: string }>(
         `SELECT p.candidato_id
            FROM postulaciones p
@@ -269,7 +278,17 @@ export class ArchivosCvService {
       );
       const ids = candidatos.rows.map((fila) => fila.candidato_id);
       if (ids.length === 0) {
-        return { ids, sha256s: [] as string[], filas: 0 };
+        await cliente.query('COMMIT');
+        return { candidatosEvaluados: 0, filasRetiradas: 0, blobsRetirados: 0 };
+      }
+
+      const hashes = await cliente.query<{ sha256: string }>(
+        'SELECT DISTINCT sha256 FROM archivos_cv WHERE candidato_id = ANY($1::uuid[]) ORDER BY sha256',
+        [ids],
+      );
+      for (const { sha256 } of hashes.rows) {
+        await this.adquirirBloqueo(cliente, sha256);
+        hashesBloqueados.push(sha256);
       }
 
       const borradas = await cliente.query<{ sha256: string }>(
@@ -278,30 +297,51 @@ export class ArchivosCvService {
         RETURNING sha256`,
         [ids],
       );
-      return {
-        ids,
-        sha256s: borradas.rows.map((fila) => fila.sha256),
-        filas: borradas.rowCount ?? 0,
-      };
-    });
-
-    const hashesUnicos = [...new Set(sha256s.sha256s)];
-    let blobsRetirados = 0;
-    for (const sha256 of hashesUnicos) {
-      const referencia = await this.database.query(
-        'SELECT 1 FROM archivos_cv WHERE sha256 = $1 LIMIT 1',
-        [sha256],
-      );
-      if ((referencia.rowCount ?? 0) === 0 && (await this.almacenamiento.retirar(sha256))) {
-        blobsRetirados += 1;
+      await cliente.query('COMMIT');
+      let blobsRetirados = 0;
+      for (const sha256 of hashesBloqueados) {
+        const referencia = await cliente.query(
+          'SELECT 1 FROM archivos_cv WHERE sha256 = $1 LIMIT 1',
+          [sha256],
+        );
+        if ((referencia.rowCount ?? 0) === 0 && (await this.almacenamiento.retirar(sha256))) {
+          blobsRetirados += 1;
+        }
       }
+      return {
+        candidatosEvaluados: ids.length,
+        filasRetiradas: borradas.rowCount ?? 0,
+        blobsRetirados,
+      };
+    } catch (error) {
+      await cliente.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      for (const sha256 of hashesBloqueados.reverse()) {
+        await this.liberarBloqueo(cliente, sha256).catch(() => undefined);
+      }
+      cliente.release();
     }
+  }
 
-    return {
-      candidatosEvaluados: sha256s.ids.length,
-      filasRetiradas: sha256s.sha256s.length,
-      blobsRetirados,
-    };
+  /**
+   * Devuelve candidatos a reconciliación, pero deliberadamente NO elimina.
+   * La antigüedad/gracia debe revisarse y aprobarse por operación antes de
+   * invocar una futura herramienta de mantenimiento.
+   */
+  async planificarReconciliacionHuerfanos(
+    noModificadoDespuesDe: Date,
+  ): Promise<CandidatoReconciliacionCv[]> {
+    const blobs = (await this.almacenamiento.listarBlobs()).filter(
+      (blob) => blob.modificadoEn <= noModificadoDespuesDe,
+    );
+    if (blobs.length === 0) return [];
+    const referencias = await this.database.query<{ sha256: string }>(
+      'SELECT DISTINCT sha256 FROM archivos_cv WHERE sha256 = ANY($1::text[])',
+      [blobs.map((blob) => blob.sha256)],
+    );
+    const referenciados = new Set(referencias.rows.map((fila) => fila.sha256));
+    return blobs.filter((blob) => !referenciados.has(blob.sha256));
   }
 
   /** 404 con mensaje claro si el candidato no existe. */
@@ -312,6 +352,21 @@ export class ArchivosCvService {
     if (resultado.rowCount === 0) {
       throw new NotFoundException(`No existe un candidato con id ${candidatoId}`);
     }
+  }
+
+  private async guardarConBloqueo(cliente: PoolClient, buffer: Buffer) {
+    const sha256 = createHash('sha256').update(buffer).digest('hex');
+    // El lock transaccional se libera automáticamente al COMMIT/ROLLBACK.
+    await cliente.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [sha256]);
+    return this.almacenamiento.guardar(buffer);
+  }
+
+  private async adquirirBloqueo(cliente: PoolClient, sha256: string): Promise<void> {
+    await cliente.query('SELECT pg_advisory_lock(hashtextextended($1, 0))', [sha256]);
+  }
+
+  private async liberarBloqueo(cliente: PoolClient, sha256: string): Promise<void> {
+    await cliente.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [sha256]);
   }
 
   /** INSERT de la fila; devuelve la fila materializada en BD (con `RETURNING`). */

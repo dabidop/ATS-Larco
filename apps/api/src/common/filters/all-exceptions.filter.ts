@@ -36,7 +36,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (statusCode >= 500) {
       this.logger.error(
-        { err: exception, method: request.method, path },
+        {
+          method: request.method,
+          path,
+          // No serializar `exception`: drivers SQL y validadores pueden incluir PII.
+          errorType: exception instanceof Error ? exception.name : 'UnknownError',
+          errorCode:
+            typeof exception === 'object' && exception !== null && 'code' in exception
+              ? String((exception as { code?: unknown }).code ?? '')
+              : undefined,
+        },
         'Error interno no controlado',
         'AllExceptionsFilter',
       );

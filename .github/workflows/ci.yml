@@ -1,0 +1,143 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      prove_failure_gate:
+        description: 'Ejecutar la prueba opt-in de bloqueo (debe fallar)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ats_ci
+          POSTGRES_PASSWORD: ats_ci
+          POSTGRES_DB: ats_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ats_ci -d ats_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://ats_ci:ats_ci@127.0.0.1:5432/ats_ci
+      UPLOAD_DIR: ${{ runner.temp }}/ats-cv
+      JWT_SECRET: ci-only-jwt-secret-with-more-than-32-characters
+      CRYPTO_KEY_BASE64: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      CEDULA_SEARCH_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      # Los e2e de la API usan el usuario sintético sembrado por 002.
+      # Mantener el email de fixture aquí evita que la suite dependa de una
+      # cuenta de desarrollo, sin cambiar ninguna regla de seguridad.
+      ADMIN_INITIAL_EMAIL: admin@larco.co
+      ADMIN_INITIAL_PASSWORD: ci-only-admin-password
+      SUPER_INITIAL_EMAIL: it@larco.co
+      SUPER_INITIAL_PASSWORD: ci-only-super-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+      - name: Preparar almacenamiento efímero
+        run: mkdir -p "$UPLOAD_DIR"
+      - name: Aplicar migraciones 001-022 en PostgreSQL aislado
+        run: pnpm --filter @ats/api db:migrate
+      - name: Verificar las 22 migraciones
+        run: >-
+          pnpm --filter @ats/api exec node --input-type=module -e
+          "import pg from 'pg'; const c=new pg.Client({connectionString:process.env.DATABASE_URL}); await c.connect(); const r=await c.query('select count(*)::int as count, max(name) as latest from pgmigrations'); console.log(r.rows[0]); if (r.rows[0].count !== 22 || r.rows[0].latest !== '022_candidatos_departamento_fk_restrict') process.exit(1); await c.end();"
+      - name: Construir shared
+        run: pnpm --filter @ats/shared build
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Lint
+        run: pnpm lint
+      - name: Formato
+        run: pnpm format:check
+      - name: Tests sin navegador
+        run: pnpm --filter '!@ats/api' test && pnpm --filter @ats/api exec vitest run --exclude test/ats.browser.e2e.test.ts
+      - name: Build
+        run: pnpm build
+
+  integration-pg16:
+    name: Integración PostgreSQL 16 (C4/C9)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ats_test_${{ github.run_id }}
+          POSTGRES_PASSWORD: pg16_ephemeral_${{ github.run_id }}
+          POSTGRES_DB: ats_pg16_test_${{ github.run_id }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ats_test_${{ github.run_id }} -d ats_pg16_test_${{ github.run_id }}"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://ats_test_${{ github.run_id }}:pg16_ephemeral_${{ github.run_id }}@127.0.0.1:5432/ats_pg16_test_${{ github.run_id }}
+      UPLOAD_DIR: ${{ runner.temp }}/ats-pg16-cv
+      JWT_SECRET: ci-pg16-only-jwt-secret-with-more-than-32-characters
+      CRYPTO_KEY_BASE64: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      CEDULA_SEARCH_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      ADMIN_INITIAL_EMAIL: admin-pg16-${{ github.run_id }}@synthetic.test
+      ADMIN_INITIAL_PASSWORD: ci-pg16-only-admin-password
+      ADMIN_INITIAL_NAME: Admin PG16 sintético
+      SUPER_INITIAL_EMAIL: super-pg16-${{ github.run_id }}@synthetic.test
+      SUPER_INITIAL_PASSWORD: ci-pg16-only-super-password
+      SUPER_INITIAL_NAME: Superusuario PG16 sintético
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+      - name: Preparar almacenamiento efímero
+        run: mkdir -p "$UPLOAD_DIR"
+      - name: Aplicar migraciones 001-022
+        run: pnpm --filter @ats/api db:migrate
+      - name: Verificar las 22 migraciones
+        run: >-
+          pnpm --filter @ats/api exec node --input-type=module -e
+          "import pg from 'pg'; const c=new pg.Client({connectionString:process.env.DATABASE_URL}); await c.connect(); const r=await c.query('select count(*)::int as count, max(name) as latest from pgmigrations'); console.log(r.rows[0]); if (r.rows[0].count !== 22 || r.rows[0].latest !== '022_candidatos_departamento_fk_restrict') process.exit(1); await c.end();"
+      - name: Ejecutar C4/C9 contra PostgreSQL 16 real (5/5)
+        env:
+          ATS_INTEGRATION_PG16: '1'
+          ATS_INTEGRATION_DB_TOKEN: pg16-ephemeral
+        run: pnpm --filter @ats/api exec vitest run test/postgres16-concurrencia.e2e.test.ts --reporter=verbose
+
+  failure-gate:
+    if: ${{ inputs.prove_failure_gate == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prueba opt-in de fallo bloqueante
+        run: |
+          echo 'Prueba solicitada: este job debe fallar y no existe ningún paso de publicación.'
+          exit 1

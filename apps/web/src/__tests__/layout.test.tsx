@@ -11,7 +11,7 @@ describe('layout autenticado (header con navegación por rol)', () => {
     limpiarSesion();
   });
 
-  it('muestra las secciones, el email del usuario y el botón Salir', async () => {
+  it('muestra las secciones, el email del usuario y el botón Cerrar sesión', async () => {
     sembrarSesion('admin_rrhh');
     instalarFetch(() => ({ cuerpo: fixturePagina([]) }));
 
@@ -33,10 +33,10 @@ describe('layout autenticado (header con navegación por rol)', () => {
     expect(screen.queryByRole('link', { name: 'Bitácora' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Usuarios' })).not.toBeInTheDocument();
     expect(screen.getByText(/usuario@larco\.test/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Salir' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument();
   });
 
-  it('Salir cierra la sesión y devuelve al login', async () => {
+  it('Cerrar sesión cierra la sesión y devuelve al login', async () => {
     sembrarSesion('analista_seleccion');
     instalarFetch(() => ({ cuerpo: fixturePagina([]) }));
 
@@ -46,7 +46,7 @@ describe('layout autenticado (header con navegación por rol)', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Salir' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cerrar sesión' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar salida' }));
 
     expect(useSesionStore.getState().token).toBeNull();
@@ -63,7 +63,7 @@ describe('layout autenticado (header con navegación por rol)', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole('button', { name: 'Salir' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Requerimientos' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Candidatos' })).not.toBeInTheDocument();
     expect(screen.getByText(/no tiene secciones habilitadas/i)).toBeInTheDocument();

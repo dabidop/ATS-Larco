@@ -48,10 +48,17 @@ describe('Dashboard — resumen operativo e2e (BD dev docker real)', () => {
   let database: DatabaseService;
 
   let tokenAdmin: string;
-  let tokenLider: string;
+  let tokenLiderSinJefatura: string;
+  let tokenLiderConJefatura: string;
 
   /** Ids del fixture para la limpieza de una pasada. */
-  const idsFixture: { candidato?: string; requerimiento?: string; postulacion?: string } = {};
+  const idsFixture: {
+    candidato?: string;
+    requerimiento?: string;
+    postulacion?: string;
+    liderSinJefatura?: string;
+    liderConJefatura?: string;
+  } = {};
 
   beforeAll(async () => {
     const url = process.env.DATABASE_URL;
@@ -82,20 +89,57 @@ describe('Dashboard — resumen operativo e2e (BD dev docker real)', () => {
         `No se encontró el usuario ${ADMIN_EMAIL}: ejecuta las migraciones (pnpm --filter @ats/api db:migrate)`,
       );
     }
-
     tokenAdmin = await jwt.signAsync({ sub: adminId, email: ADMIN_EMAIL, role: 'admin_rrhh' });
-    tokenLider = await jwt.signAsync({
-      sub: adminId,
-      email: 'e2e-dashboard-lider@larco.test',
+
+    const departamento = await database.query<{ id: string; nombre: string }>(
+      'SELECT id, nombre FROM departamentos ORDER BY nombre ASC LIMIT 1',
+    );
+    const area = departamento.rows[0];
+    if (area === undefined) throw new Error('Se necesita al menos un departamento de prueba');
+
+    const sufijoLider = `dashboard-${SUFIJO_UNICO}`;
+    const lideres = await database.query<{ id: string; email: string; jefatura: string | null }>(
+      `INSERT INTO users (role_id, email, password_hash, full_name, active, jefatura)
+       SELECT r.id, v.email, 'no-utilizable-en-tests', v.nombre, true, v.jefatura
+         FROM roles r
+         CROSS JOIN (VALUES
+           ($1::text, 'Líder Dashboard sin jefatura'::text, NULL::text),
+           ($2::text, 'Líder Dashboard con jefatura'::text, $3::text)
+         ) v(email, nombre, jefatura)
+        WHERE r.code = 'lider_area'
+       RETURNING id, email, jefatura`,
+      [`${sufijoLider}-sin@larco.test`, `${sufijoLider}-con@larco.test`, area.nombre],
+    );
+    const liderSinJefatura = lideres.rows.find((fila) => fila.jefatura === null);
+    const liderConJefatura = lideres.rows.find((fila) => fila.jefatura !== null);
+    if (liderSinJefatura === undefined || liderConJefatura === undefined) {
+      throw new Error('No se pudieron crear los líderes sintéticos del dashboard');
+    }
+    idsFixture.liderSinJefatura = liderSinJefatura.id;
+    idsFixture.liderConJefatura = liderConJefatura.id;
+    tokenLiderSinJefatura = await jwt.signAsync({
+      sub: liderSinJefatura.id,
+      email: liderSinJefatura.email,
+      role: 'lider_area',
+    });
+    tokenLiderConJefatura = await jwt.signAsync({
+      sub: liderConJefatura.id,
+      email: liderConJefatura.email,
       role: 'lider_area',
     });
 
     // Fixture mínimo: 1 candidato + 1 requerimiento `en_proceso` + su postulación
     // activa en `preseleccion` (el punto exacto para afirmar MÍNIMOS).
     const candidato = await database.query<{ id: string }>(
-      `INSERT INTO candidatos (nombres, apellidos, email, created_by)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      ['Dashboard', `Prueba ${SUFIJO_UNICO}`, `dashboard-${SUFIJO_UNICO}@larco.test`, adminId],
+      `INSERT INTO candidatos (nombres, apellidos, email, departamento_id, created_by)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [
+        'Dashboard',
+        `Prueba ${SUFIJO_UNICO}`,
+        `dashboard-${SUFIJO_UNICO}@larco.test`,
+        area.id,
+        adminId,
+      ],
     );
     idsFixture.candidato = candidato.rows[0]?.id;
 
@@ -113,7 +157,7 @@ describe('Dashboard — resumen operativo e2e (BD dev docker real)', () => {
         // El CHECK `requerimientos_code_check` exige `REQ-AAAA-NNN+`; 6 dígitos
         // aleatorios hacen el código único frente a otros workers en paralelo.
         `REQ-2026-${randomInt(100000, 999999)}`,
-        `Jefatura-DASH-${SUFIJO_UNICO}`,
+        area.nombre,
         'Analista Dashboard',
         'Profesional de prueba para el dashboard',
         'Requerimiento de prueba del e2e del dashboard',
@@ -131,18 +175,21 @@ describe('Dashboard — resumen operativo e2e (BD dev docker real)', () => {
   });
 
   afterAll(async () => {
-    await app?.close();
-    if (database !== undefined) {
-      await database
-        .query('DELETE FROM postulaciones WHERE id = $1', [idsFixture.postulacion])
-        .catch(() => undefined);
-      await database
-        .query('DELETE FROM candidatos WHERE id = $1', [idsFixture.candidato])
-        .catch(() => undefined);
-      await database
-        .query('DELETE FROM requerimientos WHERE id = $1', [idsFixture.requerimiento])
-        .catch(() => undefined);
-    }
+    if (app !== undefined) await app.close().catch(() => undefined);
+    if (database === undefined) return;
+    // Cada limpieza es independiente: un fallo no debe impedir borrar los
+    // restantes objetos sintéticos, especialmente los usuarios de prueba.
+    const limpiar = async (consulta: string, parametros: unknown[]): Promise<void> => {
+      await database.query(consulta, parametros).catch(() => undefined);
+    };
+    await limpiar('DELETE FROM postulaciones WHERE id = $1', [idsFixture.postulacion]);
+    await limpiar('DELETE FROM candidatos WHERE id = $1', [idsFixture.candidato]);
+    await limpiar('DELETE FROM requerimientos WHERE id = $1', [idsFixture.requerimiento]);
+    await limpiar('DELETE FROM users WHERE id = ANY($1::uuid[])', [
+      [idsFixture.liderSinJefatura, idsFixture.liderConJefatura].filter(
+        (id): id is string => id !== undefined,
+      ),
+    ]);
   });
 
   it('sin token → 401', async () => {
@@ -198,9 +245,34 @@ describe('Dashboard — resumen operativo e2e (BD dev docker real)', () => {
   it('con lider_area → 200 (rol incluido en la matriz del dashboard)', async () => {
     const response = await request(app.getHttpServer())
       .get('/api/dashboard')
-      .set('Authorization', `Bearer ${tokenLider}`)
+      .set('Authorization', `Bearer ${tokenLiderSinJefatura}`)
       .expect(200);
 
     expect(response.body.porFase).toHaveLength(5);
+    // El usuario sintético no tiene jefatura: no puede convertir esto en una
+    // lectura global.
+    expect(response.body.embudo).toEqual({
+      totalCandidatos: 0,
+      enProceso: 0,
+      contratados: 0,
+      descartados: 0,
+    });
+    expect(response.body.requerimientos.total).toBe(0);
+    expect(response.body.conversionPorRequerimiento).toMatchObject({ total: 0, items: [] });
+  });
+
+  it('con lider_area con jefatura → limita candidatos, requerimientos y conversión al área', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/dashboard')
+      .set('Authorization', `Bearer ${tokenLiderConJefatura}`)
+      .expect(200);
+
+    expect(response.body.embudo.totalCandidatos).toBeGreaterThanOrEqual(1);
+    expect(response.body.requerimientos.total).toBeGreaterThanOrEqual(1);
+    expect(response.body.conversionPorRequerimiento.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ requerimientoId: idsFixture.requerimiento, postulaciones: 1 }),
+      ]),
+    );
   });
 });

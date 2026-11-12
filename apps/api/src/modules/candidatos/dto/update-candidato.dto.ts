@@ -8,6 +8,7 @@ import {
   Matches,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 import { CEDULA_MENSAJE, CEDULA_PATTERN, LIMITES_CANDIDATO } from './create-candidato.dto';
@@ -75,8 +76,8 @@ export class UpdateCandidatoDto {
   })
   ciudad?: string;
 
-  /** `null` desasocia al candidato de su área LARCO. */
-  @IsOptional()
+  /** El área es obligatoria después de la migración 021; no se puede desasociar. */
+  @ValidateIf((_obj, value) => value !== undefined)
   @IsUUID('4', { message: 'departamentoId debe ser un UUID válido' })
   departamentoId?: string;
 

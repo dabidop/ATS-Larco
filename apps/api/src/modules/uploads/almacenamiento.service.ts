@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHash } from 'node:crypto';
-import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { link, mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import type { Env } from '../../config/env.validation';
@@ -63,26 +63,88 @@ export class AlmacenamientoService {
   /**
    * Guarda el buffer en `<UPLOAD_DIR>/<sha256>` si aún no existe.
    *
-   * Dedup ATÓMICO: se escribe con la bandera `wx` («falla si ya existe»), así
-   * que dos peticiones concurrentes con el mismo contenido no se pisan ni
-   * reescriben: la primera crea el fichero (`deduplicado: false`) y las demás
-   * reciben `EEXIST` → `deduplicado: true`. NO se comprueba antes con `existe()`
-   * precisamente para evitar la carrera entre comprobación y escritura.
+   * Publicación atómica: se completa un temporal y se enlaza con `link`, que
+   * no reemplaza un destino existente. Dos peticiones concurrentes no se pisan;
+   * la primera publica y las demás verifican el blob existente por SHA-256.
    */
   async guardar(buffer: Buffer): Promise<{ sha256: string; deduplicado: boolean }> {
     const sha256 = createHash('sha256').update(buffer).digest('hex');
     await this.preparar();
+    const temporal = join(this.directorio, `.${sha256}.${randomUUID()}.tmp`);
+
+    let resultado: { sha256: string; deduplicado: boolean } | undefined;
+    let falloPrincipal: unknown;
+    let huboFalloPrincipal = false;
+    try {
+      // El temporal se completa antes de publicarse. `link` no reemplaza un
+      // destino existente, por lo que tampoco hay una ventana de truncado.
+      await writeFile(temporal, buffer, { flag: 'wx' });
+      try {
+        await link(temporal, this.ruta(sha256));
+      } catch (error) {
+        if (!esErrorDeFs(error, 'EEXIST')) {
+          throw error;
+        }
+        // EEXIST no demuestra integridad: el blob pudo quedar corrupto por
+        // una escritura antigua o por manipulación externa.
+        let existente: Buffer;
+        try {
+          existente = await readFile(this.ruta(sha256));
+        } catch (readError) {
+          throw new Error(`No se pudo verificar el blob existente ${sha256}`, { cause: readError });
+        }
+        const hashExistente = createHash('sha256').update(existente).digest('hex');
+        if (hashExistente !== sha256 || existente.length !== buffer.length) {
+          throw new Error(`Blob existente corrupto para SHA-256 ${sha256}`, { cause: error });
+        }
+        resultado = { sha256, deduplicado: true };
+      }
+      if (resultado === undefined) resultado = { sha256, deduplicado: false };
+    } catch (error) {
+      huboFalloPrincipal = true;
+      falloPrincipal = error;
+    }
 
     try {
-      await writeFile(this.ruta(sha256), buffer, { flag: 'wx' });
-      return { sha256, deduplicado: false };
+      await unlink(temporal);
     } catch (error) {
-      if (esErrorDeFs(error, 'EEXIST')) {
-        // Ya estaba: NO se reescribe, el contenido es idéntico por definición.
-        return { sha256, deduplicado: true };
+      if (!esErrorDeFs(error, 'ENOENT')) {
+        if (huboFalloPrincipal) {
+          // No ocultar el fallo que impidió publicar. Se adjunta el fallo de
+          // limpieza para que el caller pueda alertarlo/reintentarlo.
+          if (falloPrincipal instanceof Error) {
+            Object.defineProperty(falloPrincipal, 'cleanupError', {
+              configurable: true,
+              enumerable: false,
+              value: error,
+            });
+          }
+        } else {
+          throw error;
+        }
       }
+    }
+
+    if (huboFalloPrincipal) throw falloPrincipal;
+    return resultado as { sha256: string; deduplicado: boolean };
+  }
+
+  /** Lista blobs reales con su mtime; no borra nada (plan de reconciliación). */
+  async listarBlobs(): Promise<Array<{ sha256: string; modificadoEn: Date }>> {
+    let nombres: string[];
+    try {
+      nombres = await readdir(this.directorio);
+    } catch (error) {
+      if (esErrorDeFs(error, 'ENOENT')) return [];
       throw error;
     }
+    const blobs: Array<{ sha256: string; modificadoEn: Date }> = [];
+    for (const nombre of nombres) {
+      if (!SHA256_HEX.test(nombre)) continue;
+      const info = await stat(this.ruta(nombre));
+      if (info.isFile()) blobs.push({ sha256: nombre, modificadoEn: info.mtime });
+    }
+    return blobs;
   }
 
   /**

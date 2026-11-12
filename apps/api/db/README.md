@@ -27,8 +27,7 @@ PowerShell/Windows y en Linux/macOS. La conexión sale de `DATABASE_URL`.
 
 - Prefijo numérico obligatorio (`001_`, `002_`, ...): node-pg-migrate ordena por
   ese prefijo y lo registra en la tabla `public.pgmigrations`.
-- Cada migración exporta `up(pgm)` y `down(pgm)`; **todo es reversible** (los
-  `down` se prueban, no se improvisan).
+- Cada migración exporta `up(pgm)` y `down(pgm)`, pero **no todo es reversiblemente seguro**: `020` retira tablas/tipos y puede destruir datos, `021` exige clasificar primero los candidatos sin área y `022` requiere retirar 021 antes de su `down`. Los `down` no se improvisan ni se ejecutan contra entornos desconocidos.
 - Nombres en inglés (tablas, columnas, funciones, triggers); comentarios en español.
 - Semilla determinista: la migración `002` inserta los roles base y el usuario
   admin inicial (`admin@larco.co`), cuyo hash se genera con
