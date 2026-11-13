@@ -93,3 +93,14 @@ Verificación 05/11/2026: `docker-compose.staging.yml` y `docs/DEPLOY-STAGING.md
 3. **Salida:** T13 verifica los cambios; T14 los recorre en navegador; T15 permite ejecutarlos y restaurarlos; T16 automatiza/monitoriza; T17 comprueba todo junto. T07 (restore) y T15 (HTTPS) son bloqueantes para **datos reales**, no para avanzar en desarrollo sintético.
 
 **Registro de cierre por tarea:** `Fecha: ... | Archivos: ... | Pruebas: ... | Resultado: ... | Pendiente: ...`. Si el repositorio cambia entre sesiones, comprobar de nuevo antes de ejecutar un ID; nunca marcar una tarea hecha solo porque otro documento antiguo la marcó así.
+
+## Adaptación responsive de la web (incremental)
+
+No modifica la API ni sustituye los controles de salida T16/T17. Trabajar por grupos pequeños y comprobar cada uno a 360 px, tamaño tableta y escritorio antes de pasar al siguiente:
+
+1. **Base compartida (iniciada):** navegación móvil plegable, sin duplicar enlaces ni alterar permisos por rol; contenedor y diálogos sin desbordamiento. Verificar apertura, cierre, navegación, teclado y cierre de sesión. Los tests de componentes no sustituyen una inspección visual en navegador.
+2. **Consulta (adaptación verificada con datos sintéticos):** dashboard, listados, tablas y calendario. Las regiones anchas tienen etiqueta, foco de teclado y pista móvil fija; se conservaron datos y acciones. Con Chrome local y API simulada se comprobaron 360/768/1280 px sin desbordamiento de página; tablas y calendario se desplazaron horizontalmente a 360 px, y el menú de tableta abrió y cerró a 768 px. Las pruebas de componentes y el ensayo visual sintético no sustituyen la validación con usuarios y datos reales; la tabla de usuarios mantiene desplazamiento horizontal por sus acciones.
+3. **Gestión (pendiente):** fichas y formularios de candidatos y requerimientos. Comprobar campos, errores, adjuntos y acciones en móvil.
+4. **Flujos especiales (pendiente):** importación, entrevistas y embudo. No cambiar las reglas del flujo de cinco fases; probar interacción táctil y accesible. El DnD de escritorio del ensayo Docker sigue sin validarse en su último movimiento: resolverlo antes de afirmar soporte táctil.
+
+**Decisión pendiente de producto:** confirmar si se exige operación completa en móvil o solo consulta para flujos complejos. Hasta entonces, no declarar la web totalmente responsive ni cerrar una fase por pasar únicamente tests sin verificación visual.

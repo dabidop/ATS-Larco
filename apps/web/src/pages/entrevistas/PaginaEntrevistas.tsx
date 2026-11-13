@@ -7,6 +7,7 @@ import { ESTADOS_ENTREVISTA, type Entrevista, type EstadoEntrevista } from '../.
 import { CalendarioEntrevistas } from '../../components/entrevistas/CalendarioEntrevistas';
 import { DialogoAgendar } from '../../components/entrevistas/DialogoAgendar';
 import { EstadoVacio, MensajeError, Spinner } from '../../components/ui/feedback';
+import { ContenedorDesplazable } from '../../components/ui/datos';
 import { CLASE_BOTON_PRINCIPAL, CLASE_CAMPO, CLASE_ETIQUETA } from '../../components/ui/estilos';
 
 /**
@@ -187,7 +188,7 @@ export function PaginaEntrevistas() {
         <button
           type="button"
           onClick={() => setMostrarAlta((anterior) => !anterior)}
-          className={CLASE_BOTON_PRINCIPAL}
+          className={`${CLASE_BOTON_PRINCIPAL} w-full sm:w-auto`}
         >
           {mostrarAlta ? 'Ocultar formulario' : '+ Agendar entrevista'}
         </button>
@@ -204,7 +205,7 @@ export function PaginaEntrevistas() {
 
       {/* Filtros de la agenda (resueltos por la API). */}
       <div className="flex flex-wrap items-end gap-3">
-        <div>
+        <div className="w-full sm:w-44">
           <label htmlFor="filtro-estado" className={CLASE_ETIQUETA}>
             Estado
           </label>
@@ -222,7 +223,7 @@ export function PaginaEntrevistas() {
             ))}
           </select>
         </div>
-        <div>
+        <div className="w-full sm:w-44">
           <label htmlFor="filtro-desde" className={CLASE_ETIQUETA}>
             Desde
           </label>
@@ -234,7 +235,7 @@ export function PaginaEntrevistas() {
             className={CLASE_CAMPO}
           />
         </div>
-        <div>
+        <div className="w-full sm:w-44">
           <label htmlFor="filtro-hasta" className={CLASE_ETIQUETA}>
             Hasta
           </label>
@@ -265,8 +266,8 @@ export function PaginaEntrevistas() {
       )}
 
       {entrevistas.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-slate-800">
-          <table className="w-full text-left">
+        <ContenedorDesplazable etiqueta="Tabla de entrevistas">
+          <table className="w-full min-w-[760px] text-left">
             <thead className="bg-slate-900/70">
               <tr>
                 <th className={`px-3 py-2 ${CLASE_ETIQUETA}`}>Fecha</th>
@@ -294,7 +295,7 @@ export function PaginaEntrevistas() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ContenedorDesplazable>
       )}
 
       {mostrarAlta && (

@@ -144,11 +144,11 @@ export function CalendarioEntrevistas() {
             {entrevistas.length === 1 ? 'entrevista' : 'entrevistas'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center gap-2 sm:w-auto">
           <button
             type="button"
             onClick={() => cambiarMes(-1)}
-            className={CLASE_BOTON_SECUNDARIO}
+            className={`${CLASE_BOTON_SECUNDARIO} flex-1 sm:flex-none`}
             aria-label="Mes anterior"
           >
             ‹ Anterior
@@ -156,7 +156,7 @@ export function CalendarioEntrevistas() {
           <button
             type="button"
             onClick={() => cambiarMes(1)}
-            className={CLASE_BOTON_SECUNDARIO}
+            className={`${CLASE_BOTON_SECUNDARIO} flex-1 sm:flex-none`}
             aria-label="Mes siguiente"
           >
             Siguiente ›
@@ -188,58 +188,68 @@ export function CalendarioEntrevistas() {
       )}
 
       {(entrevistas.length > 0 || recurso.fase === 'listo') && (
-        <div className="overflow-x-auto">
-          <div className="grid min-w-[560px] grid-cols-7 gap-1">
-            {DIAS_SEMANA.map((dia) => (
-              <div key={dia} className={`${CLASE_ETIQUETA} px-1 py-1 text-center`}>
-                {dia}
-              </div>
-            ))}
-            {Array.from({ length: huecos }, (_, indice) => (
-              <div key={`hueco-${indice}`} aria-hidden="true" />
-            ))}
-            {dias.map((dia) => {
-              const esHoyCelda = esHoy(dia.clave, hoy);
-              const visibles = dia.entrevistas.slice(0, MAXIMO_POR_DIA);
-              const resto = dia.entrevistas.length - visibles.length;
-              return (
-                <div
-                  key={dia.clave}
-                  className={`min-h-[92px] rounded-lg border p-1 ${
-                    esHoyCelda
-                      ? 'border-emerald-500/70 bg-emerald-500/10'
-                      : 'border-slate-800 bg-slate-950/40'
-                  }`}
-                >
-                  <span
-                    className={`text-xs font-semibold ${
-                      esHoyCelda ? 'text-emerald-300' : 'text-slate-400'
+        <div className="rounded-lg">
+          <p className="mb-2 text-xs text-slate-500 sm:hidden">
+            Desliza horizontalmente para consultar cada día de la semana
+          </p>
+          <div
+            role="region"
+            aria-label="Calendario semanal de entrevistas"
+            tabIndex={0}
+            className="overflow-x-auto focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          >
+            <div className="grid min-w-[640px] grid-cols-7 gap-1">
+              {DIAS_SEMANA.map((dia) => (
+                <div key={dia} className={`${CLASE_ETIQUETA} px-1 py-1 text-center`}>
+                  {dia}
+                </div>
+              ))}
+              {Array.from({ length: huecos }, (_, indice) => (
+                <div key={`hueco-${indice}`} aria-hidden="true" />
+              ))}
+              {dias.map((dia) => {
+                const esHoyCelda = esHoy(dia.clave, hoy);
+                const visibles = dia.entrevistas.slice(0, MAXIMO_POR_DIA);
+                const resto = dia.entrevistas.length - visibles.length;
+                return (
+                  <div
+                    key={dia.clave}
+                    className={`min-h-[92px] rounded-lg border p-1 ${
+                      esHoyCelda
+                        ? 'border-emerald-500/70 bg-emerald-500/10'
+                        : 'border-slate-800 bg-slate-950/40'
                     }`}
                   >
-                    {dia.numero}
-                    {esHoyCelda && <span className="ml-1 font-normal">hoy</span>}
-                  </span>
-                  {visibles.length > 0 && (
-                    <ul className="mt-1 space-y-1">
-                      {visibles.map((entrevista) => {
-                        const estado = estadoDe(entrevista);
-                        return (
-                          <li
-                            key={entrevista.id}
-                            title={`${entrevista.candidato.nombre} — ${entrevista.requerimiento.codigo} · ${ETIQUETA_ESTADO[estado]}`}
-                            className={`rounded border px-1 py-0.5 text-[11px] leading-tight ${CLASES_ESTADO[estado]}`}
-                          >
-                            <span className="font-semibold">{entrevista.hora ?? '—'}</span>{' '}
-                            <span className="truncate">{entrevista.candidato.nombre}</span>
-                          </li>
-                        );
-                      })}
-                      {resto > 0 && <li className="text-[11px] text-slate-500">+{resto} más</li>}
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
+                    <span
+                      className={`text-xs font-semibold ${
+                        esHoyCelda ? 'text-emerald-300' : 'text-slate-400'
+                      }`}
+                    >
+                      {dia.numero}
+                      {esHoyCelda && <span className="ml-1 font-normal">hoy</span>}
+                    </span>
+                    {visibles.length > 0 && (
+                      <ul className="mt-1 space-y-1">
+                        {visibles.map((entrevista) => {
+                          const estado = estadoDe(entrevista);
+                          return (
+                            <li
+                              key={entrevista.id}
+                              title={`${entrevista.candidato.nombre} — ${entrevista.requerimiento.codigo} · ${ETIQUETA_ESTADO[estado]}`}
+                              className={`rounded border px-1 py-0.5 text-[11px] leading-tight ${CLASES_ESTADO[estado]}`}
+                            >
+                              <span className="font-semibold">{entrevista.hora ?? '—'}</span>{' '}
+                              <span className="truncate">{entrevista.candidato.nombre}</span>
+                            </li>
+                          );
+                        })}
+                        {resto > 0 && <li className="text-[11px] text-slate-500">+{resto} más</li>}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

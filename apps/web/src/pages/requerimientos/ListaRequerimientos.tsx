@@ -8,7 +8,12 @@ import { useRecurso } from '../../lib/useRecurso';
 import { useSesionStore } from '../../store/sesion';
 import { ESTADOS_REQUERIMIENTO } from '../../tipos';
 import type { EstadoRequerimiento, Pagina, Requerimiento } from '../../tipos';
-import { BadgeEstado, BadgeUrgencia, Paginacion } from '../../components/ui/datos';
+import {
+  BadgeEstado,
+  BadgeUrgencia,
+  ContenedorDesplazable,
+  Paginacion,
+} from '../../components/ui/datos';
 import { EstadoVacio, MensajeError, Spinner } from '../../components/ui/feedback';
 import { CLASE_BOTON_PRINCIPAL, CLASE_CAMPO, CLASE_ETIQUETA } from '../../components/ui/estilos';
 
@@ -45,7 +50,7 @@ export function PaginaRequerimientos() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <div className="w-full max-w-xs">
+        <div className="w-full max-w-none sm:max-w-xs">
           <label htmlFor="filtro-estado" className={CLASE_ETIQUETA}>
             Filtrar por estado
           </label>
@@ -85,7 +90,7 @@ export function PaginaRequerimientos() {
 
       {recurso.fase === 'listo' && datos !== null && datos.items.length > 0 && (
         <>
-          <div className="overflow-x-auto rounded-xl border border-slate-800">
+          <ContenedorDesplazable etiqueta="Tabla de requerimientos">
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="bg-slate-900 text-xs uppercase tracking-wide text-slate-400">
                 <tr>
@@ -135,7 +140,7 @@ export function PaginaRequerimientos() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ContenedorDesplazable>
           <Paginacion
             pagina={datos.page}
             total={datos.total}

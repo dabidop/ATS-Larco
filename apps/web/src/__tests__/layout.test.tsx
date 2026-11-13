@@ -53,6 +53,53 @@ describe('layout autenticado (header con navegación por rol)', () => {
     expect(await screen.findByLabelText(/correo electrónico/i)).toBeInTheDocument();
   });
 
+  it('redirige al login cuando la API rechaza una sesión caducada con 401', async () => {
+    sembrarSesion('admin_rrhh');
+    instalarFetch((url) =>
+      url.startsWith('/api/candidatos?')
+        ? { status: 401, cuerpo: { statusCode: 401, message: 'No autenticado' } }
+        : undefined,
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/candidatos']}>
+        <RutasAplicacion />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByLabelText(/correo electrónico/i)).toBeInTheDocument();
+    expect(useSesionStore.getState().token).toBeNull();
+  });
+
+  it('abre el menú móvil, conserva permisos por rol y lo cierra al navegar', async () => {
+    sembrarSesion('analista_seleccion');
+    instalarFetch(() => ({ cuerpo: fixturePagina([]) }));
+
+    render(
+      <MemoryRouter initialEntries={['/requerimientos']}>
+        <RutasAplicacion />
+      </MemoryRouter>,
+    );
+
+    const menu = screen.getByRole('button', { name: 'Menú' });
+    const navegacion = screen.getByRole('navigation', { name: 'Secciones principales' });
+    expect(menu).toHaveClass('lg:hidden');
+    expect(navegacion).toHaveClass('lg:flex');
+    expect(menu).toHaveAttribute('aria-expanded', 'false');
+    expect(navegacion).toHaveClass('hidden');
+    fireEvent.click(menu);
+    expect(screen.getByRole('button', { name: 'Cerrar menú' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(navegacion).toHaveClass('flex');
+    expect(screen.queryByRole('link', { name: 'Usuarios' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Candidatos' }));
+    expect(navegacion).toHaveClass('hidden');
+    expect(screen.getByRole('button', { name: 'Menú' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('un rol fuera de la matriz no ve ninguna sección (no se le inventan permisos)', async () => {
     sembrarSesion('becario');
     instalarFetch(() => ({ cuerpo: fixturePagina([]) }));

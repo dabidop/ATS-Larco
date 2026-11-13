@@ -30,6 +30,7 @@ export function Header() {
   const cerrarSesionLocal = useSesionStore((estado) => estado.cerrarSesion);
   const navegar = useNavigate();
   const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false);
+  const [menuAbierto, setMenuAbierto] = useState(false);
   const rol = usuario?.role ?? null;
 
   const secciones = [
@@ -63,41 +64,60 @@ export function Header() {
       <header className="sticky top-0 z-10 border-b border-slate-800 bg-slate-900/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <LogoLarco destino={puedeVerSeccionDashboard(rol) ? '/dashboard' : '/requerimientos'} />
-          <nav aria-label="Secciones principales" className="flex flex-wrap gap-4">
-            {secciones.map((seccion) => (
-              <NavLink
-                key={seccion.destino}
-                to={seccion.destino}
-                className={({ isActive }) =>
-                  `text-sm transition ${
-                    isActive
-                      ? 'font-semibold text-emerald-400'
-                      : 'text-slate-300 hover:text-slate-100'
-                  }`
-                }
-              >
-                {seccion.etiqueta}
-              </NavLink>
-            ))}
-            {secciones.length === 0 && (
-              <span className="text-sm text-amber-400">
-                Tu rol no tiene secciones habilitadas. Contacta con RRHH.
+          <button
+            type="button"
+            aria-controls="navegacion-principal"
+            aria-expanded={menuAbierto}
+            onClick={() => setMenuAbierto((abierto) => !abierto)}
+            className={`${CLASE_BOTON_SECUNDARIO} ml-auto min-h-11 lg:hidden`}
+          >
+            {menuAbierto ? 'Cerrar menú' : 'Menú'}
+          </button>
+          <nav
+            id="navegacion-principal"
+            aria-label="Secciones principales"
+            className={`${menuAbierto ? 'flex' : 'hidden'} max-h-[calc(100dvh-5rem)] w-full min-w-0 flex-col gap-3 overflow-y-auto border-t border-slate-800 pt-3 lg:ml-0 lg:flex lg:max-h-none lg:w-auto lg:flex-1 lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-6 lg:overflow-visible lg:border-0 lg:pt-0`}
+          >
+            <div className="flex flex-col gap-1 lg:flex-row lg:flex-wrap lg:gap-4">
+              {secciones.map((seccion) => (
+                <NavLink
+                  key={seccion.destino}
+                  to={seccion.destino}
+                  onClick={() => setMenuAbierto(false)}
+                  className={({ isActive }) =>
+                    `flex min-h-11 items-center rounded px-2 text-sm transition lg:min-h-0 lg:px-0 ${
+                      isActive
+                        ? 'font-semibold text-emerald-400'
+                        : 'text-slate-300 hover:text-slate-100'
+                    }`
+                  }
+                >
+                  {seccion.etiqueta}
+                </NavLink>
+              ))}
+              {secciones.length === 0 && (
+                <span className="text-sm text-amber-400">
+                  Tu rol no tiene secciones habilitadas. Contacta con RRHH.
+                </span>
+              )}
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-3 border-t border-slate-800 pt-3 lg:ml-auto lg:border-0 lg:pt-0">
+              <span className="min-w-0 break-all text-xs text-slate-400">
+                {usuario?.email ?? 'Sesión iniciada'}
+                {usuario?.role ? ` · ${etiquetaRol(usuario.role)}` : ''}
               </span>
-            )}
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuAbierto(false);
+                  setMostrarConfirmacion(true);
+                }}
+                className={CLASE_BOTON_SECUNDARIO}
+              >
+                Cerrar sesión
+              </button>
+            </div>
           </nav>
-          <div className="ml-auto flex items-center gap-3">
-            <span className="text-xs text-slate-400">
-              {usuario?.email ?? 'Sesión iniciada'}
-              {usuario?.role ? ` · ${etiquetaRol(usuario.role)}` : ''}
-            </span>
-            <button
-              type="button"
-              onClick={() => setMostrarConfirmacion(true)}
-              className={CLASE_BOTON_SECUNDARIO}
-            >
-              Cerrar sesión
-            </button>
-          </div>
         </div>
       </header>
       {mostrarConfirmacion && (

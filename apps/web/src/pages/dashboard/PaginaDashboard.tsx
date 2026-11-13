@@ -3,7 +3,7 @@ import { ETIQUETA_FASE } from '../../lib/embudo';
 import { useRecurso } from '../../lib/useRecurso';
 import type { Dashboard } from '../../tipos';
 import { MensajeError, Spinner } from '../../components/ui/feedback';
-import { Paginacion } from '../../components/ui/datos';
+import { ContenedorDesplazable, Paginacion } from '../../components/ui/datos';
 import { CLASE_TARJETA } from '../../components/ui/estilos';
 import { useState } from 'react';
 
@@ -94,7 +94,15 @@ export function PaginaDashboard() {
         <h2 className="mb-4 text-sm font-semibold text-slate-200">
           Estado del Embudo de Contratación
         </h2>
-        <div className="flex items-end gap-3 overflow-x-auto pb-2" role="list">
+        <p className="mb-2 text-xs text-slate-500 sm:hidden">
+          Desliza horizontalmente para consultar todas las fases
+        </p>
+        <div
+          role="list"
+          tabIndex={0}
+          aria-label="Barras del embudo por fase"
+          className="flex items-end gap-3 overflow-x-auto pb-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        >
           {porFase.map((fase, indice) => {
             const altura = Math.max(4, Math.round((fase.cantidad / maximoFase) * 140));
             return (
@@ -153,7 +161,7 @@ export function PaginaDashboard() {
           <p className="text-sm text-slate-500">No hay requerimientos registrados.</p>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <ContenedorDesplazable etiqueta="Conversión a contratado por requerimiento">
               <table className="w-full min-w-[36rem] text-left text-sm">
                 <thead className="border-b border-slate-800 text-xs text-slate-500">
                   <tr>
@@ -182,7 +190,7 @@ export function PaginaDashboard() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ContenedorDesplazable>
             <Paginacion
               pagina={conversionPorRequerimiento.page}
               total={conversionPorRequerimiento.total}

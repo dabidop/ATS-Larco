@@ -5,6 +5,7 @@ import { puedeEditarDepartamento } from '../../lib/rbac';
 import { useRecurso } from '../../lib/useRecurso';
 import { useSesionStore } from '../../store/sesion';
 import type { CoordinadorDisponible, Departamento } from '../../tipos';
+import { ContenedorDesplazable } from '../../components/ui/datos';
 import { AvisoExito, EstadoVacio, MensajeError, Spinner } from '../../components/ui/feedback';
 import {
   CLASE_BOTON_PRINCIPAL,
@@ -179,8 +180,8 @@ export function PaginaDepartamentos() {
       {departamentos.length === 0 ? (
         <EstadoVacio mensaje="Sin departamentos registrados" />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-800">
-          <table className="w-full text-left">
+        <ContenedorDesplazable etiqueta="Tabla de departamentos">
+          <table className="w-full min-w-[680px] text-left">
             <thead className="bg-slate-900/70">
               <tr>
                 <th className={`px-3 py-2 ${CLASE_ETIQUETA}`}>Departamento</th>
@@ -204,7 +205,7 @@ export function PaginaDepartamentos() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ContenedorDesplazable>
       )}
     </div>
   );

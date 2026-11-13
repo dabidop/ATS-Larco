@@ -42,14 +42,14 @@ function EntradaAuditoriaFila({ entrada }: { entrada: EntradaAuditoria }) {
         <span className="text-xs text-slate-500">
           {entrada.etiqueta ?? 'Registro sin descripción'}
         </span>
-        <span className="text-xs text-slate-400">
+        <span className="max-w-full break-words text-xs text-slate-400">
           {entrada.actor.email ?? 'Usuario del sistema'} · {fechaHora(entrada.fecha)}
         </span>
         {entrada.cambios.length > 0 && (
           <button
             type="button"
             onClick={() => setAbierta((anterior) => !anterior)}
-            className="ml-auto text-xs font-semibold text-emerald-400 hover:text-emerald-300"
+            className="w-full text-left text-xs font-semibold text-emerald-400 hover:text-emerald-300 sm:ml-auto sm:w-auto"
           >
             {abierta ? 'Ocultar detalle' : `Ver detalle (${entrada.cambios.length})`}
           </button>

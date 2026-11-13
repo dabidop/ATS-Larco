@@ -5,6 +5,37 @@ import { ETIQUETA_ESTADO } from '../../lib/flujo';
 import type { EstadoRequerimiento, UrgenciaRequerimiento } from '../../tipos';
 import { CLASE_BOTON_SECUNDARIO, CLASE_ETIQUETA, CLASE_TARJETA } from './estilos';
 
+/** Región de desplazamiento para tablas o rejillas que no caben en móvil. */
+export function ContenedorDesplazable({
+  children,
+  etiqueta,
+  pista = true,
+  className = '',
+}: {
+  children: ReactNode;
+  etiqueta: string;
+  pista?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={`rounded-xl border border-slate-800 ${className}`}>
+      {pista && (
+        <p className="border-b border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-500 sm:hidden">
+          Desliza horizontalmente para ver más información
+        </p>
+      )}
+      <div
+        role="region"
+        aria-label={etiqueta}
+        tabIndex={0}
+        className="overflow-x-auto focus:outline-none focus:ring-2 focus:ring-emerald-500"
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 /** Badge de color por estado del requerimiento. */
 const CLASES_ESTADO: Readonly<Record<EstadoRequerimiento, string>> = {
   pendiente: 'border-amber-500/40 bg-amber-500/15 text-amber-300',
@@ -113,7 +144,7 @@ export function Paginacion({
 }) {
   const totalPaginas = Math.max(1, Math.ceil(total / limit));
   return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+    <div className="mt-4 flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
       <p className="text-sm text-slate-400">
         Página {pagina} de {totalPaginas} · {total} {total === 1 ? 'registro' : 'registros'}
       </p>
@@ -122,8 +153,7 @@ export function Paginacion({
           type="button"
           onClick={() => onCambio(pagina - 1)}
           disabled={pagina <= 1}
-          className={CLASE_BOTON_SECUNDARIO}
-          cursor-pointer
+          className={`${CLASE_BOTON_SECUNDARIO} flex-1 sm:flex-none`}
         >
           Anterior
         </button>
@@ -131,8 +161,7 @@ export function Paginacion({
           type="button"
           onClick={() => onCambio(pagina + 1)}
           disabled={pagina >= totalPaginas}
-          className={CLASE_BOTON_SECUNDARIO}
-          cursor-pointer
+          className={`${CLASE_BOTON_SECUNDARIO} flex-1 sm:flex-none`}
         >
           Siguiente
         </button>

@@ -8,7 +8,7 @@ import { ROLES_MATRIZ, etiquetaRol, puedeGestionarUsuarios } from '../../lib/rba
 import { useRecurso } from '../../lib/useRecurso';
 import { useSesionStore } from '../../store/sesion';
 import type { Pagina, Usuario, UsuarioActualizacion } from '../../tipos';
-import { Paginacion } from '../../components/ui/datos';
+import { ContenedorDesplazable, Paginacion } from '../../components/ui/datos';
 import { AvisoExito, EstadoVacio, MensajeError, Spinner } from '../../components/ui/feedback';
 import {
   CLASE_BOTON_PRINCIPAL,
@@ -155,7 +155,7 @@ export function PaginaUsuarios() {
       </div>
 
       <form onSubmit={alBuscar} className="mb-4 flex flex-wrap items-end gap-3" noValidate>
-        <div className="w-full max-w-xs">
+        <div className="w-full max-w-none sm:max-w-xs">
           <label htmlFor="filtro-q" className={CLASE_ETIQUETA}>
             Buscar por nombre o correo
           </label>
@@ -167,7 +167,7 @@ export function PaginaUsuarios() {
             onChange={(evento) => alCambiarBusqueda(evento.target.value)}
           />
         </div>
-        <div className="w-full max-w-[180px]">
+        <div className="w-full max-w-none sm:max-w-[180px]">
           <label htmlFor="filtro-rol" className={CLASE_ETIQUETA}>
             Filtrar por rol
           </label>
@@ -214,7 +214,7 @@ export function PaginaUsuarios() {
 
       {recurso.fase === 'listo' && datos !== null && datos.items.length > 0 && (
         <>
-          <div className="overflow-x-auto rounded-xl border border-slate-800">
+          <ContenedorDesplazable etiqueta="Tabla de usuarios y acciones">
             <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="bg-slate-900 text-xs uppercase tracking-wide text-slate-400">
                 <tr>
@@ -250,7 +250,9 @@ export function PaginaUsuarios() {
                   return (
                     <tr key={usuario.id} className="align-top hover:bg-slate-900/60">
                       <td className="px-4 py-3 font-medium text-slate-100">{usuario.nombre}</td>
-                      <td className="px-4 py-3 text-slate-300">{usuario.email}</td>
+                      <td className="max-w-[240px] break-words px-4 py-3 text-slate-300">
+                        {usuario.email}
+                      </td>
                       <td className="px-4 py-3 text-slate-300">{usuario.rolNombre}</td>
                       {/* ÁREA del líder (corrección posterior a la Etapa 9): es
                           el filtro con el que un `lider_area` ve SU jefatura. */}
@@ -351,7 +353,7 @@ export function PaginaUsuarios() {
                 })}
               </tbody>
             </table>
-          </div>
+          </ContenedorDesplazable>
           <Paginacion
             pagina={datos.page}
             total={datos.total}

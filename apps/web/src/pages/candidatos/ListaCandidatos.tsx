@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { MENSAJE_CEDULA, PATRON_CEDULA } from '../../components/candidatos/FormularioCandidato';
 import { CampoTexto } from '../../components/ui/campos';
 import { EstadoVacio, MensajeError, Spinner } from '../../components/ui/feedback';
-import { Paginacion } from '../../components/ui/datos';
+import { ContenedorDesplazable, Paginacion } from '../../components/ui/datos';
 import { CLASE_BOTON_PRINCIPAL, CLASE_BOTON_SECUNDARIO } from '../../components/ui/estilos';
 import { dinero } from '../../lib/formato';
 import { puedeGestionarCandidatos } from '../../lib/rbac';
@@ -89,7 +89,7 @@ export function PaginaCandidatos() {
       </div>
 
       <form onSubmit={alBuscar} className="mb-4 flex flex-wrap items-end gap-3" noValidate>
-        <div className="w-full max-w-xs">
+        <div className="w-full max-w-none sm:max-w-xs">
           <CampoTexto
             etiqueta="Buscar por nombre"
             placeholder="Nombre, apellido, ciudad o cargo"
@@ -97,7 +97,7 @@ export function PaginaCandidatos() {
             onCambio={alCambiarNombre}
           />
         </div>
-        <div className="w-full max-w-[180px]">
+        <div className="w-full max-w-none sm:max-w-[180px]">
           <CampoTexto
             etiqueta="Cédula (exacta)"
             inputMode="numeric"
@@ -106,7 +106,7 @@ export function PaginaCandidatos() {
             error={errorBusqueda ?? undefined}
           />
         </div>
-        <button type="submit" className={CLASE_BOTON_SECUNDARIO}>
+        <button type="submit" className={`${CLASE_BOTON_SECUNDARIO} w-full sm:w-auto`}>
           Buscar
         </button>
       </form>
@@ -124,7 +124,7 @@ export function PaginaCandidatos() {
 
       {recurso.fase === 'listo' && datos !== null && datos.items.length > 0 && (
         <>
-          <div className="overflow-x-auto rounded-xl border border-slate-800">
+          <ContenedorDesplazable etiqueta="Tabla de candidatos">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="bg-slate-900 text-xs uppercase tracking-wide text-slate-400">
                 <tr>
@@ -160,7 +160,9 @@ export function PaginaCandidatos() {
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-slate-300">{candidato.cedula}</td>
-                    <td className="px-4 py-3 text-slate-300">{candidato.email ?? '—'}</td>
+                    <td className="max-w-[240px] break-words px-4 py-3 text-slate-300">
+                      {candidato.email ?? '—'}
+                    </td>
                     <td className="px-4 py-3 text-slate-300">{candidato.ciudad ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-300">{candidato.cargoActual ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-400">
@@ -170,7 +172,7 @@ export function PaginaCandidatos() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ContenedorDesplazable>
           <Paginacion
             pagina={datos.page}
             total={datos.total}
